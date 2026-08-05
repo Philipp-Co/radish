@@ -1,0 +1,46 @@
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: docker/relay/Dockerfile
+    image: radish-relay:alpine
+    ports:
+      - "8765:8765"
+      - "40000-40019:40000-40019/udp"
+    # Der Container hat keine vom Browser aus erreichbare eigene IP. Deshalb wird die
+    # WebRTC-ICE-Portvergabe auf diesen schmalen, 1:1 gemappten Bereich eingeschraenkt
+    # (siehe sysctls) und der Relay-Server schreibt seine Kandidaten-IP im SDP-Answer
+    # auf --external-ip um (siehe server.py).
+    sysctls:
+      - net.ipv4.ip_local_port_range=40000 40019
+    command:
+      - "--listen-host"
+      - "0.0.0.0"
+      - "--listen-port"
+      - "8765"
+      - "--udp-host"
+      - "zucchini"
+      - "--udp-port"
+      - "9999"
+      - "--external-ip"
+      - "127.0.0.1"
+    restart: unless-stopped
+    depends_on:
+      - zucchini
+
+  zucchini:
+    build:
+      context: zucchini
+      dockerfile: test/docker/Dockerfile
+    image: zucchini-loopback
+    ports:
+      - "9999:9999/udp"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: radish-web:alpine
+    ports:
+      - "8080:80"
+    restart: unless-stopped
