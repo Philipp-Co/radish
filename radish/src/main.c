@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <radish/rendering/render_object.h>
 #include <radish/rendering/iso_map.h>
 
 

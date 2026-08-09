@@ -4,3 +4,5 @@ __pycache__/
 zucchini/
 build/
 radish/compile_commands.json
+radish/.cache/
+*.wasm

@@ -9,7 +9,6 @@ endif()
 
 add_executable(client
     src/main.c
-    src/rendering/render_object.c
     src/rendering/iso_object.c
     src/rendering/iso_map.c
 )
