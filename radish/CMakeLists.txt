@@ -17,11 +17,15 @@ add_executable(client
 # nur intern beim eigentlichen Aufruf hinzu -- er taucht nicht in den Flags auf,
 # die CMake in compile_commands.json schreibt. Fuer clangd/vim muss er deshalb
 # hier explizit ergaenzt werden.
-execute_process(
-    COMMAND em-config CACHE
-    OUTPUT_VARIABLE EMSCRIPTEN_CACHE_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+#
+# EMSCRIPTEN_SYSROOT setzt die Toolchain-Datei bereits selbst; sie ruft em-config
+# ueber den absoluten emsdk-Pfad auf. Ein eigener "em-config"-Aufruf wuerde
+# dagegen voraussetzen, dass emsdk_env.sh den PATH gesetzt hat -- ohne das bleibt
+# die Ausgabe leer und in compile_commands.json landet ein nutzloses
+# "-I/sysroot/include", woraufhin clangd die SDL2-Header nicht findet.
+if(NOT EMSCRIPTEN_SYSROOT)
+    message(FATAL_ERROR "EMSCRIPTEN_SYSROOT ist nicht gesetzt -- wurde wirklich mit der Emscripten-Toolchain konfiguriert?")
+endif()
 
 target_include_directories(client PRIVATE
     include
@@ -46,7 +50,7 @@ target_include_directories(client PRIVATE
 # gebuendelte clangd 14) aber nicht -- dort kommt sonst "expected expression"
 # in promise.h.
 target_compile_options(client PRIVATE
-    "-I${EMSCRIPTEN_CACHE_DIR}/sysroot/include"
+    "-I${EMSCRIPTEN_SYSROOT}/include"
     "--target=wasm32-unknown-emscripten"
     "-std=gnu2x"
 )

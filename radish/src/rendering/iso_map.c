@@ -1,8 +1,7 @@
-#include "radish/rendering/iso_object.h"
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_definitions.h>
 #include <stdlib.h>
-
+#include <stddef.h>
 
 #define RAD_MAP_INDEX_2D(x, y) ((y) * (RAD_ISO_MAP_SIZE) + (x))
 
