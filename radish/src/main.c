@@ -1,3 +1,6 @@
+#include "SDL2/SDL_events.h"
+#include "SDL2/SDL_scancode.h"
+#include "radish/rendering/iso_object.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <emscripten/emscripten.h>
@@ -5,11 +8,15 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <radish/rendering/render_object.h>
+#include <radish/rendering/iso_map.h>
+
+
 #define ZUC_HEADER_SIZE 8
 #define ZUC_CODE 1u
 
-#define WINDOW_WIDTH 640
-#define WINDOW_HEIGHT 420
+#define WINDOW_WIDTH (SCREEN_WIDTH)
+#define WINDOW_HEIGHT (SCREEN_HEIGHT)
 #define MAX_LOG_LINES 12
 #define MAX_LINE_LENGTH 96
 #define MAX_INPUT_LENGTH 64
@@ -32,6 +39,9 @@ static char input_buffer[MAX_INPUT_LENGTH + 1] = {0};
 static int input_length = 0;
 
 static ZucConnectionState connection_state = ZUC_STATE_CONNECTING;
+
+static RAD_IsoMap_t *map = NULL; 
+
 
 static void push_log(const char *text)
 {
@@ -137,6 +147,37 @@ static void handle_events(void)
     {
         switch(event.type)
         {
+            case SDL_KEYUP:
+                switch(event.key.keysym.scancode)
+                {
+                    case SDL_SCANCODE_UP:
+                        map->camera.y += 25;
+                        break;
+                    case SDL_SCANCODE_DOWN:
+                        map->camera.y -= 25;
+                        break;
+                    case SDL_SCANCODE_LEFT:
+                        map->camera.x += 25;
+                        break;
+                    case SDL_SCANCODE_RIGHT:
+                        map->camera.x -= 25;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case SDL_MOUSEMOTION:
+                RAD_IsoObjectAtScreenCoordinates(
+                    map, 
+                    event.motion.x - event.motion.xrel,// - (RAD_ISO_TILE_WIDTH / 2) - MAP_RENDER_OFFSET_X, 
+                    event.motion.y - event.motion.yrel// - (RAD_ISO_TILE_HEIGHT / 2) - MAP_RENDER_OFFSET_Y
+                )->focus=false;
+                RAD_IsoObjectAtScreenCoordinates(
+                    map, 
+                    event.motion.x,// - (RAD_ISO_TILE_WIDTH / 2) - MAP_RENDER_OFFSET_X, 
+                    event.motion.y// - (RAD_ISO_TILE_HEIGHT / 2) - MAP_RENDER_OFFSET_Y
+                )->focus=true;
+                break;
             case SDL_TEXTINPUT:
                 if(input_length + (int)strlen(event.text.text) <= MAX_INPUT_LENGTH)
                 {
@@ -164,9 +205,11 @@ static void frame(void)
 {
     handle_events();
 
-    SDL_SetRenderDrawColor(renderer, 17, 17, 17, 255);
+    // SDL_SetRenderDrawColor(renderer, 17, 17, 17, 255);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
+    /*
     SDL_Color status_color;
     const char *status_text;
     switch(connection_state)
@@ -184,21 +227,28 @@ static void frame(void)
             status_text = "Verbinde...";
             break;
     }
+    */
 
-    SDL_Rect status_dot = { 16, 16, 16, 16 };
-    SDL_SetRenderDrawColor(renderer, status_color.r, status_color.g, status_color.b, 255);
-    SDL_RenderFillRect(renderer, &status_dot);
-    render_text(status_text, 40, 14, (SDL_Color){ 230, 230, 230, 255 });
-
+    //SDL_Rect status_dot = { 16, 16, 16, 16 };
+    //SDL_SetRenderDrawColor(renderer, status_color.r, status_color.g, status_color.b, 255);
+    //SDL_RenderFillRect(renderer, &status_dot);
+    //render_text(status_text, 40, 14, (SDL_Color){ 230, 230, 230, 255 });
+    
+    /*
     for(int i = 0; i < log_count; ++i)
     {
         render_text(log_lines[i], 16, 48 + i * 22, (SDL_Color){ 0, 220, 0, 255 });
     }
+    */
 
+    /*
     SDL_Rect input_box = { 16, WINDOW_HEIGHT - 40, WINDOW_WIDTH - 32, 26 };
     SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
     SDL_RenderDrawRect(renderer, &input_box);
     render_text(input_buffer, input_box.x + 6, input_box.y + 4, (SDL_Color){ 255, 255, 255, 255 });
+    */
+
+    RAD_RenderIsoMap(renderer, map);
 
     SDL_RenderPresent(renderer);
 }
@@ -207,7 +257,6 @@ int main(void)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
 
-    printf("Hello World!\n");
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
@@ -218,6 +267,8 @@ int main(void)
 
     SDL_StartTextInput();
     push_log("Zucchini-Client gestartet.");
+
+    map = RAD_CreateIsoMap();
 
     emscripten_set_main_loop(frame, 0, 1);
     printf("Bye Bye!\n");

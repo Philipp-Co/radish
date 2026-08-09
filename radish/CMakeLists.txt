@@ -7,7 +7,12 @@ if(NOT EMSCRIPTEN)
     message(FATAL_ERROR "This project must be configured with emcmake (Emscripten toolchain).")
 endif()
 
-add_executable(client src/main.c)
+add_executable(client
+    src/main.c
+    src/rendering/render_object.c
+    src/rendering/iso_object.c
+    src/rendering/iso_map.c
+)
 
 # emcc fuegt den Header-Suchpfad fuer per USE_SDL=2/USE_SDL_TTF=2 gezogene Ports
 # nur intern beim eigentlichen Aufruf hinzu -- er taucht nicht in den Flags auf,
@@ -19,7 +24,10 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-target_include_directories(client PRIVATE include)
+target_include_directories(client PRIVATE
+    include
+    src/include
+)
 
 # CMake erkennt "${EMSCRIPTEN_CACHE_DIR}/sysroot/include" als impliziten
 # Compiler-Suchpfad von emcc und liesse ihn bei target_include_directories()
@@ -55,6 +63,7 @@ target_link_options(client PRIVATE
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createZucchiniModule"
     "-sENVIRONMENT=web"
+    "-sALLOW_MEMORY_GROWTH"
 )
 
 set_target_properties(client PROPERTIES

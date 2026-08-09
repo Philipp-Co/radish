@@ -1,0 +1,17 @@
+#ifndef __RAD_ISO_DEFINITIONS_H__
+#define __RAD_ISO_DEFINITIONS_H__
+
+
+#define SCREEN_WIDTH (640)
+#define SCREEN_HEIGHT (480)
+
+#define RAD_ISO_TILE_HEIGHT 30
+#define RAD_ISO_TILE_WIDTH 60
+
+#define RAD_ISO_MAP_SIZE 8
+#define MAP_RENDER_SIZE 8
+#define MAP_RENDER_OFFSET_X       ((SCREEN_WIDTH - (RAD_ISO_TILE_WIDTH * MAP_RENDER_SIZE)) / 2)
+#define MAP_RENDER_OFFSET_Y       150
+
+
+#endif
