@@ -1,0 +1,27 @@
+# Der Build-Kontext des Backends ist die Wurzel des Repositorys (es braucht
+# radish/, jsmn/ und zucchini/ zusammen). Ohne diese Liste ginge emsdk/ mit --
+# einige Gigabyte, die kein Image je anfasst. Auch die Kontexte von web/ und
+# relay/ sind die Wurzel und profitieren mit.
+
+.git/
+.gitignore
+.claude/
+
+# Das Emscripten-SDK: nur fuer den Wasm-Build auf dem Host, nie im Image.
+emsdk/
+
+# Build-Verzeichnisse; im Image wird ohnehin frisch uebersetzt.
+build/
+build-host/
+radish/build/
+
+# Editor-Beiwerk.
+radish/.cache/
+radish/compile_commands.json
+
+# Nicht das virtuelle Environment mitschleppen -- das Relay-Image installiert
+# seine Abhaengigkeiten selbst aus relay/requirements.txt.
+relay/.venv/
+__pycache__/
+
+README.md
