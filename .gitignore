@@ -3,6 +3,8 @@ relay/.venv/
 __pycache__/
 zucchini/
 build/
+build-host/
 radish/compile_commands.json
 radish/.cache/
 *.wasm
+jsmn/

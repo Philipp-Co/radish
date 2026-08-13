@@ -1,82 +1,44 @@
 cmake_minimum_required(VERSION 3.16)
-project(zucchini_client C)
+
+project(radish LANGUAGES C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(NOT EMSCRIPTEN)
-    message(FATAL_ERROR "This project must be configured with emcmake (Emscripten toolchain).")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra)
 endif()
 
-add_executable(client
-    src/main.c
-    src/rendering/iso_object.c
-    src/rendering/iso_map.c
-)
+include(cmake/jsmn.cmake)
 
-# emcc fuegt den Header-Suchpfad fuer per USE_SDL=2/USE_SDL_TTF=2 gezogene Ports
-# nur intern beim eigentlichen Aufruf hinzu -- er taucht nicht in den Flags auf,
-# die CMake in compile_commands.json schreibt. Fuer clangd/vim muss er deshalb
-# hier explizit ergaenzt werden.
+add_subdirectory(game)
+add_subdirectory(serialization)
+
+# Zwei ausfuehrbare Ziele, die sich gegenseitig ausschliessen: der Client haengt
+# an Emscripten und laeuft als Wasm im Browser, der Server haengt an der
+# Zucchini-Api (mkfifo, poll, POSIX-Shared-Memory) und laeuft auf dem Host.
+# game/ und serialization/ ziehen keines von beidem und werden immer gebaut.
 #
-# EMSCRIPTEN_SYSROOT setzt die Toolchain-Datei bereits selbst; sie ruft em-config
-# ueber den absoluten emsdk-Pfad auf. Ein eigener "em-config"-Aufruf wuerde
-# dagegen voraussetzen, dass emsdk_env.sh den PATH gesetzt hat -- ohne das bleibt
-# die Ausgabe leer und in compile_commands.json landet ein nutzloses
-# "-I/sysroot/include", woraufhin clangd die SDL2-Header nicht findet.
-if(NOT EMSCRIPTEN_SYSROOT)
-    message(FATAL_ERROR "EMSCRIPTEN_SYSROOT ist nicht gesetzt -- wurde wirklich mit der Emscripten-Toolchain konfiguriert?")
+# cmake/zucchini.cmake steht bewusst hier im else()-Zweig und nicht oben neben
+# jsmn: unter emcc liesse sich zucchini_api nicht uebersetzen, und ein
+# Wasm-Build soll nicht an einem fehlenden zucchini-Klon scheitern.
+if(EMSCRIPTEN)
+    add_subdirectory(client)
+else()
+    include(cmake/zucchini.cmake)
+    add_subdirectory(server)
 endif()
 
-target_include_directories(client PRIVATE
-    include
-    src/include
-)
-
-# CMake erkennt "${EMSCRIPTEN_CACHE_DIR}/sysroot/include" als impliziten
-# Compiler-Suchpfad von emcc und liesse ihn bei target_include_directories()
-# aus den generierten -I-Flags herausfallen -- und damit auch aus
-# compile_commands.json. Als rohe Compile-Option bleibt er erhalten, sodass
-# clangd/vim SDL2/SDL_ttf-Header findet.
+# compile_commands.json haengt nicht mehr am Client-Target, sondern am Build als
+# Ganzem, damit auch die Eintraege der Bibliotheken sicher mitkommen.
 #
-# --target=wasm32-unknown-emscripten wird von emcc ebenfalls nur intern an
-# clang durchgereicht. Ohne es faellt clangd auf das Host-Target (macOS/
-# Mach-O) zurueck und meldet bei EM_JS/EM_ASM (__attribute__((section("em_js"))))
-# faelschlich "mach-o section specifier requires a segment and section
-# separated by a comma", weil dieses Section-Format nur fuer Wasm/ELF gilt.
-#
-# -std=gnu2x: emscripten/promise.h nutzt die C23-Attribut-Syntax [[nodiscard]].
-# Das von emcc intern verwendete, sehr aktuelle clang akzeptiert das ohne
-# explizites -std, aeltere clangd-Versionen (z.B. das in YouCompleteMe
-# gebuendelte clangd 14) aber nicht -- dort kommt sonst "expected expression"
-# in promise.h.
-target_compile_options(client PRIVATE
-    "-I${EMSCRIPTEN_SYSROOT}/include"
-    "--target=wasm32-unknown-emscripten"
-    "-std=gnu2x"
-)
-
-set(ZUC_FONT_PATH "${CMAKE_SOURCE_DIR}/assets/LiberationSansBold.ttf")
-
-target_link_options(client PRIVATE
-    "-sUSE_SDL=2"
-    "-sUSE_SDL_TTF=2"
-    "--embed-file" "${ZUC_FONT_PATH}@/assets/LiberationSansBold.ttf"
-    "-sEXPORTED_FUNCTIONS=['_main','_zuc_on_response','_zuc_on_connection_state','_malloc','_free']"
-    "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']"
-    "-sMODULARIZE=1"
-    "-sEXPORT_NAME=createZucchiniModule"
-    "-sENVIRONMENT=web"
-    "-sALLOW_MEMORY_GROWTH"
-)
-
-set_target_properties(client PROPERTIES
-    OUTPUT_NAME "client"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/web"
-)
-
-add_custom_command(TARGET client POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_BINARY_DIR}/compile_commands.json"
-            "${CMAKE_SOURCE_DIR}/compile_commands.json"
-    COMMENT "Copying compile_commands.json to radish/ for vim/clangd"
-)
+# Nur unter Emscripten kopieren: die Datei in radish/ ist die, aus der clangd im
+# Editor die SDL2- und Emscripten-Header aufloest. Ein Host-Build wuerde sie
+# durch Eintraege ohne diese Suchpfade ersetzen und clangd damit blind machen.
+if(EMSCRIPTEN)
+    add_custom_target(copy_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_BINARY_DIR}/compile_commands.json"
+                "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json"
+        COMMENT "Copying compile_commands.json to radish/ for vim/clangd"
+    )
+endif()

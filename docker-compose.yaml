@@ -19,22 +19,30 @@ services:
       - "--listen-port"
       - "8765"
       - "--udp-host"
-      - "zucchini"
+      - "backend"
       - "--udp-port"
       - "9999"
       - "--external-ip"
       - "127.0.0.1"
     restart: unless-stopped
     depends_on:
-      - zucchini
+      - backend
 
-  zucchini:
+  # Zwei Prozesse in einem Container: zucchini_server an :9999/udp und der
+  # Spielserver, der ueber Shared Memory daran haengt. Getrennte Container gaebe
+  # das nicht her -- die Ringpuffer und die Wakeup-FIFO sind lokal.
+  #
+  # Der Kontext ist die Wurzel, nicht zucchini/: das Image baut radish und
+  # zucchini zusammen aus dem Quelltext. Vorher lief hier zucchinis eigenes
+  # Loopback-Test-Image, das jede Nachricht bloss zurueckgeschickt hat.
+  backend:
     build:
-      context: zucchini
-      dockerfile: test/docker/Dockerfile
-    image: zucchini-loopback
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    image: radish-backend:alpine
     ports:
       - "9999:9999/udp"
+    restart: unless-stopped
 
   web:
     build:

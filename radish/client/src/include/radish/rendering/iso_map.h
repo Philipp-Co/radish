@@ -6,6 +6,9 @@
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
 
+#include <radish/game/events/event_manager.h>
+
+
 typedef struct
 {
     RAD_IsoObject_t *iso_object;
@@ -21,10 +24,12 @@ typedef struct
     RAD_IsoObject_t *iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3];
 
     RAD_Camera_t camera;
+
+    RAD_EventManager_t *event_manager;
 } RAD_IsoMap_t;
 
 
-RAD_IsoMap_t* RAD_CreateIsoMap();
+RAD_IsoMap_t* RAD_CreateIsoMap(RAD_EventManager_t *manager);
 RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t screen_x, int32_t srceen_y);
 void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map);
 RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t layer);

@@ -3,15 +3,30 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+#include <radish/game/tile.h>
+
 #define RAD_MAP_INDEX_2D(x, y) ((y) * (RAD_ISO_MAP_SIZE) + (x))
 
 static int RAD_MapDepthComparator(const void *a, const void *b);
 
-RAD_IsoMap_t* RAD_CreateIsoMap()
+static void RAD_IsoMapOnTileAddedCallback(void *user_argument, const RAD_Tile_t* p);
+static void RAD_IsoMapOnTileRemovedCallback(void *user_argument, const RAD_Tile_t* p);
+static void RAD_IsoMapOnTileStateChangedCallback(void *user_argument,const RAD_Tile_t* p);
+
+RAD_IsoMap_t* RAD_CreateIsoMap(RAD_EventManager_t *manager)
 {
     RAD_IsoMap_t *map = malloc(sizeof(RAD_IsoMap_t));
-    map->number_of_iso_objects = 0;
+    map->event_manager = manager;
+    RAD_EventManagerSubscribeToTileEvents(manager, (RAD_EventsTileChangedCallback_t){
+        .user_argument=map,
+        .added=RAD_IsoMapOnTileAddedCallback,
+        .removed=RAD_IsoMapOnTileRemovedCallback,
+        .changed=RAD_IsoMapOnTileStateChangedCallback
+    });
 
+    map->number_of_iso_objects = 0;
+    
+    /*
     for(int32_t y=0;y < 2; ++y)
     {
         for(int32_t x=0;x < 2; ++x)
@@ -45,11 +60,11 @@ RAD_IsoMap_t* RAD_CreateIsoMap()
     RAD_MapAddIsoObject(map, 4, 3, 2);
     
     RAD_MapAddIsoObject(map, 4, RAD_ISO_MAP_SIZE-1, 2);
-
+    
     qsort(
         map->iso_objects, map->number_of_iso_objects, sizeof(RAD_IsoObject_t*), RAD_MapDepthComparator 
     );
-
+    */
     map->camera.x = 0;
     map->camera.y = 0;
     return map;
@@ -142,3 +157,26 @@ static int RAD_MapDepthComparator(const void *a, const void *b)
         return 1;
     }
 }
+
+static void RAD_IsoMapOnTileAddedCallback(void *user_argument, const RAD_Tile_t* p)
+{
+    RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
+    printf("Tile added: %i, %i\n", p->x, p->y);
+    RAD_MapAddIsoObject(map, p->x, p->y, p->z);
+    qsort(
+        map->iso_objects, map->number_of_iso_objects, sizeof(RAD_IsoObject_t*), RAD_MapDepthComparator 
+    );
+}
+
+static void RAD_IsoMapOnTileRemovedCallback(void *user_argument,  const RAD_Tile_t* p)
+{
+    RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
+    printf("Tile removed: %i, %i\n", p->x, p->y);
+}
+
+static void RAD_IsoMapOnTileStateChangedCallback(void *user_argument, const RAD_Tile_t* p)
+{
+    RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
+    printf("Tile changed: %i, %i\n", p->x, p->y);
+}
+
