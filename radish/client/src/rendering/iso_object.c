@@ -262,4 +262,11 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
         screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
         screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT
     );
+
+    if(NULL != object->entity)
+    {
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+        SDL_Rect rect = {.x=screen_x,.y=screen_y-RAD_ISO_TILE_HEIGHT/2,.w=RAD_ISO_TILE_WIDTH,.h=RAD_ISO_TILE_HEIGHT};
+        SDL_RenderFillRect(renderer, &rect);
+    }
 }

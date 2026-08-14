@@ -17,6 +17,18 @@ typedef struct
 } RAD_EventsMouseCallbacks_t;
 
 
+typedef void (*RAD_OnEntitySpawned_t)(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+typedef void (*RAD_OnEntityDestroyed_t)(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+typedef void (*RAD_OnEntityMoved_t)(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
+
+typedef struct
+{
+    void *user_argument;
+    RAD_OnEntitySpawned_t spawned;
+    RAD_OnEntityDestroyed_t destroyed;
+    RAD_OnEntityMoved_t moved;
+} RAD_EventsEntityChangedCallback_t;
+
 typedef void (*RAD_OnTileAddedToGame_t)(void *user_argument, const RAD_Tile_t *tile);
 typedef void (*RAD_OnTileRemovedFromGame_t)(void *user_argument, const RAD_Tile_t *tile);
 typedef void (*RAD_OnTileStateChanged_t)(void *user_argument, const RAD_Tile_t *tile);
@@ -30,6 +42,7 @@ typedef struct
 } RAD_EventsTileChangedCallback_t;
 
 typedef struct {
+    RAD_EventsEntityChangedCallback_t entity_changed_events;
     RAD_EventsTileChangedCallback_t tile_changed_events;
     RAD_EventsMouseCallbacks_t mouse_events;
 } RAD_EventManager_t;
@@ -48,6 +61,9 @@ void RAD_EventManagerPublishMouseMoved(RAD_EventManager_t *manager, int32_t new_
 void RAD_EventManagerPublishMousePressed(RAD_EventManager_t *manager, int32_t x, int32_t y);
 void RAD_EventManagerPublishMouseReleased(RAD_EventManager_t *manager, int32_t x, int32_t y);
 
-void RAD_EventManagerSubscribeToInitCommand(RAD_EventManager_t *manager);
+void RAD_EventManagerSubscribeToEntityEvents(RAD_EventManager_t *manager, RAD_EventsEntityChangedCallback_t callbacks);
+void RAD_EventManagerPublishEntitySpawned(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y);
+void RAD_EventManagerPublishEntityDestroyed(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y);
+void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
 
 #endif

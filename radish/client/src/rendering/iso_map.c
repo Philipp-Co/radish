@@ -1,3 +1,4 @@
+#include "radish/game/events/event_manager.h"
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_definitions.h>
 #include <stdlib.h>
@@ -13,6 +14,10 @@ static void RAD_IsoMapOnTileAddedCallback(void *user_argument, const RAD_Tile_t*
 static void RAD_IsoMapOnTileRemovedCallback(void *user_argument, const RAD_Tile_t* p);
 static void RAD_IsoMapOnTileStateChangedCallback(void *user_argument,const RAD_Tile_t* p);
 
+static void RAD_IsoMapOnEntitySpawned(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+static void RAD_IsoMapOnEntityDestroyed(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+static void RAD_IsoMapOnEntityMoved(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
+
 RAD_IsoMap_t* RAD_CreateIsoMap(RAD_EventManager_t *manager)
 {
     RAD_IsoMap_t *map = malloc(sizeof(RAD_IsoMap_t));
@@ -23,6 +28,15 @@ RAD_IsoMap_t* RAD_CreateIsoMap(RAD_EventManager_t *manager)
         .removed=RAD_IsoMapOnTileRemovedCallback,
         .changed=RAD_IsoMapOnTileStateChangedCallback
     });
+    RAD_EventManagerSubscribeToEntityEvents(
+        manager,
+        (RAD_EventsEntityChangedCallback_t){
+            .user_argument=map,
+            .destroyed=RAD_IsoMapOnEntityDestroyed,
+            .spawned=RAD_IsoMapOnEntitySpawned,
+            .moved=RAD_IsoMapOnEntityMoved
+        }
+    );
 
     map->number_of_iso_objects = 0;
     
@@ -87,12 +101,24 @@ RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, in
             map->hi[y][x] = RAD_CreateIsoObject(x, y, layer);
             object = &map->hi[y][x];
             break;
-        defaukt:
+        default:
             object = NULL;
             break;
     }
+    object->entity = NULL;
     map->iso_objects[map->number_of_iso_objects++] = object; 
     return object;
+}
+
+void RAD_ToFlatCoordinates(RAD_IsoMap_t *map, const int32_t screen_x, const int32_t screen_y, int32_t *x, int32_t *y)
+{
+    double sx, sy;
+
+    sx = screen_x - (RAD_ISO_TILE_WIDTH / 2) + map->camera.x;
+    sy = screen_y - (RAD_ISO_TILE_HEIGHT / 2) + map->camera.y;
+
+    *x = round(((sx / RAD_ISO_TILE_WIDTH) - (sy / RAD_ISO_TILE_HEIGHT)));
+    *y = round(((sx / RAD_ISO_TILE_WIDTH) + (sy / RAD_ISO_TILE_HEIGHT)));
 }
 
 RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t screen_x, int32_t screen_y)
@@ -178,5 +204,25 @@ static void RAD_IsoMapOnTileStateChangedCallback(void *user_argument, const RAD_
 {
     RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
     printf("Tile changed: %i, %i\n", p->x, p->y);
+}
+
+static void RAD_IsoMapOnEntitySpawned(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+{
+    printf("IsoMap: entity spawned\n");
+    RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
+    RAD_IsoObject_t* object = &map->lo[y][x];
+    
+    RAD_IsoEntity_t *iso_entity = malloc(sizeof(RAD_IsoEntity_t));
+    object->entity = iso_entity;
+}
+
+static void RAD_IsoMapOnEntityDestroyed(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+{
+    printf("IsoMap: entity destroyed\n");
+}
+
+static void RAD_IsoMapOnEntityMoved(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+{
+    printf("IsoMap: entity moved\n");
 }
 

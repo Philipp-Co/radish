@@ -1,5 +1,6 @@
 #include <radish/game/world.h>
 #include <stddef.h>
+#include <stdio.h>
 
 static RAD_EntityId_t RAD_WorldFindFreeEntitySlot(RAD_World_t *world);
 
@@ -39,12 +40,14 @@ void RAD_InitWorld(RAD_World_t *world)
     }
 
     world->number_of_entities = 0;
+
+    RAD_WorldSpawnEntity(world, RAD_ENTITY_TYPE_PLAYER, 0, 0);
 }
 
 bool RAD_WorldInBounds(const RAD_World_t *world, int32_t x, int32_t y)
 {
     (void)world;
-    return x >= 0 && x < RAD_WORLD_WIDTH && y >= 0 && y < RAD_WORLD_HEIGHT;
+    return (x >= 0) && (x < RAD_WORLD_WIDTH) && (y >= 0) && (y < RAD_WORLD_HEIGHT);
 }
 
 RAD_Tile_t* RAD_WorldTileAt(RAD_World_t *world, int32_t x, int32_t y)
@@ -78,6 +81,7 @@ RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y)
     {
         return NULL;
     }
+    printf("Get Entity from %i, %i\n", tile->x, tile->y);
     return RAD_WorldEntityById(world, tile->entity);
 }
 
@@ -99,7 +103,7 @@ RAD_EntityId_t RAD_WorldSpawnEntityWithId(RAD_World_t *world, RAD_EntityId_t id,
     }
 
     RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
-    if(tile == NULL || tile->entity != RAD_ENTITY_NONE)
+    if((tile == NULL) || (tile->entity != RAD_ENTITY_NONE))
     {
         return RAD_ENTITY_NONE;
     }
@@ -112,6 +116,8 @@ RAD_EntityId_t RAD_WorldSpawnEntityWithId(RAD_World_t *world, RAD_EntityId_t id,
     };
     tile->entity = id;
     world->number_of_entities++;
+
+    RAD_EventManagerPublishEntitySpawned(world->event_manager, &world->entities[id], x, y);
 
     return id;
 }
@@ -147,6 +153,8 @@ bool RAD_WorldMoveEntity(RAD_World_t *world, RAD_EntityId_t id, int32_t x, int32
     entity->x = x;
     entity->y = y;
 
+    RAD_EventManagerPublishEntityMoved(world->event_manager, entity, source->x, source->y, target->x, target->y);
+
     return true;
 }
 
@@ -163,6 +171,8 @@ void RAD_WorldRemoveEntity(RAD_World_t *world, RAD_EntityId_t id)
     {
         tile->entity = RAD_ENTITY_NONE;
     }
+
+    RAD_EventManagerPublishEntityDestroyed(world->event_manager, entity, entity->x, entity->y);
 
     // Der Slot wird nur als frei markiert, nicht herausgeschnitten: die Id ist
     // der Array-Index, ein Zusammenschieben wuerde alle anderen Ids entwerten.

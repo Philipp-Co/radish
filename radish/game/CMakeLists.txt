@@ -23,6 +23,8 @@ add_library(radish_game STATIC
     src/control/command/create_tile.c
     src/control/command/remove_tile.c
     src/control/command/response.c
+    
+    src/control/execute/entity.c
 )
 
 target_include_directories(radish_game PUBLIC

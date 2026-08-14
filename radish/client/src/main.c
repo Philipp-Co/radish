@@ -13,6 +13,9 @@
 #include <radish/game/game.h>
 #include <radish/serialization/serialization.h>
 #include <radish/game/events/event_manager.h>
+#include <radish/game/control/command/codec.h>
+#include <radish/game/control/command/response.h>
+#include <radish/io/user_input.h>
 
 
 #define ZUC_HEADER_SIZE 8
@@ -33,12 +36,11 @@ static SDL_Window *window;
 static SDL_Renderer *renderer;
 static TTF_Font *font;
 
-static char input_buffer[MAX_INPUT_LENGTH + 1] = {0};
-static int input_length = 0;
-
 static ZucConnectionState connection_state = ZUC_STATE_CONNECTING;
 
 static RAD_IsoMap_t *map = NULL;
+
+static RAD_IoUserInput_t RAD_user_input;
 
 static RAD_Game_t *game;
 static RAD_EventManager_t event_manager;
@@ -86,30 +88,6 @@ static const char initial_world_json[] =
 "}";
 
 
-
-///
-/// Initialisiert ein bereits angelegtes Spiel aus JSON.
-///
-/// RAD_DeserializeGameFromJson kuemmert sich um alles Weitere: es laesst jsmn
-/// zaehlen und parsen, prueft Format und Version, baut die Welt ueber die
-/// regulaere Spawn-Schnittstelle wieder auf und uebernimmt sie erst, wenn alles
-/// stimmt. Schlaegt das Laden fehl, bleibt "target" deshalb unveraendert.
-///
-static bool init_game_from_json(RAD_Game_t *target, const char *json)
-{
-    RAD_SerializeResult_t result = RAD_DeserializeGameFromJson(target, json, strlen(json));
-
-    if(result != RAD_SERIALIZE_OK)
-    {
-        printf("Welt nicht geladen: %s\n", RAD_SerializeResultText(result));
-        return false;
-    }
-
-    printf("Welt geladen: %dx%d, %d Entitaeten\n",
-           RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT, target->world.number_of_entities);
-    return true;
-}
-
 static void encode_big_endian_uint64(uint8_t *out, uint64_t value)
 {
     for(int i = 0; i < 8; ++i)
@@ -125,44 +103,107 @@ EM_JS(void, zuc_js_send, (const uint8_t *data, int length), {
     }
 });
 
+///
+/// Zeitmessung fuer den Rundlauf: wann das letzte Kommando hinausging und welche
+/// Sequenznummer es trug. Passt die Nummer der Antwort dazu, steht die Zeit mit im
+/// Log.
+///
+/// Nur die letzte, nicht eine Tabelle: bei 60 Kommandos je Sekunde koennen mehrere
+/// unterwegs sein, und dann trifft eine Antwort ein, deren Kommando schon zwei
+/// weiter ist. Statt dafuer Buch zu fuehren, entfaellt die Zeit in dem Fall -- sie
+/// waere sonst die Zeit eines anderen Kommandos.
+///
 static double last_send_time_ms = 0.0;
-static int awaiting_response = 0;
+static RAD_CommandSequence_t awaiting_sequence = 0;
 
-static void send_current_input(void)
+///
+/// Ein Kommando ist hoechstens 21 Byte lang (move_entity, siehe codec.h), davor
+/// die acht Byte des Codefeldes. 64 sind reichlich und ersparen es, die Groesse
+/// bei jeder neuen Kommandoart nachzurechnen.
+///
+#define ZUC_COMMAND_MESSAGE_MAX 64
+
+static void RAD_SendCommandToServer(const RAD_Command_t *command)
 {
-    if(input_length == 0)
+    uint8_t message[ZUC_HEADER_SIZE + ZUC_COMMAND_MESSAGE_MAX];
+    encode_big_endian_uint64(message, ZUC_CODE);
+
+    // Der Writer beginnt hinter dem Codefeld: das wertet zucchini_server selbst
+    // aus und schneidet es ab, es gehoert nicht zum Kommando.
+    RAD_ByteWriter_t writer;
+    RAD_ByteWriterInit(&writer, message + ZUC_HEADER_SIZE, ZUC_COMMAND_MESSAGE_MAX);
+    RAD_SerializeCommand(&writer, command);
+
+    if(!RAD_ByteWriterOk(&writer))
+    {
+        printf("Kommando passt nicht in %d Bytes\n", ZUC_COMMAND_MESSAGE_MAX);
+        return;
+    }
+
+    zuc_js_send(message, (int)(ZUC_HEADER_SIZE + writer.length));
+
+    last_send_time_ms = emscripten_get_now();
+    awaiting_sequence = command->header.sequence;
+
+    printf("-> #%llu move_entity\n", (unsigned long long)command->header.sequence);
+}
+
+bool RAD_IoUserinputSendCommandCallback(const RAD_Command_t *command)
+{
+    RAD_SendCommandToServer(command);
+    return true;
+}
+
+static void RAD_HandleMouseClick(const SDL_MouseButtonEvent *event, RAD_Game_t *game, RAD_IoUserInput_t *user_input)
+{
+    int32_t x = 0, y = 0;
+    RAD_Command_t command;
+    RAD_ToFlatCoordinates(map, event->x, event->y, &x, &y);
+    
+    printf("Mouse Event %i, %i\n", x, y);
+    RAD_IoUserInputOnLeftClick(user_input, x, y);
+}
+
+///
+/// Wird von index.html aus dem onmessage des DataChannels gerufen, also nicht aus
+/// frame(): die Antwort trifft irgendwann zwischen zwei Bildern ein. Unterbrechen
+/// kann sie den Frame nicht -- JS ist einthreadig und frame() laeuft durch.
+///
+EMSCRIPTEN_KEEPALIVE
+void zuc_on_response(const uint8_t *data, int length)
+{
+    if(length < 0)
     {
         return;
     }
 
-    uint8_t message[ZUC_HEADER_SIZE + MAX_INPUT_LENGTH];
-    encode_big_endian_uint64(message, ZUC_CODE);
-    memcpy(message + ZUC_HEADER_SIZE, input_buffer, input_length);
-    zuc_js_send(message, ZUC_HEADER_SIZE + input_length);
+    RAD_ByteReader_t reader;
+    RAD_ByteReaderInit(&reader, data, (size_t)length);
 
-    last_send_time_ms = emscripten_get_now();
-    awaiting_response = 1;
+    RAD_CommandResponse_t response;
+    const RAD_CommandCodecResult_t result = RAD_DeserializeCommandResponse(&reader, &response);
 
-    printf("-> %s\n", input_buffer);
-
-    input_buffer[0] = '\0';
-    input_length = 0;
-}
-
-EMSCRIPTEN_KEEPALIVE
-void zuc_on_response(const uint8_t *data, int length)
-{
-    // "data" ist nicht nullterminiert; die Laenge kommt deshalb ueber die
-    // Praezision von %.*s herein.
-    if(awaiting_response)
+    if(result != RAD_COMMAND_CODEC_OK)
     {
-        double roundtrip_ms = emscripten_get_now() - last_send_time_ms;
-        awaiting_response = 0;
-        printf("<- %.*s (%.1f ms)\n", length, (const char *)data, roundtrip_ms);
+        printf("<- %d Bytes verworfen: %s\n", length, RAD_CommandCodecResultText(result));
+        return;
+    }
+
+    RAD_IoUserInputOnCommandResponseReceived(&RAD_user_input, &response);
+    if(response.header.sequence == awaiting_sequence)
+    {
+        printf("<- #%llu Antwort: art=%d value=%u (%.1f ms)\n",
+               (unsigned long long)response.header.sequence,
+               (int)response.header.type,
+               response.value,
+               emscripten_get_now() - last_send_time_ms);
     }
     else
     {
-        printf("<- %.*s\n", length, (const char *)data);
+        printf("<- #%llu Antwort: art=%d value=%u\n",
+               (unsigned long long)response.header.sequence,
+               (int)response.header.type,
+               response.value);
     }
 }
 
@@ -172,24 +213,6 @@ void zuc_on_connection_state(int state)
     connection_state = (ZucConnectionState)state;
     printf("%s\n", state == ZUC_STATE_OPEN ? "[Verbindung offen]" :
                     state == ZUC_STATE_CLOSED ? "[Verbindung getrennt]" : "[Verbinde...]");
-}
-
-static void render_text(const char *text, int x, int y, SDL_Color color)
-{
-    if(text[0] == '\0')
-    {
-        return;
-    }
-    SDL_Surface *surface = TTF_RenderText_Blended(font, text, color);
-    if(!surface)
-    {
-        return;
-    }
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_Rect dest = { x, y, surface->w, surface->h };
-    SDL_RenderCopy(renderer, texture, NULL, &dest);
-    SDL_DestroyTexture(texture);
-    SDL_FreeSurface(surface);
 }
 
 static void handle_events(void)
@@ -218,6 +241,9 @@ static void handle_events(void)
                         break;
                 }
                 break;
+            case SDL_MOUSEBUTTONUP:
+                RAD_HandleMouseClick(&event.button, game, &RAD_user_input);
+                break;
             case SDL_MOUSEMOTION:
                 RAD_IsoObjectAtScreenCoordinates(
                     map, 
@@ -231,23 +257,6 @@ static void handle_events(void)
                 )->focus=true;
                 RAD_EventManagerPublishMouseMoved(&event_manager, event.motion.x, event.motion.y, 0, 0);
                 break;
-            case SDL_TEXTINPUT:
-                if(input_length + (int)strlen(event.text.text) <= MAX_INPUT_LENGTH)
-                {
-                    strcat(input_buffer, event.text.text);
-                    input_length = (int)strlen(input_buffer);
-                }
-                break;
-            case SDL_KEYDOWN:
-                if(event.key.keysym.sym == SDLK_BACKSPACE && input_length > 0)
-                {
-                    input_buffer[--input_length] = '\0';
-                }
-                else if(event.key.keysym.sym == SDLK_RETURN)
-                {
-                    send_current_input();
-                }
-                break;
             default:
                 break;
         }
@@ -258,44 +267,17 @@ static void frame(void)
 {
     handle_events();
 
-    // SDL_SetRenderDrawColor(renderer, 17, 17, 17, 255);
+    // Nur bei offener Verbindung: sonst wirft Module.sendToChannel die Bytes
+    // stillschweigend weg (index.html), und die Sequenznummern haetten Luecken,
+    // die nach Verlust auf der Strecke aussehen.
+    if(connection_state == ZUC_STATE_OPEN)
+    {
+        //send_test_move_command();
+    }
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-
-    /*
-    SDL_Color status_color;
-    const char *status_text;
-    switch(connection_state)
-    {
-        case ZUC_STATE_OPEN:
-            status_color = (SDL_Color){ 0, 200, 0, 255 };
-            status_text = "Verbunden";
-            break;
-        case ZUC_STATE_CLOSED:
-            status_color = (SDL_Color){ 200, 0, 0, 255 };
-            status_text = "Getrennt";
-            break;
-        default:
-            status_color = (SDL_Color){ 200, 160, 0, 255 };
-            status_text = "Verbinde...";
-            break;
-    }
-    */
-
-    //SDL_Rect status_dot = { 16, 16, 16, 16 };
-    //SDL_SetRenderDrawColor(renderer, status_color.r, status_color.g, status_color.b, 255);
-    //SDL_RenderFillRect(renderer, &status_dot);
-    //render_text(status_text, 40, 14, (SDL_Color){ 230, 230, 230, 255 });
-    
-    /*
-    SDL_Rect input_box = { 16, WINDOW_HEIGHT - 40, WINDOW_WIDTH - 32, 26 };
-    SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
-    SDL_RenderDrawRect(renderer, &input_box);
-    render_text(input_buffer, input_box.x + 6, input_box.y + 4, (SDL_Color){ 255, 255, 255, 255 });
-    */
-
     RAD_RenderIsoMap(renderer, map);
-
     SDL_RenderPresent(renderer);
 }
 
@@ -308,8 +290,7 @@ int main(void)
     // hier". Erst in einen gueltigen Grundzustand bringen, dann aus JSON laden.
     //
     event_manager = RAD_CreateEventManager();
-    //init_game_from_json(game, initial_world_json);
-
+    
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
@@ -323,6 +304,7 @@ int main(void)
 
     map = RAD_CreateIsoMap(&event_manager);
     game = RAD_CreateGame(&event_manager);
+    RAD_user_input = RAD_CreateIoUserInputState(game, RAD_IoUserinputSendCommandCallback);
 
     emscripten_set_main_loop(frame, 0, 1);
 

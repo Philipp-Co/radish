@@ -7,6 +7,7 @@
 #include <radish/rendering/entity.h>
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
+#include <radish/rendering/entity.h>
 
 
 typedef struct
@@ -21,6 +22,9 @@ typedef struct
 
     bool focus;
     int32_t layer;
+
+    RAD_IsoEntity_t *entity;
+
 } RAD_IsoObject_t;
 
 

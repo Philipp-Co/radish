@@ -10,6 +10,10 @@ static void RAD_DefaultOnMouseMove(void *user_argument, int32_t new_x, int32_t n
 static void RAD_DefaultOnMousePressed(void *user_argument, int32_t x, int32_t y);
 static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y);
 
+static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
+
+
 RAD_EventManager_t RAD_CreateEventManager(void)
 {
     RAD_EventManager_t manager = {
@@ -24,6 +28,12 @@ RAD_EventManager_t RAD_CreateEventManager(void)
             .move=RAD_DefaultOnMouseMove,
             .pressed=RAD_DefaultOnMousePressed,
             .released=RAD_DefaultOnMouseReleased
+        },
+        .entity_changed_events = {
+            .user_argument = NULL,
+            .spawned = RAD_DefaultEntity,
+            .destroyed = RAD_DefaultEntity,
+            .moved = RAD_DefaultEntityMove
         }
     };
     return manager;
@@ -111,3 +121,40 @@ static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y
     (void)y;
 }
 
+void RAD_EventManagerSubscribeToEntityEvents(RAD_EventManager_t *manager, RAD_EventsEntityChangedCallback_t callbacks)
+{
+    manager->entity_changed_events = callbacks;
+}
+
+void RAD_EventManagerPublishEntitySpawned(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y)
+{
+    manager->entity_changed_events.spawned(manager->entity_changed_events.user_argument, entity, x, y);
+}
+
+void RAD_EventManagerPublishEntityDestroyed(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y)
+{
+    manager->entity_changed_events.destroyed(manager->entity_changed_events.user_argument, entity, x, y);
+}
+
+void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+{
+    manager->entity_changed_events.moved(manager->entity_changed_events.user_argument, entity, from_x, from_y, to_x, to_y);
+}
+
+static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+{
+    (void)user_argument;
+    (void)entity;
+    (void)x;
+    (void)y;
+}
+
+static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+{
+    (void)user_argument;
+    (void)entity;
+    (void)from_x;
+    (void)from_y;
+    (void)to_x;
+    (void)to_y;
+}
