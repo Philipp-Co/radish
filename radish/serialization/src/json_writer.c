@@ -110,6 +110,16 @@ void RAD_JsonWriteInt(RAD_JsonWriter_t *writer, int32_t value)
     writer->needs_comma = true;
 }
 
+void RAD_JsonWriteUInt64(RAD_JsonWriter_t *writer, uint64_t value)
+{
+    // Feste Breite: so sind zwei Uuids im Spielstand untereinander vergleichbar,
+    // ohne dass die eine kuerzer aussieht als die andere.
+    char text[19 + 1];
+    snprintf(text, sizeof(text), "0x%016" PRIx64, value);
+
+    RAD_JsonWriteString(writer, text);
+}
+
 void RAD_JsonWriteString(RAD_JsonWriter_t *writer, const char *value)
 {
     RAD_JsonBeginValue(writer);

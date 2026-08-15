@@ -172,6 +172,11 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
         {
             return RAD_SERIALIZE_ERROR_ENTITY_ID;
         }
+
+        // Eine neu gesetzte Figur faengt herrenlos an; der Besitz aus der Datei
+        // kommt danach obendrauf. Ungeprueft, ob es den Benutzer gibt: wer
+        // mitspielt, entscheidet sich beim Verbinden und nicht beim Laden.
+        RAD_WorldSetEntityOwner(world, entity->id, entity->owner);
     }
 
     // Gegenprobe: die Zuordnung aus der Datei muss der aus der Entitaetsliste

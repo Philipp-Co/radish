@@ -123,6 +123,40 @@ bool RAD_JsonReadInt(RAD_JsonReader_t *reader, int32_t *value)
     return true;
 }
 
+bool RAD_JsonReadUInt64(RAD_JsonReader_t *reader, uint64_t *value)
+{
+    // 18 Zeichen schreibt der Writer, 20 laesst auch eine dezimale Angabe von
+    // Hand durch (2^64-1 hat zwanzig Stellen).
+    char text[21];
+    if(!RAD_JsonReadString(reader, text, sizeof(text)))
+    {
+        return false;
+    }
+
+    // strtoull nimmt fuehrende Leerzeichen und ein Minus an und dreht den Wert
+    // um; beides ist hier keine Angabe. Eine Ziffer am Anfang schliesst es aus,
+    // das 0x-Praefix eingeschlossen.
+    if(text[0] < '0' || text[0] > '9')
+    {
+        return RAD_JsonFail(reader);
+    }
+
+    char *end = NULL;
+    errno = 0;
+
+    // Basis 0: "0x..." wird hexadezimal gelesen, alles andere dezimal.
+    unsigned long long parsed = strtoull(text, &end, 0);
+
+    // Der gesamte String muss aufgebraucht sein -- "0x1f Rest" ist keine Zahl.
+    if(*end != '\0' || errno == ERANGE)
+    {
+        return RAD_JsonFail(reader);
+    }
+
+    *value = (uint64_t)parsed;
+    return true;
+}
+
 bool RAD_JsonPeekIsNull(const RAD_JsonReader_t *reader)
 {
     const jsmntok_t *token = RAD_JsonCurrent(reader);

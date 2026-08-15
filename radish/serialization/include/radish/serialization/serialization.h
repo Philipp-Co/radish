@@ -27,7 +27,7 @@
 ///             // ... "height" Zeilen
 ///           ],
 ///           "entities": [
-///             { "id": 0, "type": "player", "x": 3, "y": 4 }
+///             { "id": 0, "type": "player", "owner": null, "x": 3, "y": 4 }
 ///           ]
 ///         }
 ///       }
@@ -52,9 +52,10 @@
 
 ///
 /// Obergrenze fuer den Schreibpuffer. Ein Tile-Objekt braucht rund 46 Zeichen,
-/// ein Entitaets-Objekt rund 37; bei 8x8 Tiles und vollem Pool sind das knapp
-/// 6 KB kompakt. Mit Einrueckung wird es etwa dreimal so viel, 32 KB decken
-/// beide Faelle mit Reserve ab.
+/// ein Entitaets-Objekt rund 65 -- davon 29 die Uuid des Besitzers, die als
+/// String dasteht; bei 8x8 Tiles und vollem Pool sind das knapp 8 KB kompakt.
+/// Mit Einrueckung wird es etwa dreimal so viel, 32 KB decken beide Faelle mit
+/// Reserve ab.
 ///
 #define RAD_SAVE_JSON_MAX (32 * 1024)
 

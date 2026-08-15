@@ -1,4 +1,4 @@
-#include <interface/command.h>
+#include <radish/server/interface/command.h>
 
 ///
 /// Der ganze Adapter: den Cursor des Codecs auf die Nachricht setzen und
@@ -12,19 +12,6 @@ RAD_CommandCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uin
     RAD_ByteReaderInit(&reader, message, size);
 
     return RAD_DeserializeCommand(&reader, out_command);
-}
-
-RAD_CommandResponse_t RAD_CreateCommandResponse(const RAD_Command_t *command, uint32_t value)
-{
-    // Der Kopf wird als Ganzes uebernommen, nicht Feld fuer Feld: so kommt eine
-    // spaetere Ergaenzung in RAD_CommandHeader_t von selbst mit, statt hier
-    // vergessen zu werden.
-    RAD_CommandResponse_t response = {
-        .header = command->header,
-        .value = value
-    };
-
-    return response;
 }
 
 bool RAD_SerializeCommandResponseToMessage(const RAD_CommandResponse_t *response, uint8_t *out_message, uint16_t capacity, uint16_t *out_size)

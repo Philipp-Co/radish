@@ -77,17 +77,25 @@ RAD_SerializeResult_t RAD_DeserializeGameFromJson(RAD_Game_t *game, const char *
         return RAD_SERIALIZE_ERROR_OUT_OF_MEMORY;
     }
 
-    // Die Ereignisverwaltung gehoert zum laufenden Programm, nicht zum
-    // Speicherstand: sie wird aus dem Ziel uebernommen. Sonst liest der Aufbau
-    // der Welt sie aus frisch belegtem Speicher und ruft einen Zeiger auf, der
-    // nirgendwo hinzeigt -- und "*game = *scratch" wuerde die Verwaltung des
-    // Ziels danach mit demselben Muell ueberschreiben.
+    // Der Zwischenstand faengt als Abzug des Ziels an, nicht bei frisch belegtem
+    // Speicher: alles, was nicht im Spielstand steht, gehoert zum laufenden
+    // Programm und muss die Uebernahme "*game = *scratch" unveraendert
+    // ueberstehen. Das ist die Ereignisverwaltung -- sonst liest der Aufbau der
+    // Welt einen Zeiger, der nirgendwo hinzeigt --, und genauso local_user, die
+    // Sequenznummer und die Liste der ausgefuehrten Kommandos: gespeichert wird
+    // davon nichts, und aus malloc kaeme dafuer Muell.
+    //
+    // Dazu gehoert auch der Zug samt seiner Reihe. Wer mitspielt, ist eine Frage
+    // der Sitzung und keine des Spielstands: die Benutzer haengen an einem
+    // laufenden Programm, ein Ladevorgang darf sie nicht hinauswerfen. Der Besitz
+    // einer Figur steht dagegen sehr wohl in der Datei -- er haengt an der Uuid
+    // und nicht an der Verbindung und findet seinen Benutzer wieder, sobald der
+    // wieder mitspielt.
     //
     // Ein RAD_InitWorld() steht hier bewusst nicht: RAD_DeserializeWorld()
     // initialisiert die Welt selbst, bevor es sie fuellt. Ein zweiter Durchlauf
     // wuerde nur ein zweites Mal 64 Tile-Ereignisse veroeffentlichen.
-    scratch->event_manager = game->event_manager;
-    scratch->world.event_manager = game->world.event_manager;
+    *scratch = *game;
     scratch->world.number_of_entities = 0;
 
     RAD_JsonReader_t reader;

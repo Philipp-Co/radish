@@ -7,25 +7,41 @@ find_package(Threads REQUIRED)
 add_executable(server
     src/main.c
     src/interface/command.c
+    src/control/execute.c
+    src/control/execute/move.c
+    src/control/execute/end_turn.c
+    src/control/loader.c
+    src/control/loader/save_file.c
 )
 
 # Fuer die eigenen Module des Servers, damit sie sich beim Namen ihres Moduls
 # einbinden lassen und nicht ueber relative Pfade:
 #
-#     #include <interface/command.h>
+#     #include <radish/server/interface/command.h>
 #
-# Bewusst src und nicht src/include wie beim Client: dessen Header tragen den
-# radish/-Praefix, weil sie sich wie die der Bibliotheken lesen sollen. Die
-# Module hier gehoeren allein zum Server und werden nirgends sonst eingebunden.
+# Dieselbe Form wie bei den Bibliotheken und beim Client: die oeffentlichen
+# Header liegen unter include/radish/<projekt>/ und werden ueberall gleich
+# eingebunden, egal von wo. Dass sie nur der Server benutzt, aendert daran
+# nichts -- ein Include soll sich lesen lassen, ohne zu wissen, wo die Datei
+# steht, und die Trennung Header/Quelle steht damit auch im Verzeichnisbaum.
+#
+# Wie beim Client liegt include/ innerhalb von src/, nicht daneben wie bei
+# game/: der Server ist ein Programm und keine Bibliothek, sein
+# Include-Verzeichnis geht deshalb PRIVATE und nicht PUBLIC nach draussen.
 target_include_directories(server PRIVATE
-    src
+    src/include
 )
 
 # radish_game ist der Spielzustand, zucchini_api die Verbindung nach draussen.
 # Beide tragen ihre Include-Verzeichnisse PUBLIC, es braucht hier also keine
 # weiteren Suchpfade.
+#
+# radish_serialization liest den Spielstand (src/control/loader/) und traegt
+# radish_game PUBLIC weiter. Deshalb steht radish_game hier nicht mehr eigens:
+# eine zweite Nennung setzt dieselbe Bibliothek ein zweites Mal auf die
+# Linkerzeile, und Apples ld warnt darueber.
 target_link_libraries(server PRIVATE
-    radish_game
+    radish_serialization
     zucchini_api
     Threads::Threads
 )

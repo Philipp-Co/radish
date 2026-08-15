@@ -21,6 +21,17 @@
 #define ZUC_HEADER_SIZE 8
 #define ZUC_CODE 1u
 
+///
+/// Uuid des Benutzers, der hier spielt. Sie geht in den Kopf jedes Kommandos
+/// (siehe command.h), und der Server erkennt daran, wer gesendet hat.
+///
+/// Fest verdrahtet, weil es keine Anmeldung gibt: es gibt noch nichts, was eine
+/// Uuid ausstellen koennte. Ein zweiter Browser traegt damit dieselbe -- fuer den
+/// Server sind beide derselbe Benutzer. Das aendert sich, sobald die Uuid von
+/// aussen kommt; bis dahin steht sie an genau dieser Stelle und nirgends sonst.
+///
+#define RAD_CLIENT_USER_ID ((RAD_UserId_t)0x1)
+
 #define WINDOW_WIDTH (SCREEN_WIDTH)
 #define WINDOW_HEIGHT (SCREEN_HEIGHT)
 #define MAX_INPUT_LENGTH 64
@@ -117,7 +128,7 @@ static double last_send_time_ms = 0.0;
 static RAD_CommandSequence_t awaiting_sequence = 0;
 
 ///
-/// Ein Kommando ist hoechstens 21 Byte lang (move_entity, siehe codec.h), davor
+/// Ein Kommando ist hoechstens 29 Byte lang (move_entity, siehe codec.h), davor
 /// die acht Byte des Codefeldes. 64 sind reichlich und ersparen es, die Groesse
 /// bei jeder neuen Kommandoart nachzurechnen.
 ///
@@ -303,7 +314,7 @@ int main(void)
     printf("Zucchini-Client gestartet.\n");
 
     map = RAD_CreateIsoMap(&event_manager);
-    game = RAD_CreateGame(&event_manager);
+    game = RAD_CreateGame(&event_manager, RAD_CLIENT_USER_ID);
     RAD_user_input = RAD_CreateIoUserInputState(game, RAD_IoUserinputSendCommandCallback);
 
     emscripten_set_main_loop(frame, 0, 1);

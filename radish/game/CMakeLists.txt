@@ -12,6 +12,8 @@
 add_library(radish_game STATIC
     src/game.c
     src/world.c
+    src/player.c
+    src/turn.c
     src/events/event_manager.c
 
     src/control/command/byte_writer.c

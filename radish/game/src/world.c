@@ -34,14 +34,13 @@ void RAD_InitWorld(RAD_World_t *world)
         world->entities[i] = (RAD_Entity_t){
             .id = RAD_ENTITY_NONE,
             .type = RAD_ENTITY_TYPE_NONE,
+            .owner = RAD_USER_NONE,
             .x = 0,
             .y = 0
         };
     }
 
     world->number_of_entities = 0;
-
-    RAD_WorldSpawnEntity(world, RAD_ENTITY_TYPE_PLAYER, 0, 0);
 }
 
 bool RAD_WorldInBounds(const RAD_World_t *world, int32_t x, int32_t y)
@@ -108,9 +107,13 @@ RAD_EntityId_t RAD_WorldSpawnEntityWithId(RAD_World_t *world, RAD_EntityId_t id,
         return RAD_ENTITY_NONE;
     }
 
+    // Der ganze Platz wird geschrieben, nicht nur die Felder, die diese Funktion
+    // kennt: eine neue Figur faengt herrenlos an, gleich wem die vorige in diesem
+    // Slot gehoert hat. Wer sie zuordnen will, tut das danach.
     world->entities[id] = (RAD_Entity_t){
         .id = id,
         .type = type,
+        .owner = RAD_USER_NONE,
         .x = x,
         .y = y
     };
@@ -178,7 +181,41 @@ void RAD_WorldRemoveEntity(RAD_World_t *world, RAD_EntityId_t id)
     // der Array-Index, ein Zusammenschieben wuerde alle anderen Ids entwerten.
     entity->id = RAD_ENTITY_NONE;
     entity->type = RAD_ENTITY_TYPE_NONE;
+
+    // Der Besitz faellt mit der Figur weg. RAD_WorldSpawnEntityWithId setzt ihn
+    // ohnehin neu; hier steht er trotzdem, damit ein freier Platz nie einen
+    // Besitzer traegt -- darauf prueft RAD_WorldIsConsistent.
+    entity->owner = RAD_USER_NONE;
+
     world->number_of_entities--;
+}
+
+RAD_UserId_t RAD_WorldEntityOwner(const RAD_World_t *world, RAD_EntityId_t id)
+{
+    if(id < 0 || id >= RAD_MAX_ENTITIES)
+    {
+        return RAD_USER_NONE;
+    }
+
+    const RAD_Entity_t *entity = &world->entities[id];
+    if(entity->id == RAD_ENTITY_NONE)
+    {
+        return RAD_USER_NONE;
+    }
+
+    return entity->owner;
+}
+
+bool RAD_WorldSetEntityOwner(RAD_World_t *world, RAD_EntityId_t id, RAD_UserId_t owner)
+{
+    RAD_Entity_t *entity = RAD_WorldEntityById(world, id);
+    if(entity == NULL)
+    {
+        return false;
+    }
+
+    entity->owner = owner;
+    return true;
 }
 
 bool RAD_WorldIsConsistent(const RAD_World_t *world)
@@ -190,6 +227,13 @@ bool RAD_WorldIsConsistent(const RAD_World_t *world)
         const RAD_Entity_t *entity = &world->entities[i];
         if(entity->id == RAD_ENTITY_NONE)
         {
+            // Ein freier Platz gehoert niemandem. Traegt er einen Besitzer, ist
+            // eine Figur entfernt worden, ohne ihn zu raeumen -- und die naechste
+            // in diesem Slot wuerde ihn erben.
+            if(entity->owner != RAD_USER_NONE)
+            {
+                return false;
+            }
             continue;
         }
         live_entities++;

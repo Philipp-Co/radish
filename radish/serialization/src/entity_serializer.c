@@ -22,6 +22,18 @@ void RAD_SerializeEntity(RAD_JsonWriter_t *writer, const RAD_Entity_t *entity)
     RAD_JsonWriteKey(writer, "type");
     RAD_JsonWriteString(writer, RAD_EntityTypeToString(entity->type));
 
+    // Wie bei tile.entity: "nichts" ist null und nicht der Zahlwert, mit dem es
+    // im Speicher hingeschrieben wird.
+    RAD_JsonWriteKey(writer, "owner");
+    if(entity->owner == RAD_USER_NONE)
+    {
+        RAD_JsonWriteNull(writer);
+    }
+    else
+    {
+        RAD_JsonWriteUInt64(writer, entity->owner);
+    }
+
     RAD_JsonWriteKey(writer, "x");
     RAD_JsonWriteInt(writer, entity->x);
 
@@ -42,6 +54,7 @@ RAD_SerializeResult_t RAD_DeserializeEntity(RAD_JsonReader_t *reader, RAD_Entity
     *entity = (RAD_Entity_t){
         .id = RAD_ENTITY_NONE,
         .type = RAD_ENTITY_TYPE_NONE,
+        .owner = RAD_USER_NONE,
         .x = 0,
         .y = 0
     };
@@ -74,6 +87,19 @@ RAD_SerializeResult_t RAD_DeserializeEntity(RAD_JsonReader_t *reader, RAD_Entity
             if(!ok)
             {
                 return RAD_SERIALIZE_ERROR_ENTITY_TYPE;
+            }
+        }
+        else if(strcmp(key, "owner") == 0)
+        {
+            // Fehlt das Feld ganz, bleibt es beim Vorbesetzten: ein Stand aus der
+            // Zeit vor dem Besitz laedt weiter, seine Figuren sind herrenlos.
+            if(RAD_JsonPeekIsNull(reader))
+            {
+                RAD_JsonSkipValue(reader);
+            }
+            else if(!RAD_JsonReadUInt64(reader, &entity->owner))
+            {
+                return RAD_SERIALIZE_ERROR_SCHEMA;
             }
         }
         else if(strcmp(key, "x") == 0)

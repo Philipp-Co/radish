@@ -1,7 +1,8 @@
 #include <radish/game/game.h>
-#include <radish/game/events/event_manager.h>
 
-#include <interface/command.h>
+#include <radish/server/interface/command.h>
+#include <radish/server/control/execute.h>
+#include <radish/server/control/loader.h>
 
 #include <zucchini/api/api.h>
 #include <zucchini/ipc/ring_buffer.h>
@@ -26,6 +27,12 @@
 /// aus ihm leiten beide Seiten die Namen der Ringpuffer und der Wakeup-FIFO ab.
 /// "zucchini" ist der Default von zucchini_server (ZUC_SERVER_NAME in dessen
 /// main.c); ein anderer laesst sich als erstes Argument uebergeben.
+///
+///     server [zucchini-name] [spielstand.json]
+///
+/// Das zweite Argument ist ein Spielstand im Speicherformat (siehe
+/// radish/serialization). Ohne ihn faengt der Server mit einem leeren Spiel an;
+/// mit einem, der sich nicht lesen laesst, faengt er gar nicht erst an.
 ///
 #define RAD_SERVER_DEFAULT_INTERFACE_NAME "zucchini"
 
@@ -65,7 +72,11 @@ static void handle_signal(int signum)
 ///
 static void log_command(const RAD_Command_t *command)
 {
-    printf("<- #%" PRIu64 " ", command->header.sequence);
+    // Sequenznummer und Absender zusammen: die Nummer allein benennt kein
+    // Kommando, sie zaehlt je Benutzer (siehe command.h).
+    printf("<- #%" PRIu64 " von 0x%" PRIx64 " ",
+           command->header.sequence,
+           command->header.user);
 
     switch(command->header.type)
     {
@@ -104,6 +115,11 @@ static void log_command(const RAD_Command_t *command)
                    command->command.remove_tile.y);
             break;
 
+        // Ohne Nutzlast: was zu sagen war, steht schon im Kopf.
+        case RAD_COMMAND_TYPE_END_TURN:
+            printf("end_turn\n");
+            break;
+
         // Unerreichbar: ein Kommando ohne Art kommt aus dem Codec nicht heraus.
         case RAD_COMMAND_TYPE_NONE:
         default:
@@ -113,7 +129,8 @@ static void log_command(const RAD_Command_t *command)
 }
 
 ///
-/// Nimmt eine Nachricht vom Client entgegen: lesen, loggen, antworten.
+/// Nimmt eine Nachricht vom Client entgegen: lesen, loggen, ausfuehren lassen,
+/// antworten.
 ///
 /// "data" ist die reine Nutzlast -- das 8-Byte-Codefeld, das der Client vor jedes
 /// Paket setzt, wertet zucchini_server selbst aus (Whitelist) und schneidet es ab,
@@ -127,14 +144,13 @@ static void log_command(const RAD_Command_t *command)
 /// erfahren sollte, ist eine Frage des Protokolls und noch offen (siehe
 /// response.h).
 ///
-/// Der Spielzustand bleibt weiterhin unberuehrt: das Kommando wird gelesen, aber
-/// nicht ausgefuehrt. "game" steht schon hier, damit die Stelle eindeutig ist, an
-/// der das dazukommt.
+/// Was dazwischen liegt, macht diese Datei nicht selbst: aus den Bytes wird ein
+/// Kommando in interface/, entschieden und beantwortet wird es in control/. Hier
+/// bleibt die Verkettung der Schritte und das Log -- die Ausgabe ist Sache des
+/// Programms, nicht der Module.
 ///
-static void handle_message(RAD_Game_t *game, ZUC_Api_t api, const uint8_t *data, uint16_t size)
+static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *data, uint16_t size)
 {
-    (void)game;
-
     RAD_Command_t command;
     const RAD_CommandCodecResult_t result = RAD_ParseCommandFromMessage(data, size, &command);
 
@@ -146,11 +162,28 @@ static void handle_message(RAD_Game_t *game, ZUC_Api_t api, const uint8_t *data,
 
     log_command(&command);
 
-    // "value" traegt vorlaeufig das Ergebnis des Lesens, hier also immer die 0 von
-    // RAD_COMMAND_CODEC_OK. Mehr hat der Server ueber das Kommando noch nicht zu
-    // sagen -- ausgefuehrt wird es nicht. Sobald es das wird, gehoert das Ergebnis
-    // des Ausfuehrens hierher.
-    const RAD_CommandResponse_t response = RAD_CreateCommandResponse(&command, (uint32_t)result);
+    // Wer sendet, spielt mit -- und das entscheidet sich hier, nicht in control/:
+    // einen Beitritt gibt es im Protokoll nicht. Es gibt kein Kommando dafuer, und
+    // eine getrennte Verbindung meldet Zucchini dem Server auch nicht --
+    // ZUC_ApiReceive bringt Bytes und sonst nichts. Solange das so bleibt, ist das
+    // erste Kommando eines Benutzers sein Beitritt, und gehen tut niemand mehr;
+    // RAD_ControlRemoveUser hat keinen Aufrufer. Sobald das Protokoll ein Join und
+    // ein Leave kennt, stehen die beiden Aufrufe an dessen Stelle -- an dieser
+    // hier, denn hier kommen die Nachrichten an.
+    const RAD_ControlResult_t joined = RAD_ControlAddUser(control, command.header.user);
+    if(joined != RAD_CONTROL_OK)
+    {
+        printf("   nicht aufgenommen: %s\n", RAD_ControlResultText(joined));
+    }
+
+    // Die Antwort kommt fertig aus control/ zurueck, "value" eingeschlossen: was
+    // der Server ueber das Kommando zu sagen hat, weiss nur die Stelle, die es
+    // geprueft und ausgefuehrt hat.
+    const RAD_CommandResponse_t response = RAD_ControlExecuteCommand(control, &command);
+
+    printf("   %s (%d Mitspieler)\n",
+           RAD_ControlResultText((RAD_ControlResult_t)response.value),
+           RAD_ControlNumberOfPlayers(control));
 
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
@@ -181,29 +214,41 @@ int main(int argc, char **argv)
 
     const char *interface_name = (argc > 1) ? argv[1] : RAD_SERVER_DEFAULT_INTERFACE_NAME;
 
-    // Der Event-Manager liegt auf dem Stack von main und wird im Spiel bloss
-    // hinterlegt -- er muss deshalb laenger leben als das Spiel und wird nach
-    // ihm abgebaut.
-    RAD_EventManager_t event_manager = RAD_CreateEventManager();
+    // Zweites Argument: der Spielstand, der geladen werden soll. Ohne ihn faengt
+    // der Server mit einem leeren Spiel an.
+    const char *save_path = (argc > 2) ? argv[2] : NULL;
 
-    RAD_Game_t *game = RAD_CreateGame(&event_manager);
+    // Woher das Spiel kommt, entscheidet main nicht: es holt es aus dem Loader
+    // und reicht es an die Steuerung weiter. Warum keines zustande kam, steht
+    // dann schon im Log -- nur der Loader kennt den Grund.
+    RAD_Game_t *game = RAD_ControlCreateGame(save_path);
     if(game == NULL)
     {
-        printf("Spiel nicht angelegt -- kein Speicher.\n");
-        RAD_DestroyEventManager(&event_manager);
+        printf("Kein Spiel -- Abbruch.\n");
         return 1;
     }
 
-    printf("Leeres Spiel angelegt: %dx%d, %d Entitaeten, konsistent: %s\n",
+    printf("Spiel geladen: %dx%d, %d Entitaeten, konsistent: %s\n",
            RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT, game->world.number_of_entities,
            RAD_WorldIsConsistent(&game->world) ? "ja" : "nein");
+
+    // Die Steuerung bekommt das Spiel geliehen und wird deshalb vor ihm abgebaut.
+    // Wer mitspielt, steht im Spiel selbst; geaendert wird es aber nur ueber die
+    // Steuerung -- RAD_ControlAddUser und RAD_ControlBindUserEntity.
+    RAD_Control_t control = RAD_CreateControl(game);
+    if(control == NULL)
+    {
+        printf("Steuerung nicht angelegt -- kein Speicher.\n");
+        RAD_ControlDestroyGame(&game);
+        return 1;
+    }
 
     ZUC_Api_t api = ZUC_CreateApi(interface_name);
     if(api == NULL)
     {
         printf("Zucchini-Api '%s' nicht angelegt.\n", interface_name);
-        RAD_DestroyGame(&game);
-        RAD_DestroyEventManager(&event_manager);
+        RAD_DestroyControl(&control);
+        RAD_ControlDestroyGame(&game);
         return 1;
     }
 
@@ -218,7 +263,7 @@ int main(int argc, char **argv)
         // "es liegt etwas an", nicht fuer "genau eine Nachricht".
         while(0 == ZUC_ApiReceive(api, message, &size))
         {
-            handle_message(game, api, message, size);
+            handle_message(control, api, message, size);
         }
 
         ZUC_ApiWait(api, RAD_SERVER_WAIT_TIMEOUT_MS);
@@ -227,8 +272,8 @@ int main(int argc, char **argv)
     printf("\nEnde.\n");
 
     ZUC_DestroyApi(&api);
-    RAD_DestroyGame(&game);
-    RAD_DestroyEventManager(&event_manager);
+    RAD_DestroyControl(&control);
+    RAD_ControlDestroyGame(&game);
 
     return 0;
 }

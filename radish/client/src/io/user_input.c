@@ -1,3 +1,4 @@
+#include "radish/game/game.h"
 #include <radish/io/user_input.h>
 
 #include <stddef.h>
@@ -113,6 +114,7 @@ void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, RAD_Comm
             {
                 printf("Received Response to known command!\n");
             }
+            RAD_GameExecuteCommand(state->game, &response->command);
             state->selected_tile = NULL;
             state->state = RAD_IO_USERINPUT_STATE_IDLE;
             break;

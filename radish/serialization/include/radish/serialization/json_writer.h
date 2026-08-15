@@ -43,4 +43,18 @@ void RAD_JsonWriteInt(RAD_JsonWriter_t *writer, int32_t value);
 void RAD_JsonWriteString(RAD_JsonWriter_t *writer, const char *value);
 void RAD_JsonWriteNull(RAD_JsonWriter_t *writer);
 
+///
+/// Schreibt einen 64-Bit-Wert -- als String, nicht als Zahl.
+///
+/// JSON kennt nur eine Zahl, und wer sie als double liest, verliert ab 2^53 die
+/// unteren Bits: eine Uuid, die im Browser oder in jq durch ein solches Feld
+/// laeuft, kaeme veraendert wieder heraus. Als String geht sie durch jeden Leser
+/// unveraendert hindurch.
+///
+/// Geschrieben wird hexadezimal mit 0x-Praefix und fester Breite, in derselben
+/// Form, in der der Server einen Absender loggt -- eine Uuid ist eine Kennung
+/// und keine Menge, das Nachschlagen von Hand ist damit der eigentliche Zweck.
+///
+void RAD_JsonWriteUInt64(RAD_JsonWriter_t *writer, uint64_t value);
+
 #endif

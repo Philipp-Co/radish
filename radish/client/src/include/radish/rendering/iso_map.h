@@ -16,9 +16,7 @@ typedef struct
 
 typedef struct
 {
-    RAD_IsoObject_t hi    [RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];    
-    RAD_IsoObject_t mid   [RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];    
-    RAD_IsoObject_t lo    [RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];    
+    RAD_IsoObject_t data [3][RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];    
    
     int32_t number_of_iso_objects; 
     RAD_IsoObject_t *iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3];

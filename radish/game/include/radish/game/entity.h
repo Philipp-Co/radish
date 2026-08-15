@@ -2,6 +2,7 @@
 #define __RAD_GAME_ENTITY_H__
 
 #include <stdint.h>
+#include <radish/game/user.h>
 
 ///
 /// Handle auf eine Entitaet: der Slot-Index im Entity-Pool der Welt. Der Index
@@ -27,6 +28,20 @@ typedef struct
     ///
     RAD_EntityId_t id;
     RAD_EntityType_t type;
+
+    ///
+    /// Wem die Entitaet gehoert, RAD_USER_NONE fuer herrenlos. Sie steht damit in
+    /// der Entitaet und nicht in einer Liste je Benutzer -- die Id ist der
+    /// Slot-Index und wird nach einer Loeschung wiederverwendet, und eine Liste
+    /// daneben muesste bei jedem Entfernen mitgezogen werden. Wird sie das einmal
+    /// nicht, erbt die naechste Figur in diesem Slot still den alten Besitzer.
+    /// Hier kann das nicht passieren: RAD_WorldSpawnEntityWithId schreibt den
+    /// ganzen Platz, RAD_WorldRemoveEntity raeumt ihn.
+    ///
+    /// Herrenlos ist der Normalfall und kein Fehler -- alles, was nicht
+    /// ausdruecklich zugeordnet wurde, gehoert niemandem.
+    ///
+    RAD_UserId_t owner;
 
     ///
     /// Tile, auf dem die Entitaet steht. Immer synchron zu

@@ -42,6 +42,17 @@ bool RAD_JsonReadKey(RAD_JsonReader_t *reader, char *out, size_t size);
 bool RAD_JsonReadInt(RAD_JsonReader_t *reader, int32_t *value);
 bool RAD_JsonReadString(RAD_JsonReader_t *reader, char *out, size_t size);
 
+///
+/// Liest, was RAD_JsonWriteUInt64 geschrieben hat: einen String, keine Zahl --
+/// die Begruendung steht dort.
+///
+/// Hexadezimal mit 0x-Praefix, wie geschrieben; eine dezimale Angabe wird
+/// genauso angenommen, damit ein von Hand geaenderter Spielstand nicht daran
+/// scheitert. Ein Vorzeichen ist keine Angabe: "-1" wird abgelehnt, statt als
+/// groesstmoeglicher Wert durchzugehen.
+///
+bool RAD_JsonReadUInt64(RAD_JsonReader_t *reader, uint64_t *value);
+
 bool RAD_JsonPeekIsNull(const RAD_JsonReader_t *reader);
 
 ///

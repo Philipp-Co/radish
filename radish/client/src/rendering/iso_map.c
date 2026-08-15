@@ -87,24 +87,8 @@ RAD_IsoMap_t* RAD_CreateIsoMap(RAD_EventManager_t *manager)
 RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t layer)
 {
     RAD_IsoObject_t *object;
-    switch(layer)
-    {
-        case 0:
-            map->lo[y][x] = RAD_CreateIsoObject(x, y, layer);
-            object = &map->lo[y][x];
-            break;
-        case 1:
-            map->mid[y][x] = RAD_CreateIsoObject(x, y, layer);
-            object = &map->mid[y][x];
-            break;
-        case 2:
-            map->hi[y][x] = RAD_CreateIsoObject(x, y, layer);
-            object = &map->hi[y][x];
-            break;
-        default:
-            object = NULL;
-            break;
-    }
+    map->data[layer][y][x] = RAD_CreateIsoObject(x, y, layer);
+    object = &map->data[layer][y][x];
     object->entity = NULL;
     map->iso_objects[map->number_of_iso_objects++] = object; 
     return object;
@@ -133,7 +117,7 @@ RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t scr
 
     if(x >= 0 && x < RAD_ISO_MAP_SIZE && y >= 0 && y < RAD_ISO_MAP_SIZE)
     {
-        return &map->lo[y][x]; 
+        return &map->data[0][y][x]; 
 
     }
     return NULL;
@@ -210,7 +194,7 @@ static void RAD_IsoMapOnEntitySpawned(void *user_argument, const RAD_Entity_t *e
 {
     printf("IsoMap: entity spawned\n");
     RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
-    RAD_IsoObject_t* object = &map->lo[y][x];
+    RAD_IsoObject_t* object = &map->data[0][y][x];
     
     RAD_IsoEntity_t *iso_entity = malloc(sizeof(RAD_IsoEntity_t));
     object->entity = iso_entity;
@@ -224,5 +208,10 @@ static void RAD_IsoMapOnEntityDestroyed(void *user_argument, const RAD_Entity_t 
 static void RAD_IsoMapOnEntityMoved(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
 {
     printf("IsoMap: entity moved\n");
+    RAD_IsoMap_t *map = (RAD_IsoMap_t*)user_argument;
+     
+    RAD_IsoEntity_t *iso_entity = map->data[0][from_y][from_x].entity;  
+    map->data[0][from_y][from_x].entity = NULL;  
+    map->data[0][to_y][to_x].entity = iso_entity;  
 }
 
