@@ -2,8 +2,8 @@
 #define __RAD_COMMAND_H__
 
 #include <stdint.h>
-#include <radish/game/entity.h>
-#include <radish/game/tile.h>
+#include <radish/game/model/model.h>
+#include <radish/game/model/path/path.h>
 #include <radish/game/user.h>
 
 ///
@@ -48,6 +48,8 @@ typedef enum
     RAD_COMMAND_TYPE_REMOVE_ENTITY,
     RAD_COMMAND_TYPE_CREATE_TILE,
     RAD_COMMAND_TYPE_REMOVE_TILE,
+    RAD_COMMAND_TYPE_SHOOT,
+    RAD_COMMAND_TYPE_USE,
 
     ///
     /// Der Absender gibt seinen Zug ab. Als einzige Art ohne Nutzlast: wer ihn
@@ -110,17 +112,35 @@ typedef struct
 } RAD_CommandSpawnEntity_t;
 
 ///
-/// Bewegt eine vorhandene Entitaet auf ein Tile. x/y sind das Ziel in
-/// Weltkoordinaten, nicht die Verschiebung -- ein wiederholt zugestelltes
-/// Kommando fuehrt so zum selben Ergebnis wie ein einmal zugestelltes.
+/// Bewegt eine vorhandene Entitaet -- nicht auf ein Feld, sondern ueber einen Weg
+/// aus mehreren. Eine Bewegung ist ein Pfad (model/path/path.h), und wie lang er
+/// hoechstens sein darf, ist die Laenge seines Feldes: RAD_PATH_MAX_STEPS.
+///
+/// **Wo es losgeht, steht nicht darin.** Startfeld ist das Tile, auf dem die
+/// genannte Figur steht -- sie weiss das selbst (RAD_Entity_t.x/y), und wer das
+/// Kommando ausfuehrt, schlaegt es ueber die Id nach. path.steps_to[0] ist damit
+/// das erste Feld, auf das sie sich bewegt, der letzte Eintrag ihr Ziel.
+///
+/// Jeder Schritt ist ein Feld in Weltkoordinaten und keine Verschiebung. Das ist
+/// die Festlegung von path.h, und sie galt hier schon, als es nur ein Ziel gab.
+///
+/// **Zur Wiederholung ist dieses Kommando nicht mehr aus sich heraus dasselbe.**
+/// Solange das Startfeld darin stand, fuehrte ein zweimal zugestelltes Kommando
+/// zum Ergebnis eines einmal zugestellten. Mit dem Startfeld ist das
+/// weggefallen: steht die Figur schon am Ziel, beschreibt derselbe Weg von dort
+/// aus einen anderen. Erkennbar bleibt eine Wiederholung an der Sequenznummer im
+/// Kopf, und aufzuhalten ist sie an steps_to[0], das von der neuen Position aus
+/// nicht mehr zu erreichen ist -- beides Sache dessen, der ausfuehrt, und nicht
+/// des Formats.
+///
+/// Was einen Weg begehbar macht -- ob die Schritte aneinandergrenzen, ob die
+/// Felder frei und betretbar sind, was er kostet --, prueft das Kommando nicht.
+/// Es benennt eine Absicht, und jede Folge von Feldern ist eine lesbare.
 ///
 typedef struct
 {
     RAD_EntityId_t entity;
-    int16_t from_x;
-    int16_t from_y;
-    int16_t to_x;
-    int16_t to_y;
+    RAD_EntityPath_t path;
 } RAD_CommandMoveEntity_t;
 
 ///
@@ -167,16 +187,72 @@ typedef struct
     int16_t y;
 } RAD_CommandRemoveTile_t;
 
+///
+/// Schiesst auf ein Tile.
+///
+/// Das Ziel ist ein Feld und keine Figur: getroffen wird, was dort steht, und ob
+/// dort etwas steht, entscheidet sich beim Ausfuehren und nicht beim Zielen. Ein
+/// Schuss ins Leere ist damit ein moegliches Kommando und kein fehlerhaftes --
+/// dieselbe Ueberlegung wie beim absoluten Ziel von move_entity.
+///
+typedef struct
+{
+    ///
+    /// Wer schiesst. Der Absender im Kopf sagt, in wessen Namen -- diese Id sagt,
+    /// mit welcher seiner Figuren; ein Benutzer kann mehrere fuehren, und ohne
+    /// die Angabe waere nicht entschieden, welche handelt.
+    ///
+    /// Damit ist es auch die Figur, an der die Berechtigung haengt: sie muss dem
+    /// Absender gehoeren, so wie bei move_entity.
+    ///
+    RAD_EntityId_t entity;
+
+    int16_t x;
+    int16_t y;
+
+    ///
+    /// Womit geschossen wird -- eine Nummer, keine Aufzaehlung. Waffen gibt es im
+    /// Spiel noch nicht; bis es sie gibt, ist das eine Zahl, die der Codec
+    /// durchreicht, ohne sie zu deuten, so wie die Uuid des Absenders. Wer sie
+    /// ausgibt und was 0 heisst, entscheidet, wer das Kommando ausfuehrt.
+    ///
+    uint8_t weapon;
+} RAD_CommandShoot_t;
+
+///
+/// Benutzt, was auf einem Tile steht -- eine Tuer, einen Schalter, was dort
+/// aufliegt.
+///
+/// Wie beim Schuss ist das Ziel ein Feld: was dort benutzt wird, weiss das
+/// Kommando nicht. Wer benutzt, steht dagegen darin -- aus demselben Grund wie
+/// dort.
+///
+/// Ohne eine Angabe, *was* getan werden soll: ein Feld traegt hoechstens eine
+/// Sache, und was sie kann, weiss sie selbst. Zwei Dinge auf einem Feld
+/// auseinanderzuhalten waere eine Angabe mehr -- die kommt hinzu, wenn es sie
+/// gibt.
+///
+typedef struct
+{
+    /// Wer benutzt; muss dem Absender gehoeren, wie bei shoot.
+    RAD_EntityId_t entity;
+
+    int16_t x;
+    int16_t y;
+} RAD_CommandUse_t;
+
 typedef struct
 {
     RAD_CommandHeader_t header;
-    union 
+    union
     {
         RAD_CommandSpawnEntity_t spawn_entity;
         RAD_CommandMoveEntity_t move_entity;
         RAD_CommandRemoveEntity_t remove_entity;
         RAD_CommandCreateTile_t create_tile;
         RAD_CommandRemoveTile_t remove_tile;
+        RAD_CommandShoot_t shoot;
+        RAD_CommandUse_t use;
     } command;
 } RAD_Command_t;
 

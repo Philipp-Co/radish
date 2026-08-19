@@ -6,7 +6,7 @@
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
 
-#include <radish/game/events/event_manager.h>
+#include <radish/game/control/events/event_manager.h>
 
 
 typedef struct

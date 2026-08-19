@@ -120,6 +120,21 @@ static void log_command(const RAD_Command_t *command)
             printf("end_turn\n");
             break;
 
+        case RAD_COMMAND_TYPE_SHOOT:
+            printf("shoot         id=%d auf (%d,%d) mit Waffe %u\n",
+                   command->command.shoot.entity,
+                   command->command.shoot.x,
+                   command->command.shoot.y,
+                   (unsigned)command->command.shoot.weapon);
+            break;
+
+        case RAD_COMMAND_TYPE_USE:
+            printf("use           id=%d auf (%d,%d)\n",
+                   command->command.use.entity,
+                   command->command.use.x,
+                   command->command.use.y);
+            break;
+
         // Unerreichbar: ein Kommando ohne Art kommt aus dem Codec nicht heraus.
         case RAD_COMMAND_TYPE_NONE:
         default:

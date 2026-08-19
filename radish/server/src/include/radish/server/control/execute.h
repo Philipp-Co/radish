@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <radish/game/game.h>
-#include <radish/game/entity.h>
 #include <radish/game/user.h>
 #include <radish/game/control/command/command.h>
 
@@ -21,7 +20,7 @@
 /// Es ist die einzige Stelle im Server, die entscheidet, ob ein Kommando gilt.
 /// Wissen muss es dafuer nichts selbst: wer es geschickt hat, steht im Kopf
 /// (RAD_UserId_t), wer mitspielt und wem die Figur gehoert, weiss das Spiel
-/// (radish/game/turn.h), und wo sie steht, die Welt.
+/// (radish/game/model/turn/turn.h), und wo sie steht, die Welt.
 ///
 /// **Die Teilnehmerliste gehoert dem Spiel, nicht diesem Modul.** Sie lag einmal
 /// hier -- als src/control/session/ neben dieser Uebersetzungseinheit --, solange

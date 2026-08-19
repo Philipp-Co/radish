@@ -4,6 +4,8 @@
 #include <radish/game/control/command/remove_entity.h>
 #include <radish/game/control/command/create_tile.h>
 #include <radish/game/control/command/remove_tile.h>
+#include <radish/game/control/command/shoot.h>
+#include <radish/game/control/command/use.h>
 
 ///
 /// Die Wire-Nummern stehen nur hier, in je zwei Richtungen ausgeschrieben. Keine
@@ -24,6 +26,7 @@ const char* RAD_CommandCodecResultText(RAD_CommandCodecResult_t result)
         case RAD_COMMAND_CODEC_ERROR_UNKNOWN_ENTITY_TYPE:    return "unbekannter Entitaetstyp";
         case RAD_COMMAND_CODEC_ERROR_UNKNOWN_TILE_TYPE:      return "unbekannter Tile-Typ";
         case RAD_COMMAND_CODEC_ERROR_HEADER_MISMATCH:        return "Koepfe der Antwort tragen nicht dasselbe";
+        case RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT:     return "unmoegliche Anzahl von Schritten";
         default:                                             return "unbekanntes Ergebnis";
     }
 }
@@ -38,6 +41,8 @@ uint8_t RAD_CommandTypeToWire(RAD_CommandType_t type)
         case RAD_COMMAND_TYPE_CREATE_TILE:   return 4;
         case RAD_COMMAND_TYPE_REMOVE_TILE:   return 5;
         case RAD_COMMAND_TYPE_END_TURN:      return 6;
+        case RAD_COMMAND_TYPE_SHOOT:         return 7;
+        case RAD_COMMAND_TYPE_USE:           return 8;
         case RAD_COMMAND_TYPE_NONE:
         default:                             return 0;
     }
@@ -55,6 +60,8 @@ RAD_CommandType_t RAD_CommandTypeFromWire(uint8_t wire, bool *ok)
         case 4: type = RAD_COMMAND_TYPE_CREATE_TILE;   break;
         case 5: type = RAD_COMMAND_TYPE_REMOVE_TILE;   break;
         case 6: type = RAD_COMMAND_TYPE_END_TURN;      break;
+        case 7: type = RAD_COMMAND_TYPE_SHOOT;         break;
+        case 8: type = RAD_COMMAND_TYPE_USE;           break;
         default:
             if(ok != NULL)
             {
@@ -196,6 +203,12 @@ void RAD_SerializeCommand(RAD_ByteWriter_t *writer, const RAD_Command_t *command
         case RAD_COMMAND_TYPE_REMOVE_TILE:
             RAD_SerializeCommandRemoveTile(writer, &command->command.remove_tile);
             break;
+        case RAD_COMMAND_TYPE_SHOOT:
+            RAD_SerializeCommandShoot(writer, &command->command.shoot);
+            break;
+        case RAD_COMMAND_TYPE_USE:
+            RAD_SerializeCommandUse(writer, &command->command.use);
+            break;
 
         // Ohne Nutzlast: der Kopf ist schon die ganze Nachricht.
         case RAD_COMMAND_TYPE_END_TURN:
@@ -239,6 +252,12 @@ RAD_CommandCodecResult_t RAD_DeserializeCommand(RAD_ByteReader_t *reader, RAD_Co
             break;
         case RAD_COMMAND_TYPE_REMOVE_TILE:
             result = RAD_DeserializeCommandRemoveTile(reader, &parsed.command.remove_tile);
+            break;
+        case RAD_COMMAND_TYPE_SHOOT:
+            result = RAD_DeserializeCommandShoot(reader, &parsed.command.shoot);
+            break;
+        case RAD_COMMAND_TYPE_USE:
+            result = RAD_DeserializeCommandUse(reader, &parsed.command.use);
             break;
 
         // Nichts zu lesen; "result" steht auf dem Ergebnis des Kopfes. Ob wirklich

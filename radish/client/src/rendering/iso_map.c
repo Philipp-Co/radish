@@ -1,10 +1,10 @@
-#include "radish/game/events/event_manager.h"
+#include "radish/game/control/events/event_manager.h"
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_definitions.h>
 #include <stdlib.h>
 #include <stddef.h>
 
-#include <radish/game/tile.h>
+#include <radish/game/model/tile/tile.h>
 
 #define RAD_MAP_INDEX_2D(x, y) ((y) * (RAD_ISO_MAP_SIZE) + (x))
 

@@ -12,7 +12,7 @@
 #include <radish/rendering/iso_object.h>
 #include <radish/game/game.h>
 #include <radish/serialization/serialization.h>
-#include <radish/game/events/event_manager.h>
+#include <radish/game/control/events/event_manager.h>
 #include <radish/game/control/command/codec.h>
 #include <radish/game/control/command/response.h>
 #include <radish/io/user_input.h>

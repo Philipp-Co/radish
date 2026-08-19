@@ -4,13 +4,13 @@
 #include <radish/game/control/command/codec.h>
 
 ///
-/// Uebertragungsformat der Antwort auf ein Kommando, 42 bis 50 Byte:
+/// Uebertragungsformat der Antwort auf ein Kommando, 42 bis 107 Byte:
 ///
 ///     Offset 0     type       1 Byte      Wire-Nummer der Kommandoart
 ///     Offset 1     sequence   8 Byte      uint64
 ///     Offset 9     user       8 Byte      uint64, Uuid des Absenders
 ///     Offset 17    value      4 Byte      uint32
-///     Offset 21    command    21-29 Byte  ganze Kommandonachricht
+///     Offset 21    command    21-86 Byte  ganze Kommandonachricht
 ///
 /// Die ersten siebzehn Byte sind derselbe Kopf wie beim Kommando und werden von
 /// derselben Stelle geschrieben und gelesen (RAD_SerializeCommandHeader in
@@ -46,7 +46,11 @@
 ///
 ///     remove_entity, remove_tile    21 + 21 = 42
 ///     spawn_entity, create_tile     21 + 23 = 44
-///     move_entity                   21 + 29 = 50
+///     move_entity                   21 + 86 = 107
+///
+/// Der Sprung auf 107 kommt vom Pfad einer Bewegung: er faehrt mit allen
+/// RAD_PATH_MAX_STEPS Plaetzen ueber die Strecke, auch den ungenutzten
+/// (move_entity.h), und die Antwort traegt das Kommando ein zweites Mal.
 ///
 /// Weil das Kommando am Ende steht, bleibt die feste Laenge je Art die Pruefung,
 /// wie beim Kommando selbst: fehlen Bytes, kommt TRUNCATED; sind es zu viele,

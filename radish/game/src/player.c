@@ -1,4 +1,5 @@
 #include <radish/game/game.h>
+#include <radish/game/model/game.h>
 #include <stddef.h>
 
 ///

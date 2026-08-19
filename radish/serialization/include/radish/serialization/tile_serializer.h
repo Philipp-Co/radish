@@ -2,7 +2,7 @@
 #define __RAD_TILE_SERIALIZER_H__
 
 #include <stdbool.h>
-#include <radish/game/tile.h>
+#include <radish/game/model/tile/tile.h>
 #include <radish/serialization/serialization.h>
 #include <radish/serialization/json_writer.h>
 #include <radish/serialization/json_reader.h>

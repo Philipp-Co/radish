@@ -26,6 +26,17 @@ if(EMSCRIPTEN)
 else()
     include(cmake/zucchini.cmake)
     add_subdirectory(server)
+
+    # Tests laufen auf der Maschine, nicht im Browser: sie sind Programme, die
+    # der Host startet und deren Rueckgabewert ctest liest. Unter emcc gaebe es
+    # nichts auszufuehren, deshalb steht beides hier und nicht oben.
+    #
+    # enable_testing() muss im Wurzel-CMakeLists stehen, sonst findet ctest die
+    # Tests aus den Unterverzeichnissen nicht.
+    include(cmake/unity.cmake)
+    enable_testing()
+
+    add_subdirectory(game/test)
 endif()
 
 # compile_commands.json haengt nicht mehr am Client-Target, sondern am Build als

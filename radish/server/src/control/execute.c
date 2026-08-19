@@ -8,9 +8,9 @@
 
 ///
 /// Die Teilnehmerliste fuehrt das Spiel selbst; sie ist dort die Reihenfolge des
-/// Zuges (radish/game/turn.h). Diese Datei haelt davon nichts mehr, sondern
-/// reicht durch: RAD_ControlAddUser und die anderen sind Weiterleitungen, die das
-/// Ergebnis der Regeln auf das Ergebnis des Protokolls abbilden -- dieselbe
+/// Zuges (radish/game/model/turn/turn.h). Diese Datei haelt davon nichts mehr,
+/// sondern reicht durch: RAD_ControlAddUser und die anderen sind Weiterleitungen,
+/// die das Ergebnis der Regeln auf das des Protokolls abbilden -- dieselbe
 /// Uebersetzung, die vorher zwischen der eigenen Teilnehmerliste und
 /// RAD_ControlResult_t stand.
 ///
@@ -196,6 +196,8 @@ static uint32_t RAD_ControlExecuteAllowedCommand(RAD_Control_t control, const RA
         case RAD_COMMAND_TYPE_REMOVE_ENTITY:
         case RAD_COMMAND_TYPE_CREATE_TILE:
         case RAD_COMMAND_TYPE_REMOVE_TILE:
+        case RAD_COMMAND_TYPE_SHOOT:
+        case RAD_COMMAND_TYPE_USE:
             return (uint32_t)RAD_CONTROL_ERROR_NOT_EXECUTED;
 
         // Unerreichbar: aus dem Codec kommt kein Kommando ohne Art.
@@ -247,6 +249,15 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
 
         case RAD_COMMAND_TYPE_REMOVE_ENTITY:
             return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.remove_entity.entity);
+
+        // Nicht das Ziel wird geprueft, sondern der, der handelt: geschossen und
+        // benutzt wird auf ein Feld, und was dort steht, gehoert gerade nicht dem
+        // Absender -- sonst haette ein Schuss wenig Sinn.
+        case RAD_COMMAND_TYPE_SHOOT:
+            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.shoot.entity);
+
+        case RAD_COMMAND_TYPE_USE:
+            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.use.entity);
 
         // Kein Besitz zu pruefen: diese Kommandos fassen keine vorhandene Figur
         // an. Wer eine setzen und wer Gelaende legen darf, ist eine eigene Frage
@@ -314,6 +325,8 @@ static int32_t RAD_ControlCommandCost(RAD_CommandType_t type)
         case RAD_COMMAND_TYPE_REMOVE_ENTITY:
         case RAD_COMMAND_TYPE_CREATE_TILE:
         case RAD_COMMAND_TYPE_REMOVE_TILE:
+        case RAD_COMMAND_TYPE_SHOOT:
+        case RAD_COMMAND_TYPE_USE:
             return 1;
 
         case RAD_COMMAND_TYPE_END_TURN:

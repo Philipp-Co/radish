@@ -1,4 +1,6 @@
+#include "radish/game/model/world/world.h"
 #include <radish/game/game.h>
+#include <radish/game/model/game.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -38,22 +40,70 @@ void RAD_DestroyGame(RAD_Game_t **game)
     *game = NULL;
 }
 
-static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_Command_t *command)
+static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t *move)
 {
-    int32_t from_x = command->command.move_entity.from_x;
-    int32_t from_y = command->command.move_entity.from_y;
-    const RAD_Entity_t *source = RAD_WorldEntityAt(&game->world, command->command.move_entity.from_x, command->command.move_entity.from_y);
-    int32_t to_x = command->command.move_entity.to_x;
-    int32_t to_y = command->command.move_entity.to_y;
-    const RAD_Entity_t *target = RAD_WorldEntityAt(&game->world, command->command.move_entity.to_x, command->command.move_entity.to_y);
-    if(target != NULL)
+    int32_t result = -1;
+    //
+    // Der valide Pfad ist zum Beginn leer.
+    // Er fuellt sich mit jedem Schleifendurchlauf um einen weiteren Schritt.
+    //
+    RAD_EntityPath_t valid_path = {
+        .number_of_steps = 0
+    };
+    RAD_Entity_t *entity = RAD_WorldEntityById(&game->world, move->entity);
+    if(NULL == entity)
     {
-        printf("Unable to move! Tile already occupied...\n");
+        printf("Entity with Id %i does not exist!\n", move->entity);
+        goto end;
     }
+    //
+    // Erstmal pruefen.
+    //
+    int32_t x = entity->x;
+    int32_t y = entity->y;
+    uint32_t i = 0;
+    for(;i<((uint32_t)move->path.number_of_steps); ++i)
+    {
+        //
+        // Check if the next Tile is empty.
+        //
+        const int16_t tmp_x = move->path.steps_to[i].x;
+        const int16_t tmp_y = move->path.steps_to[i].y;
+        const RAD_Tile_t *tile = RAD_WorldTileAt(&game->world, tmp_x, tmp_y);
+        if(NULL == tile)
+        {
+            valid_path.number_of_steps = 0;
+            goto end;
+        }
+        else if(RAD_ENTITY_NONE != tile->entity)
+        {
+            //
+            // Sobald die naechste Tile besetzt ist, hoert die Bewegung auf.
+            //
+            result = 0;
+            break; 
+        }
+        x = tmp_x;
+        y = tmp_y;
+        valid_path.steps_to[valid_path.number_of_steps].x = x;
+        valid_path.steps_to[valid_path.number_of_steps].y = y;
+        valid_path.number_of_steps++;
+    }
+    result = 0;
     
-    game->world.tiles[from_y][from_x].entity = RAD_ENTITY_NONE;
-    game->world.tiles[to_y][to_x].entity = source->id;
-    RAD_EventManagerPublishEntityMoved(game->event_manager, source, from_x, from_y, to_x, to_y);
+    //
+    // Jetzt erst schreiben.
+    // 
+    game->world.tiles[entity->y][entity->x].entity = RAD_ENTITY_NONE;
+    game->world.tiles[y][x].entity = entity->id;
+    entity->x = x;
+    entity->y = y;
+
+end:
+    //
+    // Beobachter benachrichtigen...
+    //
+    RAD_EventManagerPublishEntityMoved(game->event_manager, entity, &valid_path, result);
 }
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
@@ -61,7 +111,7 @@ void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
     switch(command->header.type)
     {
         case RAD_COMMAND_TYPE_MOVE_ENTITY:
-            RAD_GameHandleMoveCommand(game, command);
+            RAD_GameHandleMoveCommand(game, &command->command.move_entity);
             break;
         default:
             break;

@@ -22,16 +22,19 @@
 ///     Nutzlast dahinter, je Art mit fester Laenge:
 ///
 ///       spawn_entity    entity_type(1) x(2) y(2) z(1)                    6 -> 23
-///       move_entity     entity(4) from_x(2) from_y(2) to_x(2) to_y(2)   12 -> 29
+///       move_entity     entity(4) steps(1) 16*[x(2) y(2)]               69 -> 86
 ///       remove_entity   entity(4)                                        4 -> 21
 ///       create_tile     tile_type(1) x(2) y(2) z(1)                      6 -> 23
 ///       remove_tile     x(2) y(2)                                        4 -> 21
 ///       end_turn        --                                               0 -> 17
+///       shoot           entity(4) x(2) y(2) weapon(1)                    9 -> 26
+///       use             entity(4) x(2) y(2)                              8 -> 25
 ///
 ///     Wire-Nummern:
 ///
 ///       Kommandoart    1 spawn_entity   2 move_entity   3 remove_entity
 ///                      4 create_tile    5 remove_tile   6 end_turn
+///                      7 shoot          8 use
 ///       Entitaetstyp   1 player         2 npc
 ///       Tile-Typ       1 void           2 ground        3 water
 ///
@@ -56,6 +59,17 @@
 /// Das traegt auch die Laenge null: end_turn ist genau der Kopf, und ein Byte
 /// dahinter ist TRAILING_BYTES wie ueberall sonst. Eine eigene Datei neben dieser
 /// hat es deshalb nicht -- es gibt keine Nutzlast zu beschreiben.
+///
+/// Sie traegt auch den Pfad einer Bewegung. move_entity ist die einzige Art,
+/// deren Nutzlast eine Anzahl enthaelt -- die Schritte, aus denen sich die
+/// Bewegung zusammensetzt. Die Laenge ergibt sich daraus trotzdem nicht: es fahren
+/// immer alle RAD_PATH_MAX_STEPS Plaetze mit, die ungenutzten genullt, und der
+/// Zaehler sagt nur, wie viele davon etwas bedeuten. Ein Zug ueber ein Feld laesst
+/// damit sechzig Byte leer, und dafuer bleibt die Laenge, was sie ist: eine Zusage
+/// der Kommandoart und keine Angabe in der Nachricht. Geprueft wird der Zaehler
+/// gegen seine Grenzen (INVALID_STEP_COUNT, Begruendung in move_entity.h) -- eine
+/// unsinnige Anzahl kann den Reader nicht aus dem Tritt bringen, weil sie nicht
+/// bestimmt, wie viel er liest.
 ///
 /// **Der Absender geht durch, ungeprueft.** Die acht Byte "user" tragen die Uuid
 /// des Benutzers (radish/game/user.h) und stehen im Kopf, weil sie zu jedem
@@ -102,7 +116,14 @@ typedef enum
 
     /// Die beiden Koepfe einer Antwort tragen nicht dasselbe (siehe response.h).
     /// Nur dort moeglich; ein Kommando hat einen Kopf und nichts zu vergleichen.
-    RAD_COMMAND_CODEC_ERROR_HEADER_MISMATCH
+    RAD_COMMAND_CODEC_ERROR_HEADER_MISMATCH,
+
+    ///
+    /// Die Anzahl der Schritte einer Bewegung liegt nicht in
+    /// [1, RAD_PATH_MAX_STEPS]. Nur bei move_entity moeglich -- die einzige Art,
+    /// deren Nutzlast eine Anzahl traegt.
+    ///
+    RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT
 } RAD_CommandCodecResult_t;
 
 ///

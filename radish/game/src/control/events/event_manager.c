@@ -1,5 +1,20 @@
-#include <radish/game/events/event_manager.h>
+#include <radish/game/control/events/event_manager.h>
+#include <stdlib.h>
 #include <stddef.h>
+#include <stdbool.h>
+
+
+///
+/// Die Struktur steht hier und nicht im Header -- dieselbe Ueberlegung wie bei
+/// struct RAD_Control im Server: niemand sonst braucht sie, und was niemand sieht,
+/// kann auch niemand an den Subscribe-Funktionen vorbei setzen.
+///
+struct RAD_EventManager
+{
+    RAD_EventsEntityChangedCallback_t entity_changed_events;
+    RAD_EventsTileChangedCallback_t tile_changed_events;
+    RAD_EventsMouseCallbacks_t mouse_events;
+};
 
 
 static void RAD_DefaultOnTileAddedToGame(void *user_argument, const RAD_Tile_t *tile);
@@ -11,12 +26,18 @@ static void RAD_DefaultOnMousePressed(void *user_argument, int32_t x, int32_t y)
 static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y);
 
 static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
-static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
+static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result);
 
 
-RAD_EventManager_t RAD_CreateEventManager(void)
+RAD_EventManager_t* RAD_CreateEventManager(void)
 {
-    RAD_EventManager_t manager = {
+    RAD_EventManager_t *manager = malloc(sizeof(struct RAD_EventManager));
+    if(manager == NULL)
+    {
+        return NULL;
+    }
+
+    *manager = (struct RAD_EventManager){
         .tile_changed_events = {
             .user_argument = NULL,
             .added=RAD_DefaultOnTileAddedToGame,
@@ -36,12 +57,14 @@ RAD_EventManager_t RAD_CreateEventManager(void)
             .moved = RAD_DefaultEntityMove
         }
     };
+
     return manager;
 }
 
-void RAD_DestroyEventManager(RAD_EventManager_t *manager)
+void RAD_DestroyEventManager(RAD_EventManager_t **manager)
 {
-    (void)manager;
+    free(*manager);
+    *manager = NULL;
 }
 
 void RAD_EventManagerSubscribeToTileEvents(RAD_EventManager_t *manager, RAD_EventsTileChangedCallback_t callbacks)
@@ -67,16 +90,19 @@ void RAD_EventManagerPublishTileStateChangeEvent(RAD_EventManager_t *manager, co
 
 static void RAD_DefaultOnTileAddedToGame(void *user_argument, const RAD_Tile_t *tile)
 {
+    (void)user_argument;
     (void)tile;
 }
 
 static void RAD_DefaultOnTileRemovedFromGame(void *user_argument, const RAD_Tile_t *tile)
 {
+    (void)user_argument;
     (void)tile;
 }
 
 static void RAD_DefaultOnTileStateChanged(void *user_argument, const RAD_Tile_t *tile)
 {
+    (void)user_argument;
     (void)tile;
 }
 
@@ -103,6 +129,7 @@ void RAD_EventManagerPublishMouseReleased(RAD_EventManager_t *manager, int32_t x
 
 static void RAD_DefaultOnMouseMove(void *user_argument, int32_t new_x, int32_t new_y, int32_t old_x, int32_t old_y)
 {
+    (void)user_argument;
     (void)new_x;
     (void)new_y;
     (void)old_x;
@@ -111,12 +138,14 @@ static void RAD_DefaultOnMouseMove(void *user_argument, int32_t new_x, int32_t n
 
 static void RAD_DefaultOnMousePressed(void *user_argument, int32_t x, int32_t y)
 {
+    (void)user_argument;
     (void)x;
     (void)y;
 }
 
 static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y)
 {
+    (void)user_argument;
     (void)x;
     (void)y;
 }
@@ -136,9 +165,9 @@ void RAD_EventManagerPublishEntityDestroyed(RAD_EventManager_t *manager, const R
     manager->entity_changed_events.destroyed(manager->entity_changed_events.user_argument, entity, x, y);
 }
 
-void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
 {
-    manager->entity_changed_events.moved(manager->entity_changed_events.user_argument, entity, from_x, from_y, to_x, to_y);
+    manager->entity_changed_events.moved(manager->entity_changed_events.user_argument, entity, path, result);
 }
 
 static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
@@ -149,12 +178,10 @@ static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, i
     (void)y;
 }
 
-static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
 {
     (void)user_argument;
     (void)entity;
-    (void)from_x;
-    (void)from_y;
-    (void)to_x;
-    (void)to_y;
+    (void)path;
+    (void)result;
 }

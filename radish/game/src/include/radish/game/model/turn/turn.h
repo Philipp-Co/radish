@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <radish/game/game_definitions.h>
+#include <radish/game/model/model.h>
 #include <radish/game/user.h>
 
 ///
@@ -71,7 +72,7 @@ const char* RAD_TurnResultText(RAD_TurnResult_t result);
 /// sind alles Reihenfolgen, die ein Spiel haben will, ohne dass sich an den
 /// Mitspielern etwas aendert.
 ///
-typedef struct
+struct RAD_Turn
 {
     ///
     /// Die Mitspieler in der Reihenfolge, in der sie an die Reihe kommen: dicht
@@ -114,7 +115,7 @@ typedef struct
     /// naechsten und faengt von vorne an.
     ///
     int32_t action_points;
-} RAD_Turn_t;
+};
 
 ///
 /// Ein Zug ohne Reihenfolge, per Wert wie RAD_CreateWorld: eine Allokation

@@ -1,4 +1,4 @@
-#include <radish/game/world.h>
+#include <radish/game/model/world/world.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -80,8 +80,79 @@ RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y)
     {
         return NULL;
     }
-    printf("Get Entity from %i, %i\n", tile->x, tile->y);
     return RAD_WorldEntityById(world, tile->entity);
+}
+
+bool RAD_WorldAddTile(RAD_World_t *world, int32_t x, int32_t y, int32_t z, RAD_TileType_t type)
+{
+    if(type == RAD_TILE_TYPE_VOID)
+    {
+        // Kein Gelaende hinzustellen ist Gelaende wegnehmen -- dasselbe Ergebnis,
+        // also derselbe Weg. Das z faellt dabei weg: was nicht da ist, hat keine
+        // Hoehe zu melden.
+        return RAD_WorldRemoveTile(world, x, y);
+    }
+
+    RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
+    if(tile == NULL)
+    {
+        return false;
+    }
+
+    const RAD_TileType_t previous = tile->type;
+    if((previous == type) && (tile->z == z))
+    {
+        // Derselbe Stand: geschrieben wird nichts und gemeldet auch nichts. Ein
+        // Ereignis ohne Aenderung waere eine Nachricht ohne Inhalt.
+        return true;
+    }
+
+    tile->type = type;
+    tile->z = z;
+
+    // Das Ereignis nach dem Uebergang: aus nichts wird ein Tile, aus einem Tile
+    // ein anderes. Der Unterschied ist der, den ein Abonnent zeichnen muss.
+    if(previous == RAD_TILE_TYPE_VOID)
+    {
+        RAD_EventManagerPublishTileAddedToGameEvent(world->event_manager, tile);
+    }
+    else
+    {
+        RAD_EventManagerPublishTileStateChangeEvent(world->event_manager, tile);
+    }
+
+    return true;
+}
+
+bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y)
+{
+    RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
+    if(tile == NULL)
+    {
+        return false;
+    }
+
+    if(tile->type == RAD_TILE_TYPE_VOID)
+    {
+        // Schon leer, und zwar auch unter einer Figur: die Pruefung darunter
+        // schuetzt eine Aenderung, nicht das Feld.
+        return true;
+    }
+
+    // Erst pruefen, dann schreiben -- dieselbe Reihenfolge wie in
+    // RAD_WorldMoveEntity. Eine Figur haelt ihr Gelaende (world.h).
+    if(tile->entity != RAD_ENTITY_NONE)
+    {
+        return false;
+    }
+
+    // Nur der Typ. x, y, z und die Entitaet bleiben stehen: weggenommen wird das
+    // Gelaende und nicht das Feld.
+    tile->type = RAD_TILE_TYPE_VOID;
+
+    RAD_EventManagerPublishTileRemovedFromGameEvent(world->event_manager, tile);
+
+    return true;
 }
 
 RAD_EntityId_t RAD_WorldSpawnEntity(RAD_World_t *world, RAD_EntityType_t type, int32_t x, int32_t y)
@@ -156,7 +227,16 @@ bool RAD_WorldMoveEntity(RAD_World_t *world, RAD_EntityId_t id, int32_t x, int32
     entity->x = x;
     entity->y = y;
 
-    RAD_EventManagerPublishEntityMoved(world->event_manager, entity, source->x, source->y, target->x, target->y);
+    // Ein Zug ueber ein Feld ist ein Pfad mit genau einem Schritt. Das Ereignis
+    // meldet die betretenen Felder und nicht das verlassene (path.h) -- wo die
+    // Figur herkam, steht dem Abonnenten ohnehin nicht mehr zu: sie steht schon
+    // hier.
+    const RAD_EntityPath_t path = {
+        .steps_to = { { .x = (int16_t)x, .y = (int16_t)y } },
+        .number_of_steps = 1
+    };
+
+    RAD_EventManagerPublishEntityMoved(world->event_manager, entity, &path, 0);
 
     return true;
 }

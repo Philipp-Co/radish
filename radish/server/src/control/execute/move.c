@@ -1,7 +1,7 @@
 #include "move.h"
 
 #include <radish/server/control/execute.h>
-#include <radish/game/world.h>
+#include <radish/game/model/world/world.h>
 
 #include <stddef.h>
 

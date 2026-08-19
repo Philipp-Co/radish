@@ -1,9 +1,9 @@
 #ifndef __RAD_IO_USER_INPUT_H__
 #define __RAD_IO_USER_INPUT_H__
 
-#include "radish/game/entity.h"
 #include <stdint.h>
 #include <radish/game/game.h>
+#include <radish/game/model/tile/tile.h>
 #include <radish/game/control/command/command.h>
 
 //

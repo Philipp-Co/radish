@@ -1,64 +1,43 @@
 #ifndef __RAD_GAME_H__
 #define __RAD_GAME_H__
 
-#include "radish/game/entity.h"
-#include <radish/game/world.h>
+#include <stdbool.h>
+#include <radish/game/model/model.h>
 #include <radish/game/user.h>
-#include <radish/game/turn.h>
-#include <radish/game/events/event_manager.h>
+#include <radish/game/control/events/event_manager.h>
 #include <radish/game/control/command/command.h>
 
-struct RAD_CommandListItem
-{
-    RAD_Command_t command;
-    struct RAD_CommandListItem *next;
-};
-
-typedef struct
-{
-    struct RAD_CommandListItem *head;
-} RAD_CommandList_t;
+///
+/// Das Spielmodul zerfaellt in zwei Haelften, und diese Datei ist die Naht.
+///
+///     model/     der Spielzustand und seine Regeln: Welt, Tiles, Entitaeten,
+///                der Zug. Kennt weder Absender noch Abonnenten, nur sich selbst.
+///                Ueberwiegend privat, hinter dem Suchpfad von radish_game --
+///                offen liegen nur die zwei Strukturen, die aus dem Spiel
+///                herauskommen (model/tile/tile.h, model/entity/entity.h); Welt,
+///                Zug und Spiel bleiben Namen. Die Begruendung steht in model.h.
+///
+///     control/   was von aussen daran geschieht: command/ der Weg hinein,
+///                events/ der Weg hinaus, execute/ die Fabriken dazwischen.
+///
+/// **RAD_Game_t ist hier nur ein Name** (model.h); die Struktur dahinter steht in
+/// model/game.h und ist von aussen nicht zu sehen. Ein Aufrufer haelt einen
+/// RAD_Game_t* und kommt an den Zustand ueber die Funktionen unten -- nicht ueber
+/// Felder. Das ist der Sinn der Trennung: die Regeln lassen sich nicht umgehen,
+/// wenn niemand an ihnen vorbei schreiben kann.
+///
+/// Ein Spiel legt man mit RAD_CreateGame an; der Server reicht Kommandos hinein,
+/// der Client haelt eines und zeichnet, was er ueber die Ereignisse erfaehrt.
+///
 
 ///
-/// Oberste Abstraktion. Ein Spiel besteht aus genau einer Welt und denen, die an
-/// ihr spielen; beides liegt per Wert im Spiel, damit die Ownership eindeutig ist
-/// und es nur eine Allokation gibt.
+/// Legt ein Spiel an und gibt es frei. Der einzige Weg an ein RAD_Game_t zu
+/// kommen: die Struktur ist von aussen unvollstaendig, ein Aufrufer kann sie
+/// weder auf den Stapel legen noch ihre Groesse erfragen.
 ///
-typedef struct
-{
-    RAD_World_t world;
-
-    ///
-    /// Wer mitspielt, in welcher Reihenfolge und wer davon dran ist (turn.h). Das
-    /// ist keine Beschreibung der Welt, sondern die Gegenseite dazu: die Welt
-    /// sagt, was auf dem Feld steht, der Zug sagt, wer es dahin gestellt hat und
-    /// wer als naechster darf.
-    ///
-    RAD_Turn_t turn;
-
-    RAD_EventManager_t *event_manager;
-    RAD_CommandList_t executed_commands;
-
-    uint32_t current_sequence_number;
-
-    ///
-    /// Wer an diesem Spiel sitzt. Jedes hier erzeugte Kommando traegt ihn als
-    /// Absender im Kopf -- die drei Fabriken unten holen ihn von hier, damit ihn
-    /// nicht jede Aufrufstelle mitschleppen muss.
-    ///
-    /// Im Client die Uuid des Benutzers, der spielt. Im Server RAD_USER_NONE: er
-    /// haelt den Zustand fuer alle und ist selbst niemand. Der Absender eines
-    /// eingehenden Kommandos steht in dessen Kopf -- nicht hier.
-    ///
-    /// Nicht zu verwechseln mit der Reihe darueber: die sagt, wer mitspielt,
-    /// dieses Feld sagt, wer an diesem einen Programm sitzt. Im Client steht die
-    /// eigene Uuid deshalb zweimal da -- einmal als Absender jedes erzeugten
-    /// Kommandos, einmal als einer von mehreren Mitspielern.
-    ///
-    RAD_UserId_t local_user;
-} RAD_Game_t;
-
-
+/// "event_manager" wird nur hinterlegt, nicht uebernommen -- er muss laenger
+/// leben als das Spiel und wird nach ihm abgebaut.
+///
 RAD_Game_t* RAD_CreateGame(RAD_EventManager_t *event_manager, RAD_UserId_t local_user);
 void RAD_DestroyGame(RAD_Game_t **game);
 
@@ -128,7 +107,8 @@ RAD_GameResult_t RAD_GameAddPlayer(RAD_Game_t *game, RAD_UserId_t user);
 /// **Seine Figuren bleiben stehen und bleiben seine.** Der Besitz haengt an der
 /// Uuid und nicht an der Verbindung -- kommt er wieder, fuehrt er sie weiter. Wer
 /// sie freigeben will, ruft RAD_GameUnbindEntity; wer sie aus der Welt nehmen
-/// will, liest sie vorher aus (RAD_GameNumberOfUserEntities, RAD_GameUserEntityAt).
+/// will, liest sie vorher aus (RAD_GameNumberOfUserEntities und
+/// RAD_GameUserEntityAt, beide in entity.h).
 ///
 /// War er dran, geht der Zug an den naechsten Mitspieler. Sonst wartete die Runde
 /// auf jemanden, der nicht mehr da ist.
@@ -204,22 +184,35 @@ void RAD_GameUnbindEntity(RAD_Game_t *game, RAD_EntityId_t entity);
 bool RAD_GameMayControlEntity(const RAD_Game_t *game, RAD_UserId_t user, RAD_EntityId_t entity);
 
 ///
-/// Die Figuren eines Benutzers: erst zaehlen, dann einzeln holen.
+/// **Den Zustand lesen: das steht bei den Typen, nicht hier.**
 ///
-/// RAD_GameUserEntityAt liefert RAD_ENTITY_NONE fuer einen Index ausserhalb
-/// [0, RAD_GameNumberOfUserEntities). Gezaehlt wird in der Reihenfolge der Ids,
-/// ein Index gilt also, solange keine Figur dazukommt oder wegfaellt.
+///     tile.h      RAD_GameNumberOfTiles, RAD_GameTileAt
+///     entity.h    RAD_GameNumberOfEntities, RAD_GameEntityAt,
+///                 RAD_GameNumberOfUserEntities, RAD_GameUserEntityAt
 ///
-/// Beides laeuft ueber den Entitaetenpool der Welt -- bei hoechstens
-/// RAD_MAX_ENTITIES Plaetzen ist jede Beschleunigung teurer als die Suche, und
-/// eine Liste daneben waere ein zweites Buch (siehe RAD_Entity_t.owner).
+/// Sie nehmen alle ein RAD_Game_t und heissen deshalb RAD_Game*, gehoeren aber zu
+/// ihrem Typ: wer Tiles lesen will, soll eine Datei dafuer brauchen und nicht die
+/// ganze Fassade, und diese Datei soll nicht mit dem Zubehoer jedes einzelnen Typs
+/// wachsen. Beide Header kommen ueber event_manager.h ohnehin mit -- wer game.h
+/// einbindet, hat sie also, ohne sie zu nennen.
 ///
-int32_t RAD_GameNumberOfUserEntities(const RAD_Game_t *game, RAD_UserId_t user);
-RAD_EntityId_t RAD_GameUserEntityAt(const RAD_Game_t *game, RAD_UserId_t user, int32_t index);
+/// Was hier bleibt, ist, was kein einzelner Typ beantwortet: Mitspieler, Zug,
+/// Besitz und die Kommandos.
+///
 
+///
+/// Die drei Fabriken fuellen ein Kommando aus und fuehren nichts aus: Art,
+/// Sequenznummer und Absender kommen aus dem Spiel, alles andere aus den
+/// Argumenten.
+///
+/// RAD_GameMoveEntity nimmt den Weg als Ganzes (model/path/path.h) -- wo er
+/// anfaengt, sagt die Figur und nicht der Aufrufer. Sie liefert false, wenn der
+/// Pfad keiner ist: kein Zeiger, keine Schritte oder mehr als RAD_PATH_MAX_STEPS.
+/// Dann bleibt "output" unberuehrt und die Sequenznummer stehen.
+///
 bool RAD_GameSpawnEntity(RAD_Game_t *game, RAD_EntityType_t type, int32_t x, int32_t y, int32_t z, RAD_Command_t *output);
 bool RAD_GameDestroyEntity(RAD_Game_t *game, RAD_EntityId_t id, RAD_Command_t *output);
-bool RAD_GameMoveEntity(RAD_Game_t *game, RAD_EntityId_t id, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y, RAD_Command_t *output);
+bool RAD_GameMoveEntity(RAD_Game_t *game, RAD_EntityId_t id, const RAD_EntityPath_t *path, RAD_Command_t *output);
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command);
 void RAD_GameRollbackLastCommand(RAD_Game_t *game);

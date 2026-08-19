@@ -2,7 +2,7 @@
 #define __RAD_ENTITY_SERIALIZER_H__
 
 #include <stdbool.h>
-#include <radish/game/entity.h>
+#include <radish/game/model/entity/entity.h>
 #include <radish/serialization/serialization.h>
 #include <radish/serialization/json_writer.h>
 #include <radish/serialization/json_reader.h>

@@ -1,7 +1,7 @@
 #ifndef __RAD_WORLD_SERIALIZER_H__
 #define __RAD_WORLD_SERIALIZER_H__
 
-#include <radish/game/world.h>
+#include <radish/game/model/world/world.h>
 #include <radish/serialization/serialization.h>
 #include <radish/serialization/json_writer.h>
 #include <radish/serialization/json_reader.h>
