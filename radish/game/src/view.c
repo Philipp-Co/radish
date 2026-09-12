@@ -1,6 +1,7 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
 #include <stddef.h>
+#include <assert.h>
 
 ///
 /// Die Leseseite des Spiels: was von aussen aus der Welt herauszusehen ist.
@@ -34,22 +35,17 @@ int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game)
     return (int32_t)(RAD_WORLD_WIDTH * RAD_WORLD_HEIGHT);
 }
 
-bool RAD_GameTileAt(const RAD_Game_t *game, int32_t index, RAD_Tile_t *output)
+bool RAD_GameTileAt(const RAD_Game_t *game, int16_t x, int16_t y, RAD_Tile_t *output)
 {
+    assert((x >= 0) && (x < RAD_WORLD_WIDTH));
+    assert((y >= 0) && (y < RAD_WORLD_HEIGHT));
+
     if((game == NULL) || (output == NULL))
     {
         return false;
     }
 
-    if((index < 0) || (index >= RAD_GameNumberOfTiles(game)))
-    {
-        return false;
-    }
-
     // Zeilenweise, Zeile 0 zuerst -- dieselbe Reihenfolge wie im Serializer.
-    const int32_t y = index / RAD_WORLD_WIDTH;
-    const int32_t x = index % RAD_WORLD_WIDTH;
-
     *output = game->world.tiles[y][x];
     return true;
 }

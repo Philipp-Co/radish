@@ -27,12 +27,19 @@
 /// eine Gestalt -- zwei lassen sich damit vergleichen, ohne den Pfad zu kennen.
 ///
 /// **Geprueft wird die Anzahl, und zwar nach dem Lesen.** Sie muss in
-/// [1, RAD_PATH_MAX_STEPS] liegen, sonst kommt
-/// RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT: null Schritte sind keine Bewegung
-/// (path.h), und mehr, als das Feld traegt, gibt es nicht. Dass die Pruefung erst
-/// hinter dem Lesen steht, kostet nichts und ist der Vorteil der festen Laenge --
-/// eine unsinnige Anzahl verbraucht dieselben Byte wie eine gueltige und kann den
-/// Reader nicht aus dem Tritt bringen.
+/// [2, RAD_PATH_MAX_STEPS] liegen, sonst kommt
+/// RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT: gezaehlt werden Felder und nicht
+/// Schritte, und das erste ist das, auf dem die Figur schon steht (path.h) -- eines
+/// allein beschreibt also keine Bewegung, null erst recht nicht, und mehr, als das
+/// Feld traegt, gibt es nicht. Dass die Pruefung erst hinter dem Lesen steht,
+/// kostet nichts und ist der Vorteil der festen Laenge -- eine unsinnige Anzahl
+/// verbraucht dieselben Byte wie eine gueltige und kann den Reader nicht aus dem
+/// Tritt bringen.
+///
+/// **Ob steps_to[0] stimmt, prueft niemand.** Auch nicht beim Ausfuehren: ein
+/// Kommando darf zweimal ankommen und muss dann dasselbe ergeben, und beim zweiten
+/// Mal steht die Figur schon am Ziel. Das Startfeld faehrt fuer den mit, der
+/// zusieht.
 ///
 /// Sonst kann hier nichts unbekannt sein: alle Felder sind Zahlen, und jede
 /// Bytefolge der richtigen Laenge mit einer gueltigen Anzahl ist ein lesbares

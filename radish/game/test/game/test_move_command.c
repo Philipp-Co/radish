@@ -134,11 +134,11 @@ void test_move_kommando_bewegt_die_figur(void)
     RAD_ZugMitschrift_t mitschrift;
     abonniere_zug(events, &mitschrift);
 
-    // (2,2) -> (3,2) -> (3,3). Beide Zielfelder sind leer, dazwischen liegt
-    // nichts im Weg.
+    // (2,2) -> (3,2) -> (3,3). Das erste Feld ist der Standort und wird nicht auf
+    // Belegung geprueft -- dort steht die Figur. Beide folgenden sind leer.
     const RAD_EntityPath_t weg = {
-        .steps_to = { { .x = 3, .y = 2 }, { .x = 3, .y = 3 } },
-        .number_of_steps = 2
+        .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 }, { .x = 3, .y = 3 } },
+        .number_of_steps = 3
     };
 
     RAD_Command_t command = {0};
@@ -161,11 +161,14 @@ void test_move_kommando_bewegt_die_figur(void)
     TEST_ASSERT_EQUAL_INT(3, mitschrift.x);
     TEST_ASSERT_EQUAL_INT(3, mitschrift.y);
 
-    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.number_of_steps);
-    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[0].x);
+    // Drei Felder: der Standort, der Zwischenschritt und das Ziel.
+    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[0].x);
     TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[0].y);
     TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[1].x);
-    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[1].y);
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[1].y);
+    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[2].x);
+    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[2].y);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -203,8 +206,8 @@ void test_move_kommando_auf_besetztes_feld_bewegt_nicht(void)
     abonniere_zug(events, &mitschrift);
 
     const RAD_EntityPath_t weg = {
-        .steps_to = { { .x = 3, .y = 2 } },
-        .number_of_steps = 1
+        .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 } },
+        .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};
@@ -269,10 +272,13 @@ void test_move_kommando_ueber_den_rand_bewegt_nicht(void)
     abonniere_zug(events, &mitschrift);
 
     const RAD_EntityPath_t weg = {
-        .steps_to = { { .x = (int16_t)(rand_x + 1), .y = 3 } },
-        .number_of_steps = 1
+        .steps_to = { { .x = rand_x, .y = 3 }, { .x = (int16_t)(rand_x + 1), .y = 3 } },
+        .number_of_steps = 2
     };
-    TEST_ASSERT_FALSE(RAD_WorldInBounds(&game->world, weg.steps_to[0].x, weg.steps_to[0].y));
+    // Geprueft wird der Schritt und nicht der Standort: das zweite Feld liegt
+    // draussen, das erste ist, wo die Figur steht.
+    TEST_ASSERT_TRUE(RAD_WorldInBounds(&game->world, weg.steps_to[0].x, weg.steps_to[0].y));
+    TEST_ASSERT_FALSE(RAD_WorldInBounds(&game->world, weg.steps_to[1].x, weg.steps_to[1].y));
 
     RAD_Command_t command = {0};
     TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, figur, &weg, &command));

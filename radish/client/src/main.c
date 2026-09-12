@@ -1,5 +1,6 @@
 #include "SDL2/SDL_events.h"
 #include "SDL2/SDL_scancode.h"
+#include "radish/game/model/model.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <emscripten/emscripten.h>
@@ -11,12 +12,11 @@
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_object.h>
 #include <radish/game/game.h>
-#include <radish/serialization/serialization.h>
 #include <radish/game/control/events/event_manager.h>
 #include <radish/game/control/command/codec.h>
 #include <radish/game/control/command/response.h>
 #include <radish/io/user_input.h>
-
+#include <radish/rendering/game_events.h>
 
 #define ZUC_HEADER_SIZE 8
 #define ZUC_CODE 1u
@@ -54,7 +54,14 @@ static RAD_IsoMap_t *map = NULL;
 static RAD_IoUserInput_t RAD_user_input;
 
 static RAD_Game_t *game;
-static RAD_EventManager_t event_manager;
+
+///
+/// Ein Zeiger und keine Struktur: RAD_CreateEventManager legt den Manager selbst
+/// an und gibt ihn zurueck, RAD_DestroyEventManager nimmt ihn zurueck und gibt ihn
+/// frei. Wie gross er ist, steht nicht mehr in seinem Header -- hier liesse sich
+/// also gar keiner hinstellen.
+///
+static RAD_EventManager_t *event_manager;
 
 ///
 /// Startwelt als JSON. Ausgeschrieben waeren das 64 Tile-Objekte; die Makros
@@ -132,7 +139,7 @@ static RAD_CommandSequence_t awaiting_sequence = 0;
 /// die acht Byte des Codefeldes. 64 sind reichlich und ersparen es, die Groesse
 /// bei jeder neuen Kommandoart nachzurechnen.
 ///
-#define ZUC_COMMAND_MESSAGE_MAX 64
+#define ZUC_COMMAND_MESSAGE_MAX 128
 
 static void RAD_SendCommandToServer(const RAD_Command_t *command)
 {
@@ -266,7 +273,7 @@ static void handle_events(void)
                     event.motion.x,// - (RAD_ISO_TILE_WIDTH / 2) - MAP_RENDER_OFFSET_X, 
                     event.motion.y// - (RAD_ISO_TILE_HEIGHT / 2) - MAP_RENDER_OFFSET_Y
                 )->focus=true;
-                RAD_EventManagerPublishMouseMoved(&event_manager, event.motion.x, event.motion.y, 0, 0);
+                RAD_EventManagerPublishMouseMoved(event_manager, event.motion.x, event.motion.y, 0, 0);
                 break;
             default:
                 break;
@@ -301,7 +308,16 @@ int main(void)
     // hier". Erst in einen gueltigen Grundzustand bringen, dann aus JSON laden.
     //
     event_manager = RAD_CreateEventManager();
-    
+    if(event_manager == NULL)
+    {
+        // Seit der Manager auf dem Heap liegt, kann er ausbleiben -- als statische
+        // Struktur konnte er das nicht. Ohne ihn gibt es keine Welt und keinen
+        // Abonnenten: der erste Klick liefe in einen NULL-Zeiger.
+        printf("Kein Event-Manager -- Abbruch.\n");
+        return 1;
+    }
+
+
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
 
@@ -313,13 +329,34 @@ int main(void)
     SDL_StartTextInput();
     printf("Zucchini-Client gestartet.\n");
 
-    map = RAD_CreateIsoMap(&event_manager);
-    game = RAD_CreateGame(&event_manager, RAD_CLIENT_USER_ID);
+    map = RAD_CreateIsoMap(event_manager);
+    game = RAD_CreateGame(event_manager, RAD_CLIENT_USER_ID);
     RAD_user_input = RAD_CreateIoUserInputState(game, RAD_IoUserinputSendCommandCallback);
+
+    RAD_IoUserinputMoveActionCallbacks_t move_event_callbacks = {
+        .started=RAD_RenderingOnMoveActionStarted,
+        .waypoint_added=RAD_RenderingOnMoveActionWaypointAdded,
+        .waypoint_rejected=RAD_RenderingOnMoveActionWaypointRejected,
+        .accepted=RAD_RenderingOnMoveActionAccepted,
+        .action_requested=RAD_RenderingOnMoveActionRequested,
+        .response_received=RAD_RenderingOnMoveActionResponseReceived,
+        .finished=RAD_RenderingOnMoveActionFinished
+    };
+    RAD_IoUserinputSubscribeToMoveActionEvents(&RAD_user_input, map, move_event_callbacks);
+
+    RAD_Command_t command;
+    RAD_GameSpawnEntity(game, RAD_ENTITY_TYPE_PLAYER, 0, 0, 0, &command);
+    RAD_GameExecuteCommand(game, &command);
 
     emscripten_set_main_loop(frame, 0, 1);
 
+    // Erst das Spiel, dann sein Manager: das Spiel haelt einen Zeiger auf ihn und
+    // besitzt ihn nicht -- RAD_DestroyGame baut ihn nicht mit ab (game.h). Vorher
+    // stand hier nur die erste Zeile, was ging, solange der Manager eine statische
+    // Struktur war; seit er auf dem Heap liegt, waere es ein Leck.
     RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&event_manager);
+
     printf("Bye Bye!\n");
     return 0;
 }

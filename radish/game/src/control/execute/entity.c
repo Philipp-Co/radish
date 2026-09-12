@@ -42,8 +42,39 @@ bool RAD_GameDestroyEntity(RAD_Game_t *game, RAD_EntityId_t id, RAD_Command_t *o
     return true;
 }
 
+bool RAD_GameShoot(RAD_Game_t *game, RAD_EntityId_t id, int16_t x, int16_t y, RAD_Command_t *output)
+{
+    output->header.sequence = game->current_sequence_number;
+    output->header.type = RAD_COMMAND_TYPE_NONE;
+    output->header.user = game->local_user;
+    output->command.shoot.entity = RAD_COMMAND_TYPE_NONE;
+    output->command.shoot.weapon = 0;
+    output->command.shoot.x = 0;
+    output->command.shoot.y = 0;
+
+    if((game == NULL) || (output == NULL))
+    {
+        return false;
+    }
+    
+    output->header.type = RAD_COMMAND_TYPE_SHOOT;
+    output->header.sequence = game->current_sequence_number++;
+    output->header.user = game->local_user;
+
+    output->command.shoot.entity = id;
+    output->command.shoot.x = x;
+    output->command.shoot.y = y;
+    return true;
+}
+
 bool RAD_GameMoveEntity(RAD_Game_t *game, RAD_EntityId_t id, const RAD_EntityPath_t *path, RAD_Command_t *output)
 {
+    output->header.sequence = game->current_sequence_number;
+    output->header.type = RAD_COMMAND_TYPE_NONE;
+    output->header.user = game->local_user;
+    output->command.move_entity.entity = RAD_ENTITY_NONE;
+    output->command.move_entity.path.number_of_steps = 0;
+
     if((game == NULL) || (path == NULL) || (output == NULL))
     {
         return false;
@@ -52,7 +83,8 @@ bool RAD_GameMoveEntity(RAD_Game_t *game, RAD_EntityId_t id, const RAD_EntityPat
     // Erst pruefen, dann schreiben -- und die Sequenznummer laeuft erst danach
     // weiter. Sonst waere ein abgelehnter Zug eine verbrauchte Nummer, die nie
     // ueber die Strecke geht.
-    if((path->number_of_steps < 1) || (path->number_of_steps > RAD_PATH_MAX_STEPS))
+    // Zwei Felder mindestens: eines ist der Standort und kein Weg (path.h).
+    if((path->number_of_steps < 2) || (path->number_of_steps > RAD_PATH_MAX_STEPS))
     {
         return false;
     }

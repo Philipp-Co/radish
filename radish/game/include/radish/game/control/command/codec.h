@@ -119,9 +119,12 @@ typedef enum
     RAD_COMMAND_CODEC_ERROR_HEADER_MISMATCH,
 
     ///
-    /// Die Anzahl der Schritte einer Bewegung liegt nicht in
-    /// [1, RAD_PATH_MAX_STEPS]. Nur bei move_entity moeglich -- die einzige Art,
+    /// Die Anzahl der Felder einer Bewegung liegt nicht in
+    /// [2, RAD_PATH_MAX_STEPS]. Nur bei move_entity moeglich -- die einzige Art,
     /// deren Nutzlast eine Anzahl traegt.
+    ///
+    /// Zwei und nicht eins, weil das erste Feld der Standort ist und kein Schritt
+    /// (model/path/path.h): ein Weg aus einem Feld beschreibt keine Bewegung.
     ///
     RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT
 } RAD_CommandCodecResult_t;

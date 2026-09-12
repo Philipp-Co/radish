@@ -82,16 +82,27 @@ struct RAD_Tile
 int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game);
 
 ///
-/// Holt das Tile an dieser Stelle. Gezaehlt wird zeilenweise, Zeile 0 zuerst:
-/// Index = y * Breite + x, dieselbe Reihenfolge, in der der World-Serializer die
-/// Tiles ablegt. Wer x und y braucht, liest sie aus dem Tile selbst -- es traegt
-/// sie (oben).
+/// Holt das Tile an dieser Stelle, gefragt wird nach x und y -- denselben zwei
+/// Zahlen, die auch RAD_GameAddTile und RAD_GameRemoveTile nehmen und die das
+/// Tile selbst traegt (oben).
 ///
-/// Liefert false, wenn "game" oder "output" NULL ist oder der Index ausserhalb
-/// [0, RAD_GameNumberOfTiles) liegt. **"output" bleibt dann unangetastet** -- es
-/// wird nichts halb hineingeschrieben, damit ein nicht geprueftes false keinen
-/// halben Stand hinterlaesst.
+/// **Die Stelle muss in der Welt liegen.** Sie wird per assert geprueft und nicht
+/// als false beantwortet: eine Stelle ausserhalb kommt nicht aus den Daten,
+/// sondern aus einem Rechenfehler beim Aufrufer, und der soll auffallen, wo er
+/// entsteht.
 ///
-bool RAD_GameTileAt(const RAD_Game_t *game, int32_t index, RAD_Tile_t *output);
+/// Das ist die punktuelle Frage -- ein Feld, nach dem der Aufrufer schon einen
+/// Grund hat zu fragen, etwa das angeklickte. Die ganze Karte kommt nicht so
+/// heraus: RAD_WORLD_WIDTH und RAD_WORLD_HEIGHT liegen privat
+/// (game_definitions.h), von aussen ist ueber das Raster also gar nicht zu
+/// laufen. Wer alles sehen will, abonniert die Tile-Ereignisse
+/// (event_manager.h) -- der Aufbau der Welt meldet jedes Feld einmal, und jede
+/// spaetere Aenderung meldet sich von selbst.
+///
+/// Liefert false, wenn "game" oder "output" NULL ist. **"output" bleibt dann
+/// unangetastet** -- es wird nichts halb hineingeschrieben, damit ein nicht
+/// geprueftes false keinen halben Stand hinterlaesst.
+///
+bool RAD_GameTileAt(const RAD_Game_t *game, int16_t x, int16_t y, RAD_Tile_t *output);
 
 #endif

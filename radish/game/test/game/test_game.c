@@ -121,9 +121,10 @@ void test_game_move_kommando_veroeffentlicht_ein_ereignis(void)
     RAD_BewegungMitschrift_t mitschrift;
     abonniere_bewegung(events, &mitschrift);
 
+    // Erstes Feld der Standort, zweites das Ziel (path.h).
     const RAD_EntityPath_t weg = {
-        .steps_to = { { .x = 3, .y = 2 } },
-        .number_of_steps = 1
+        .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 } },
+        .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};
@@ -145,10 +146,14 @@ void test_game_move_kommando_veroeffentlicht_ein_ereignis(void)
     TEST_ASSERT_EQUAL_INT(3, mitschrift.x);
     TEST_ASSERT_EQUAL_INT(2, mitschrift.y);
 
-    // Und den gelaufenen Weg: die betretenen Felder, nicht das verlassene (path.h).
-    TEST_ASSERT_EQUAL_INT(1, mitschrift.pfad.number_of_steps);
-    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[0].x);
+    // Und den gelaufenen Weg, mit beiden Enden: das verlassene Feld zuerst, das
+    // erreichte zuletzt (path.h). Genau daran haengt ein Zeichner, der die Figur
+    // umhaengen muss.
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[0].x);
     TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[0].y);
+    TEST_ASSERT_EQUAL_INT(3, mitschrift.pfad.steps_to[1].x);
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.pfad.steps_to[1].y);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -179,8 +184,8 @@ void test_game_move_kommando_ohne_figur_meldet_ein_ergebnis(void)
 
     // Auf 7 steht keine Figur -- es steht ueberhaupt keine in dieser Welt.
     const RAD_EntityPath_t weg = {
-        .steps_to = { { .x = 1, .y = 1 } },
-        .number_of_steps = 1
+        .steps_to = { { .x = 1, .y = 1 }, { .x = 2, .y = 1 } },
+        .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};

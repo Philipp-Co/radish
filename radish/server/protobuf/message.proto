@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+import "event.proto";
+import "command.proto";
+
+message NetUserRequest
+{
+    oneof data
+    {
+        NetCommandRequest command_request = 1;
+    }
+}
+
+message NetServerMessage
+{
+    oneof data
+    {
+        NetCommandResponse command_response = 1;
+        NetEvent event = 2;
+    } 
+}

@@ -129,5 +129,4 @@ bool RAD_GameEntityAt(const RAD_Game_t *game, int32_t index, RAD_Entity_t *outpu
 int32_t RAD_GameNumberOfUserEntities(const RAD_Game_t *game, RAD_UserId_t user);
 RAD_EntityId_t RAD_GameUserEntityAt(const RAD_Game_t *game, RAD_UserId_t user, int32_t index);
 
-
 #endif

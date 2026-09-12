@@ -44,7 +44,9 @@ RAD_CommandCodecResult_t RAD_DeserializeCommandMoveEntity(RAD_ByteReader_t *read
         return RAD_COMMAND_CODEC_ERROR_TRUNCATED;
     }
 
-    if((number_of_steps < 1) || (number_of_steps > RAD_PATH_MAX_STEPS))
+    // Zwei und nicht eins: das erste Feld ist das, auf dem die Figur schon steht
+    // (path.h). Ein Pfad mit einem Feld beschreibt keinen Weg.
+    if((number_of_steps < 2) || (number_of_steps > RAD_PATH_MAX_STEPS))
     {
         return RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT;
     }

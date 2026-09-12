@@ -1,5 +1,5 @@
-#include <radish/serialization/game_serializer.h>
-#include <radish/serialization/world_serializer.h>
+#include <radish/game/serialization/game_serializer.h>
+#include <radish/game/serialization/world_serializer.h>
 #include <string.h>
 
 void RAD_SerializeGame(RAD_JsonWriter_t *writer, const RAD_Game_t *game)

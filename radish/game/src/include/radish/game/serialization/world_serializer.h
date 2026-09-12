@@ -2,9 +2,9 @@
 #define __RAD_WORLD_SERIALIZER_H__
 
 #include <radish/game/model/world/world.h>
-#include <radish/serialization/serialization.h>
-#include <radish/serialization/json_writer.h>
-#include <radish/serialization/json_reader.h>
+#include <radish/game/serialization/serialization.h>
+#include <radish/game/serialization/json_writer.h>
+#include <radish/game/serialization/json_reader.h>
 
 ///
 /// Schema -- die Welt ist ein JSON-Objekt:

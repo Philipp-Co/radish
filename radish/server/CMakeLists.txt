@@ -7,11 +7,9 @@ find_package(Threads REQUIRED)
 add_executable(server
     src/main.c
     src/interface/command.c
+    src/control/events/tiles.c
     src/control/execute.c
-    src/control/execute/move.c
-    src/control/execute/end_turn.c
     src/control/loader.c
-    src/control/loader/save_file.c
 )
 
 # Fuer die eigenen Module des Servers, damit sie sich beim Namen ihres Moduls
@@ -36,12 +34,13 @@ target_include_directories(server PRIVATE
 # Beide tragen ihre Include-Verzeichnisse PUBLIC, es braucht hier also keine
 # weiteren Suchpfade.
 #
-# radish_serialization liest den Spielstand (src/control/loader/) und traegt
-# radish_game PUBLIC weiter. Deshalb steht radish_game hier nicht mehr eigens:
-# eine zweite Nennung setzt dieselbe Bibliothek ein zweites Mal auf die
-# Linkerzeile, und Apples ld warnt darueber.
+# Die Serialisierung steckt in radish_game und ist deshalb keine eigene Zeile mehr.
+# Der Server sieht von ihr nur noch RAD_LoadGameFromFile aus game.h: kein Format,
+# kein Puffer, kein jsmn -- das liegt alles hinter dem privaten Suchpfad des
+# Spielmoduls. Sein eigenes control/loader/save_file.c, das die Datei bisher selbst
+# aufmachte, ist damit weggefallen.
 target_link_libraries(server PRIVATE
-    radish_serialization
+    radish_game
     zucchini_api
     Threads::Threads
 )

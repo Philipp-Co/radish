@@ -215,6 +215,11 @@ bool RAD_WorldMoveEntity(RAD_World_t *world, RAD_EntityId_t id, int32_t x, int32
         return false;
     }
 
+    // Woher die Figur kommt, muss vor dem Schreiben festgehalten werden: gleich
+    // steht in entity->x/y das Ziel, und das Ereignis unten braucht beides.
+    const int16_t from_x = entity->x;
+    const int16_t from_y = entity->y;
+
     // Ab hier ist der Zug gueltig; erst jetzt wird geschrieben, damit ein
     // abgelehnter Zug die Welt garantiert unveraendert laesst.
     RAD_Tile_t *source = RAD_WorldTileAt(world, entity->x, entity->y);
@@ -227,13 +232,16 @@ bool RAD_WorldMoveEntity(RAD_World_t *world, RAD_EntityId_t id, int32_t x, int32
     entity->x = x;
     entity->y = y;
 
-    // Ein Zug ueber ein Feld ist ein Pfad mit genau einem Schritt. Das Ereignis
-    // meldet die betretenen Felder und nicht das verlassene (path.h) -- wo die
-    // Figur herkam, steht dem Abonnenten ohnehin nicht mehr zu: sie steht schon
-    // hier.
+    // Ein Zug ueber ein Feld sind zwei Felder: das verlassene und das betretene.
+    // Beide gehoeren in den Pfad -- ein Abonnent hat eine Figur umzuhaengen und
+    // braucht dafuer beide Enden (path.h). Aus entity->x/y liesse sich das nicht
+    // mehr holen: dort steht seit drei Zeilen das Ziel.
     const RAD_EntityPath_t path = {
-        .steps_to = { { .x = (int16_t)x, .y = (int16_t)y } },
-        .number_of_steps = 1
+        .steps_to = {
+            { .x = from_x,     .y = from_y     },
+            { .x = (int16_t)x, .y = (int16_t)y }
+        },
+        .number_of_steps = 2
     };
 
     RAD_EventManagerPublishEntityMoved(world->event_manager, entity, &path, 0);

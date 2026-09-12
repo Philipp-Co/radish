@@ -36,14 +36,6 @@ static void abbauen(void)
 }
 
 ///
-/// Zeilenweise, Zeile 0 zuerst -- derselbe Index, den RAD_GameTileAt erwartet.
-///
-static int32_t index_von(int32_t x, int32_t y)
-{
-    return (y * RAD_WORLD_WIDTH) + x;
-}
-
-///
 /// Was beim Abonnenten ankommt: welches der drei Ereignisse, und mit welchem Tile.
 ///
 /// Das Tile wird **kopiert** und nicht als Zeiger festgehalten. Ein Ereignis reicht
@@ -112,7 +104,7 @@ void test_tile_hinzufuegen_geht_durch_bis_in_die_welt(void)
     TEST_ASSERT_TRUE(RAD_GameAddTile(game, 4, 2, 1, RAD_TILE_TYPE_WATER));
 
     RAD_Tile_t tile;
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, index_von(4, 2), &tile));
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 2, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, tile.type);
     TEST_ASSERT_EQUAL_INT(1, tile.z);
     TEST_ASSERT_EQUAL_INT(4, tile.x);
@@ -128,7 +120,7 @@ void test_tile_entfernen_macht_void(void)
     TEST_ASSERT_TRUE(RAD_GameRemoveTile(game, 4, 2));
 
     RAD_Tile_t tile;
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, index_von(4, 2), &tile));
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 2, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, tile.type);
 
     // Das Raster bleibt vollstaendig besetzt: ein leeres Feld ist ein Feld.

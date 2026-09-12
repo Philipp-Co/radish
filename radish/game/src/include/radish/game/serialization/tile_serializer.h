@@ -3,9 +3,9 @@
 
 #include <stdbool.h>
 #include <radish/game/model/tile/tile.h>
-#include <radish/serialization/serialization.h>
-#include <radish/serialization/json_writer.h>
-#include <radish/serialization/json_reader.h>
+#include <radish/game/serialization/serialization.h>
+#include <radish/game/serialization/json_writer.h>
+#include <radish/game/serialization/json_reader.h>
 
 ///
 /// Schema -- ein Tile ist ein JSON-Objekt:

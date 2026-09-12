@@ -213,8 +213,107 @@ bool RAD_GameMayControlEntity(const RAD_Game_t *game, RAD_UserId_t user, RAD_Ent
 bool RAD_GameSpawnEntity(RAD_Game_t *game, RAD_EntityType_t type, int32_t x, int32_t y, int32_t z, RAD_Command_t *output);
 bool RAD_GameDestroyEntity(RAD_Game_t *game, RAD_EntityId_t id, RAD_Command_t *output);
 bool RAD_GameMoveEntity(RAD_Game_t *game, RAD_EntityId_t id, const RAD_EntityPath_t *path, RAD_Command_t *output);
+bool RAD_GameShoot(RAD_Game_t *game, RAD_EntityId_t id, int16_t x, int16_t y, RAD_Command_t *output);
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command);
 void RAD_GameRollbackLastCommand(RAD_Game_t *game);
+
+///
+/// Spielstand -- ein Spiel in eine Datei und zurueck.
+///
+/// **Zwei Funktionen und ein Pfad, kein Puffer und kein Format.** Wie ein
+/// Spielstand aussieht, ist Sache des Moduls: das Format, der JSON-Schreiber, der
+/// Parser und die vier Serialisierer liegen hinter src/include/ und kommen hier
+/// nicht vor. Wer ein Spiel sichert, nennt die Datei -- alles andere geschieht
+/// drinnen.
+///
+/// Das ist der Grund, aus dem die Serialisierung ueberhaupt in dieses Modul
+/// gehoert (CMakeLists.txt): sie liest und schreibt jedes Feld von Welt und Spiel,
+/// und die stehen privat. Waere sie eine Bibliothek daneben, muesste der
+/// Spielzustand fuer sie -- und damit fuer jeden -- offenliegen. So bleibt von
+/// ihr nach aussen genau das uebrig, was ein Aufrufer wirklich braucht: speichern,
+/// laden, und was dabei schiefging.
+///
+/// **Der Weg zurueck fuellt, er legt nicht an.** RAD_LoadGameFromFile braucht ein
+/// Spiel, das es schon gibt: ein Spielstand beschreibt die Welt, aber nicht die
+/// Ereignisverwaltung, nicht den Absender und nicht die Sequenznummer -- die
+/// kommen aus RAD_CreateGame und bleiben beim Laden stehen. Ein Spiel aus einer
+/// Datei allein waere eines ohne Abonnenten.
+///
+/// **Ein misslungener Ladevorgang laesst das Spiel unangetastet.** Geschrieben
+/// wird erst, wenn die Datei gelesen, das Format erkannt und der Inhalt vollstaendig
+/// geprueft ist -- bis dahin steht alles in einem eigenen Puffer. Wer in ein
+/// laufendes Spiel laedt und einen Fehler bekommt, spielt unveraendert weiter.
+///
+typedef enum
+{
+    RAD_GAME_SAVE_OK = 0,
+
+    ///
+    /// Die Datei.
+    ///
+    /// NOT_FOUND ist "nicht zu oeffnen" und nicht "gibt es nicht": ein fehlendes
+    /// Leserecht sieht von hier genauso aus, und die Unterscheidung braucht der
+    /// Aufrufer nicht -- geladen wird in beiden Faellen nichts.
+    ///
+    RAD_GAME_SAVE_ERROR_NOT_FOUND,
+    RAD_GAME_SAVE_ERROR_UNREADABLE,
+    RAD_GAME_SAVE_ERROR_NOT_WRITABLE,
+
+    ///
+    /// Zu gross fuer einen Spielstand dieses Spiels, in beide Richtungen: beim
+    /// Lesen ist die Datei groesser als die Grenze, beim Schreiben passt das Spiel
+    /// nicht hinein. Ein Wert und nicht zwei, weil es dieselbe Grenze ist -- sie
+    /// steht intern und ist aus der Groesse der Welt gerechnet.
+    ///
+    RAD_GAME_SAVE_ERROR_TOO_LARGE,
+    RAD_GAME_SAVE_ERROR_OUT_OF_MEMORY,
+
+    ///
+    /// Der Inhalt. Von "ist das ueberhaupt JSON" bis zu "widerspricht sich die
+    /// Datei selbst" -- in dieser Reihenfolge wird auch geprueft, damit eine fremde
+    /// Datei "fremdes Format" meldet und nicht einen Strukturfehler tief in der
+    /// Welt.
+    ///
+    RAD_GAME_SAVE_ERROR_SYNTAX,
+    RAD_GAME_SAVE_ERROR_SCHEMA,
+    RAD_GAME_SAVE_ERROR_FORMAT,
+    RAD_GAME_SAVE_ERROR_VERSION,
+
+    /// Die Welt im Spielstand hat andere Abmessungen als die dieses Programms.
+    RAD_GAME_SAVE_ERROR_WORLD_SIZE,
+
+    RAD_GAME_SAVE_ERROR_TILE_TYPE,
+    RAD_GAME_SAVE_ERROR_ENTITY_TYPE,
+    RAD_GAME_SAVE_ERROR_ENTITY_ID,
+    RAD_GAME_SAVE_ERROR_ENTITY_POSITION,
+    RAD_GAME_SAVE_ERROR_TILE_OCCUPIED,
+
+    ///
+    /// Die Datei widerspricht sich selbst -- etwa wenn ein Tile auf eine andere
+    /// Entitaet zeigt als die, die dort laut ihrer eigenen Position steht.
+    ///
+    RAD_GAME_SAVE_ERROR_INCONSISTENT
+} RAD_GameSaveResult_t;
+
+///
+/// Macht daraus einen Text zum Loggen, wie RAD_GameResultText. Immer ein gueltiger
+/// Zeiger, auch bei einem Wert ausserhalb der Aufzaehlung.
+///
+const char* RAD_GameSaveResultText(RAD_GameSaveResult_t result);
+
+///
+/// Schreibt das Spiel nach "path". Eine vorhandene Datei wird ersetzt.
+///
+/// Eingerueckt und mit Zeilenumbruechen, denn ein Spielstand wird von Hand gelesen
+/// und geaendert -- er ist die einzige Datei dieses Spiels, in der etwas steht, das
+/// jemand nachschlagen will. Der Platz dafuer ist eingerechnet.
+///
+RAD_GameSaveResult_t RAD_SaveGameToFile(const RAD_Game_t *game, const char *path);
+
+///
+/// Liest den Spielstand aus "path" in "game", das ein angelegtes Spiel sein muss.
+///
+RAD_GameSaveResult_t RAD_LoadGameFromFile(RAD_Game_t *game, const char *path);
 
 #endif

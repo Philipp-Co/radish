@@ -9,7 +9,8 @@ if(NOT EXISTS "${JSMN_INCLUDE_DIR}/jsmn.h")
 endif()
 
 # Header-only: jsmn traegt nur seinen Suchpfad bei. Die eine Uebersetzungs-
-# einheit, die die Implementierung erzeugt, ist jsmn_impl.c in radish_serialization.
+# einheit, die die Implementierung erzeugt, ist jsmn_impl.c in radish_game
+# (src/serialization/).
 add_library(jsmn INTERFACE)
 add_library(jsmn::jsmn ALIAS jsmn)
 

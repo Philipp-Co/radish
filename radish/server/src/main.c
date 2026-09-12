@@ -3,6 +3,7 @@
 #include <radish/server/interface/command.h>
 #include <radish/server/control/execute.h>
 #include <radish/server/control/loader.h>
+#include <radish/server/control/events/tiles.h>
 
 #include <zucchini/api/api.h>
 #include <zucchini/ipc/ring_buffer.h>
@@ -31,8 +32,8 @@
 ///     server [zucchini-name] [spielstand.json]
 ///
 /// Das zweite Argument ist ein Spielstand im Speicherformat (siehe
-/// radish/serialization). Ohne ihn faengt der Server mit einem leeren Spiel an;
-/// mit einem, der sich nicht lesen laesst, faengt er gar nicht erst an.
+/// radish/game/serialization). Ohne ihn faengt der Server mit einem leeren Spiel
+/// an; mit einem, der sich nicht lesen laesst, faengt er gar nicht erst an.
 ///
 #define RAD_SERVER_DEFAULT_INTERFACE_NAME "zucchini"
 
@@ -57,6 +58,8 @@
 ///
 static volatile sig_atomic_t terminate = 0;
 
+
+static void log_entity_path(const RAD_EntityPath_t *path);
 
 static void handle_signal(int signum)
 {
@@ -88,13 +91,12 @@ static void log_command(const RAD_Command_t *command)
                    command->command.spawn_entity.z);
             break;
 
+        // Der Weg und nicht sein Ziel: wo die Figur aufsetzt, steht erst am Ende --
+        // was dazwischen liegt, entscheidet, ob der Zug ueberhaupt so geht.
         case RAD_COMMAND_TYPE_MOVE_ENTITY:
-            printf("move_entity   id=%d von (%d,%d) nach (%d,%d)\n",
-                   command->command.move_entity.entity,
-                   command->command.move_entity.from_x,
-                   command->command.move_entity.from_y,
-                   command->command.move_entity.to_x,
-                   command->command.move_entity.to_y);
+            printf("move_entity   id=%d ",
+                   command->command.move_entity.entity);
+            log_entity_path(&command->command.move_entity.path);
             break;
 
         case RAD_COMMAND_TYPE_REMOVE_ENTITY:
@@ -141,6 +143,50 @@ static void log_command(const RAD_Command_t *command)
             printf("ohne Art\n");
             break;
     }
+}
+
+///
+/// Die Felder eines Weges, in ihrer Reihenfolge, und schliesst die Zeile ab.
+///
+/// Ein eigener Helfer, weil ein Pfad eine Schleife braucht und printf keine hat.
+/// Die Felder stehen absolut da, so wie im Kommando (model/path/path.h), und das
+/// erste ist das, auf dem die Figur schon steht -- deshalb "von" und dann der Rest.
+///
+/// **Geloggt werden Schritte, gezaehlt sind Felder.** number_of_steps zaehlt seit
+/// dem Startfeld Felder; ein Weg aus n Feldern ist n-1 Schritte weit. Hier steht
+/// die Zahl, die jemand nachzaehlen wuerde, wenn er auf die Klammern sieht.
+///
+/// Nur die belegten Plaetze. Hinter number_of_steps fahren die ungenutzten mit und
+/// stehen genullt (move_entity.h); sie mitzuloggen hiesse, sechzehnmal (0,0) in die
+/// Zeile zu schreiben, wo drei Schritte gemeint sind.
+///
+/// Ein Pfad mit weniger als zwei Feldern kommt aus dem Codec nicht heraus. Er wird
+/// hier trotzdem abgefangen, weil diese Zeile sonst "von" ohne ein Feld dahinter
+/// schriebe -- und ein Log soll auch dann lesbar bleiben, wenn die Annahme faellt.
+///
+static void log_entity_path(const RAD_EntityPath_t *path)
+{
+    if(path->number_of_steps < 2)
+    {
+        printf("ohne Weg (%d Feld%s)\n",
+               (int)path->number_of_steps,
+               (path->number_of_steps == 1) ? "" : "er");
+        return;
+    }
+
+    const int32_t steps = (int32_t)path->number_of_steps - 1;
+
+    printf("von (%d,%d) in %d Schritt%s nach",
+           (int)path->steps_to[0].x, (int)path->steps_to[0].y,
+           steps,
+           (steps == 1) ? "" : "en");
+
+    for(int32_t i = 1; i < (int32_t)path->number_of_steps; ++i)
+    {
+        printf(" (%d,%d)", (int)path->steps_to[i].x, (int)path->steps_to[i].y);
+    }
+
+    printf("\n");
 }
 
 ///
@@ -236,25 +282,32 @@ int main(int argc, char **argv)
     // Woher das Spiel kommt, entscheidet main nicht: es holt es aus dem Loader
     // und reicht es an die Steuerung weiter. Warum keines zustande kam, steht
     // dann schon im Log -- nur der Loader kennt den Grund.
-    RAD_Game_t *game = RAD_ControlCreateGame(save_path);
-    if(game == NULL)
+    //
+    // Zwei Zeiger und nicht einer: an einem Spiel haengt sein Event-Manager, und
+    // beide gehen zusammen weg. Was das heisst, weiss der Loader
+    // (RAD_ControlGame_t) -- main traegt das Paar weiter und gibt es zurueck.
+    RAD_EventCallbacks_t event_callbacks = {
+        .tile_changed = {
+            .added = RAD_OnTileAddedToGame,
+            .removed = RAD_OnTileRemovedFromGame,
+            .changed = RAD_OnTileStateChanged 
+        }
+    };
+    RAD_ControlGame_t loaded = RAD_ControlCreateGame(save_path, & event_callbacks);
+    if(loaded.game == NULL)
     {
         printf("Kein Spiel -- Abbruch.\n");
         return 1;
     }
 
-    printf("Spiel geladen: %dx%d, %d Entitaeten, konsistent: %s\n",
-           RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT, game->world.number_of_entities,
-           RAD_WorldIsConsistent(&game->world) ? "ja" : "nein");
-
     // Die Steuerung bekommt das Spiel geliehen und wird deshalb vor ihm abgebaut.
     // Wer mitspielt, steht im Spiel selbst; geaendert wird es aber nur ueber die
     // Steuerung -- RAD_ControlAddUser und RAD_ControlBindUserEntity.
-    RAD_Control_t control = RAD_CreateControl(game);
+    RAD_Control_t control = RAD_CreateControl(loaded.game);
     if(control == NULL)
     {
         printf("Steuerung nicht angelegt -- kein Speicher.\n");
-        RAD_ControlDestroyGame(&game);
+        RAD_ControlDestroyGame(&loaded);
         return 1;
     }
 
@@ -263,7 +316,7 @@ int main(int argc, char **argv)
     {
         printf("Zucchini-Api '%s' nicht angelegt.\n", interface_name);
         RAD_DestroyControl(&control);
-        RAD_ControlDestroyGame(&game);
+        RAD_ControlDestroyGame(&loaded);
         return 1;
     }
 
@@ -288,7 +341,7 @@ int main(int argc, char **argv)
 
     ZUC_DestroyApi(&api);
     RAD_DestroyControl(&control);
-    RAD_ControlDestroyGame(&game);
+    RAD_ControlDestroyGame(&loaded);
 
     return 0;
 }

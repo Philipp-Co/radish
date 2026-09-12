@@ -40,9 +40,8 @@ die ICE-Portvergabe deshalb auf einen schmalen, 1:1 gemappten Bereich ein
 
 | Pfad | Inhalt |
 |---|---|
-| `radish/` | Das Spiel: CMake-Dachprojekt über vier Unterprojekte |
-| `radish/game/` | Bibliothek `radish_game` — Spiellogik: Spiel, Welt, Tiles, Entitäten |
-| `radish/serialization/` | Bibliothek `radish_serialization` — Speichern und Laden als JSON |
+| `radish/` | Das Spiel: CMake-Dachprojekt über drei Unterprojekte |
+| `radish/game/` | Bibliothek `radish_game` — Spiellogik: Spiel, Welt, Tiles, Entitäten, dazu Kommandos und das Speichern als JSON |
 | `radish/client/` | Das Wasm-Programm: `main.c` und die isometrische Darstellung mit SDL2 |
 | `radish/server/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
@@ -57,20 +56,28 @@ Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,
 
 ## Aufbau
 
-`radish/` ist in vier Unterprojekte geschnitten, die in genau eine Richtung
+`radish/` ist in drei Unterprojekte geschnitten, die in genau eine Richtung
 voneinander abhängen:
 
 ```
-                                                   ┌──liest──  client
-radish_serialization  ──liest──►  radish_game  ◄───┤        (Wasm-Programm)
-        (Bibliothek)              (Bibliothek)     └──liest──  server
-                                                            (Host-Programm)
+                    ┌──liest──  client
+   radish_game  ◄───┤        (Wasm-Programm)
+   (Bibliothek)     └──liest──  server
+                            (Host-Programm)
 ```
 
-Die beiden unteren Ebenen sind eigene statische Bibliotheken, darüber liegen die
-zwei ausführbaren Ziele. Damit steht die Abhängigkeitsrichtung nicht mehr nur
-in dieser Datei, sondern im Build: `radish_game` kennt weder die Serialisierung
-noch das Rendering und kann sie auch nicht versehentlich benutzen.
+Unten die eine statische Bibliothek, darüber die zwei ausführbaren Ziele. Damit
+steht die Abhängigkeitsrichtung nicht mehr nur in dieser Datei, sondern im Build:
+`radish_game` kennt das Rendering nicht und kann es auch nicht versehentlich
+benutzen.
+
+Die Serialisierung war einmal eine zweite Bibliothek daneben und liegt heute
+*in* `radish_game` (`game/src/serialization/`). Der Grund ist die Kapselung des
+Modells: die Serialisierer bilden jedes Feld von Welt und Spiel ab, brauchen also
+deren Strukturen — und die stehen hinter `game/src/include/`. Eine Bibliothek
+daneben hätte diesen Pfad von außen gebraucht, und damit wäre die Grenze für alle
+offen gewesen. Ein Serialisierer ist aber kein Aufrufer von außen, sondern die
+Gegenseite zum Modell: er schreibt auf, was das Modul führt.
 
 Client und Server schließen sich im Build aus, weil ihre Umgebungen es tun: der
 Client hängt an Emscripten, der Server an POSIX (Shared Memory, `mkfifo`,
@@ -97,7 +104,8 @@ seine Übersetzung auf die Strecke — das Format steht geschlossen in
 [codec.h](radish/game/include/radish/game/control/command/codec.h), je eine Datei
 beschreibt die Nutzlast einer Kommandoart, und `byte_writer`/`byte_reader` nehmen
 ihnen die Byte-Reihenfolge ab. Dieselbe Trennung wie zwischen `json_writer` und
-den Serializern in `serialization/`: eine Datei beschreibt Felder, nicht Bytes.
+den Serializern in `game/src/serialization/`: eine Datei beschreibt Felder, nicht
+Bytes.
 
 Der Kopf jedes Kommandos trägt neben Art und Sequenznummer den **Absender**:
 `RAD_UserId_t` aus [user.h](radish/game/include/radish/game/user.h), die Uuid des

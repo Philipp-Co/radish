@@ -1,8 +1,5 @@
 #include <radish/server/control/execute.h>
 
-#include "execute/move.h"
-#include "execute/end_turn.h"
-
 #include <stdlib.h>
 #include <stddef.h>
 
@@ -19,9 +16,19 @@
 /// einer Stelle entschieden wird.
 ///
 /// Zwei Schritte: RAD_ControlCheckCommand entscheidet, ob das Kommando gilt, und
-/// erst danach fuehrt RAD_ControlExecuteAllowedCommand es aus -- ueber je eine
-/// Datei unter execute/, eine je Kommandoart. Diese Datei kennt damit keine
-/// Spielregel, und die Ausfuehrenden keine Berechtigung.
+/// erst danach gibt RAD_ControlExecuteAllowedCommand es ins Spiel. Diese Datei
+/// kennt damit keine Spielregel -- sie beantwortet, wer senden darf, und nicht, was
+/// das Senden bewirkt.
+///
+/// **Ausgefuehrt wird an einer Stelle, und die liegt nicht hier.** Vorher lag unter
+/// execute/ je eine Datei pro Kommandoart, die in der Welt nachsah und selbst
+/// schrieb; dazu fuehrte diese Datei den Vorrat des Zuges und eine Preisliste. Beides
+/// ist weg: der Weg hinein ist RAD_GameExecuteCommand, und was ein Kommando bewirkt,
+/// was es kostet und wann ein Zug vorbei ist, wertet das Spiel selbst aus.
+///
+/// Der Preis dafuer steht offen und ist an RAD_ControlExecuteAllowedCommand
+/// beschrieben: aus dem Spiel kommt kein Ergebnis zurueck, also sagt "value" in der
+/// Antwort vorlaeufig nur, dass das Kommando angenommen wurde.
 ///
 
 struct RAD_Control
@@ -33,8 +40,6 @@ struct RAD_Control
 static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const RAD_Command_t *command);
 static RAD_ControlResult_t RAD_ControlCheckEntityOwner(RAD_Control_t control, RAD_UserId_t user, RAD_EntityId_t entity);
 static uint32_t RAD_ControlExecuteAllowedCommand(RAD_Control_t control, const RAD_Command_t *command);
-static void RAD_ControlBookExecutedCommand(RAD_Control_t control, const RAD_Command_t *command);
-static int32_t RAD_ControlCommandCost(RAD_CommandType_t type);
 
 
 const char* RAD_ControlResultText(RAD_ControlResult_t result)
@@ -157,13 +162,11 @@ RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD
         ? RAD_ControlExecuteAllowedCommand(control, command)
         : (uint32_t)allowed;
 
-    // Erst jetzt wird abgerechnet, und nur, was auch geschehen ist: ein
-    // abgelehntes Kommando und eines ohne Ausfuehrenden lassen den Zustand
-    // unberuehrt und duerfen deshalb auch keinen Zug kosten.
-    if(value == (uint32_t)RAD_CONTROL_OK)
-    {
-        RAD_ControlBookExecutedCommand(control, command);
-    }
+    // Abgerechnet wird hier nichts mehr. Bezahlen und Weiterschalten geschahen
+    // vorher in dieser Datei, hinterher und nur bei RAD_CONTROL_OK -- jetzt tut es
+    // das Spiel, in demselben Durchgang, in dem es das Kommando ausfuehrt. Damit
+    // gibt es keinen Zeitpunkt mehr, in dem ein Zustand geaendert und noch nicht
+    // abgerechnet ist.
 
     // Kopf und Kommando aus derselben Quelle: damit tragen beide Koepfe dasselbe,
     // und das Kommando geht als genaue Kopie zurueck.
@@ -177,34 +180,42 @@ RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD
 }
 
 ///
-/// Verteilt auf die Ausfuehrenden unter execute/. Gerufen wird das erst, wenn
-/// feststeht, dass der Absender das Kommando ausfuehren darf.
+/// Gibt das Kommando ins Spiel. Gerufen wird das erst, wenn feststeht, dass der
+/// Absender es ausfuehren darf.
+///
+/// **Eine Zeile, wo ein Verteiler stand.** Vorher lag unter execute/ je eine Datei
+/// pro Kommandoart, und diese Funktion suchte die passende heraus. Jetzt gibt es
+/// einen Weg hinein, und das Spiel entscheidet selbst, was zu tun ist: wer etwas
+/// will, steckt sein Kommando in RAD_GameExecuteCommand. Damit kennt der Server
+/// keine Kommandoart mehr -- er weiss, wer senden darf, und nicht, was das Senden
+/// bewirkt.
+///
+/// **Die Kopie ist noetig und nicht Geschmackssache.** RAD_GameExecuteCommand nimmt
+/// das Kommando ohne const, hier liegt es mit -- und die Fassade wird dafuer nicht
+/// angefasst. Eine Kopie kostet nichts, was hier ins Gewicht faellt: ein Kommando
+/// ist Daten, die sich kopieren lassen, und genau darauf ist es gebaut
+/// (control/command/command.h).
+///
+/// **Es kommt kein Ergebnis zurueck**, denn RAD_GameExecuteCommand gibt void. Der
+/// Aufrufer bekommt deshalb RAD_CONTROL_OK, sobald das Kommando uebergeben wurde --
+/// nicht, weil es gewirkt haette, sondern weil hier niemand mehr weiss, ob es das
+/// tat. Frueher kam die Auskunft von den Ausfuehrenden unter execute/, die in der
+/// Welt nachsahen; heute steht die Welt hinter dem Spiel.
+///
+/// Der Weg dafuer sind die Ereignisse: RAD_OnEntityMoved_t traegt ein "result" und
+/// den tatsaechlich gelaufenen Pfad (control/events/event_manager.h), und
+/// RAD_EventManagerSubscribeToEntityEvents ist oeffentlich. Wer das Ergebnis in die
+/// Antwort holen will, abonniert dort und haelt fest, was zu dem gerade uebergebenen
+/// Kommando gemeldet wurde. Solange das nicht steht, ist "value" in der Antwort
+/// nicht mehr als "angenommen".
 ///
 static uint32_t RAD_ControlExecuteAllowedCommand(RAD_Control_t control, const RAD_Command_t *command)
 {
-    switch(command->header.type)
-    {
-        case RAD_COMMAND_TYPE_MOVE_ENTITY:
-            return RAD_ControlExecuteMoveCommand(command, control->game, command->header.user);
+    RAD_Command_t executable = *command;
 
-        case RAD_COMMAND_TYPE_END_TURN:
-            return RAD_ControlExecuteEndTurnCommand(command, control->game, command->header.user);
+    RAD_GameExecuteCommand(control->game, &executable);
 
-        // Fuer diese Arten gibt es noch keinen Ausfuehrenden. Sie kommen einzeln
-        // dazu, jede als eigene Datei unter execute/.
-        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
-        case RAD_COMMAND_TYPE_REMOVE_ENTITY:
-        case RAD_COMMAND_TYPE_CREATE_TILE:
-        case RAD_COMMAND_TYPE_REMOVE_TILE:
-        case RAD_COMMAND_TYPE_SHOOT:
-        case RAD_COMMAND_TYPE_USE:
-            return (uint32_t)RAD_CONTROL_ERROR_NOT_EXECUTED;
-
-        // Unerreichbar: aus dem Codec kommt kein Kommando ohne Art.
-        case RAD_COMMAND_TYPE_NONE:
-        default:
-            return (uint32_t)RAD_CONTROL_ERROR_NOT_EXECUTED;
-    }
+    return (uint32_t)RAD_CONTROL_OK;
 }
 
 ///
@@ -231,16 +242,15 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
         return RAD_CONTROL_ERROR_NOT_YOUR_TURN;
     }
 
-    // Und nur, was er sich leisten kann. Solange jedes Kommando einen Punkt
-    // kostet, kann das nicht eintreten: wer dran ist, hat immer mindestens einen
-    // -- bei null endet sein Zug von selbst. Die Pruefung steht trotzdem hier,
-    // damit ein teureres Kommando nicht erst nach dem Ausfuehren auffaellt.
-    if(!RAD_TurnCanSpendActionPoints(&control->game->turn,
-                                     command->header.user,
-                                     RAD_ControlCommandCost(command->header.type)))
-    {
-        return RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS;
-    }
+    // Was ein Kommando kostet und ob der Absender es sich leisten kann, steht
+    // nicht mehr hier: das wertet das Spiel aus, wenn es das Kommando bekommt.
+    // Diese Datei kannte dafuer den Vorrat des Zuges und die Preisliste -- beides
+    // sind Regeln, und Regeln stehen im Spiel.
+    //
+    // RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS bleibt in der Aufzaehlung stehen,
+    // hat aber vorlaeufig keinen Absender mehr: solange RAD_GameExecuteCommand
+    // nichts zurueckgibt, kommt aus dem Spiel kein Grund heraus. Der Weg dafuer sind
+    // die Ereignisse, siehe RAD_ControlExecuteAllowedCommand.
 
     switch(command->header.type)
     {
@@ -279,66 +289,6 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
 }
 
 ///
-/// Rechnet ein ausgefuehrtes Kommando gegen den Zug ab: bezahlen und, wenn danach
-/// nichts mehr uebrig ist, weiterschalten.
-///
-/// Beides erst hinterher und nicht schon beim Ausfuehren: was ein Kommando
-/// bewirkt, ist Sache des Spiels, was es kostet, eine des Ablaufs -- und der
-/// Ausfuehrende unter execute/ soll nicht wissen muessen, dass es Aktionspunkte
-/// gibt. Gerufen wird nur nach RAD_CONTROL_OK, also nur, wenn der Zustand sich
-/// wirklich geaendert hat.
-///
-/// Das Abbuchen kann nicht fehlschlagen: dass der Absender dran ist und genug
-/// hat, steht seit RAD_ControlCheckCommand fest, und dazwischen liegt nur die
-/// Ausfuehrung, die den Zug nicht anfasst. Nur end_turn tut es -- deshalb kostet
-/// es nichts, und deshalb fragt die zweite Haelfte noch einmal nach, wer jetzt
-/// dran ist: nach einem abgegebenen Zug ist es schon der naechste, und dessen
-/// voller Vorrat waere sonst der Anlass, ihn gleich wieder weiterzureichen.
-///
-static void RAD_ControlBookExecutedCommand(RAD_Control_t control, const RAD_Command_t *command)
-{
-    RAD_Turn_t *turn = &control->game->turn;
-    const RAD_UserId_t user = command->header.user;
-
-    RAD_TurnSpendActionPoints(turn, user, RAD_ControlCommandCost(command->header.type));
-
-    if(RAD_TurnIsUsersTurn(turn, user) && (RAD_TurnActionPoints(turn) == 0))
-    {
-        RAD_GameEndTurn(control->game, user);
-    }
-}
-
-///
-/// Was ein Kommando an Aktionspunkten kostet.
-///
-/// Alles, was den Spielzustand aendert, kostet einen; abgeben kostet nichts, sonst
-/// waere es ein Zug fuer sich. Die Zahlen stehen an dieser einen Stelle und nicht
-/// bei den Ausfuehrenden: was eine Handlung wert ist, ist eine Frage des Spiels
-/// und wird sich aendern -- dass sie ueberhaupt etwas kostet, nicht.
-///
-static int32_t RAD_ControlCommandCost(RAD_CommandType_t type)
-{
-    switch(type)
-    {
-        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
-        case RAD_COMMAND_TYPE_MOVE_ENTITY:
-        case RAD_COMMAND_TYPE_REMOVE_ENTITY:
-        case RAD_COMMAND_TYPE_CREATE_TILE:
-        case RAD_COMMAND_TYPE_REMOVE_TILE:
-        case RAD_COMMAND_TYPE_SHOOT:
-        case RAD_COMMAND_TYPE_USE:
-            return 1;
-
-        case RAD_COMMAND_TYPE_END_TURN:
-            return 0;
-
-        // Unerreichbar: aus dem Codec kommt kein Kommando ohne Art.
-        case RAD_COMMAND_TYPE_NONE:
-        default:
-            return 0;
-    }
-}
-
 ///
 /// Darf dieser Mitspieler diese Figur anfassen? Die Regel dazu steht im Spiel
 /// (RAD_GameMayControlEntity), hier wird sie nur auf eine Antwort abgebildet, die

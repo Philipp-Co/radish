@@ -214,31 +214,32 @@ int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control);
 /// RAD_ControlAddUser steht dafuer bereit.
 ///
 /// Zwei Schritte, in dieser Reihenfolge: erst darf-er-das, dann geht-das. Steht
-/// das Erste fest, uebernimmt je eine Datei unter control/execute/ die Ausfuehrung
-/// ihrer Kommandoart -- bisher move_entity und end_turn, der Rest liefert
-/// RAD_CONTROL_ERROR_NOT_EXECUTED. Die Ausfuehrenden fragen nicht mehr nach
-/// Besitz oder Zug: dass der Benutzer darf, ist entschieden, bevor sie gerufen
-/// werden.
+/// das Erste fest, geht das Kommando ins Spiel -- RAD_GameExecuteCommand ist der
+/// eine Weg hinein, und was zu tun ist, wertet das Spiel selbst aus. Der Server
+/// kennt dafuer keine Kommandoart mehr; die Dateien unter control/execute/, die
+/// vorher je eine ausfuehrten, gibt es nicht mehr.
 ///
 /// Geprueft wird dreierlei: der Absender muss mitspielen, an der Reihe sein
-/// (RAD_CONTROL_ERROR_NOT_YOUR_TURN) und sich das Kommando leisten koennen
-/// (RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS); fasst es eine vorhandene Figur
-/// an, muss sie ihm gehoeren.
+/// (RAD_CONTROL_ERROR_NOT_YOUR_TURN), und fasst das Kommando eine vorhandene Figur
+/// an, muss sie ihm gehoeren (RAD_CONTROL_ERROR_NOT_OWNED). Alles daran ist eine
+/// Frage des Protokolls und mit den Lesefunktionen des Spiels zu beantworten.
 ///
-/// **Bezahlt wird nach dem Ausfuehren, und nur, was geschehen ist.** Jedes
-/// ausgefuehrte Kommando kostet einen Aktionspunkt, das Abgeben des Zuges keinen;
-/// was abgelehnt wurde oder noch keinen Ausfuehrenden hat, kostet nichts -- ein
-/// Kommando, das den Zustand nicht angefasst hat, darf auch keinen Zug
-/// verbrauchen.
+/// **Was ein Kommando kostet, steht hier nicht mehr.** Aktionspunkte, die
+/// Preisliste und das Weiterschalten bei null waren einmal Sache dieser Datei --
+/// heute sind sie Regeln und liegen im Spiel, in demselben Durchgang, in dem es
+/// ausfuehrt. Damit gibt es keinen Zeitpunkt mehr, in dem ein Zustand geaendert und
+/// noch nicht abgerechnet ist.
 ///
-/// **Und wer nichts mehr kann, ist fertig:** faellt der Vorrat dabei auf null,
-/// geht der Zug von selbst an den naechsten. Ein Spieler muss seinen Zug also
-/// nicht abgeben, er kann es nur -- mit RAD_COMMAND_TYPE_END_TURN, wenn er etwas
-/// uebrig behaelt.
+/// **Der Preis dafuer: "value" sagt vorlaeufig nur, dass das Kommando angenommen
+/// wurde.** RAD_GameExecuteCommand gibt void zurueck, also kommt aus dem Spiel kein
+/// Grund heraus -- weder "zu teuer" noch "Zielfeld besetzt".
+/// RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS und
+/// RAD_CONTROL_ERROR_NOT_EXECUTED stehen deshalb ohne Absender in der Aufzaehlung.
+/// Der Weg, sie zurueckzuholen, sind die Ereignisse: RAD_OnEntityMoved_t traegt ein
+/// "result" und den tatsaechlich gelaufenen Pfad.
 ///
-/// Der Absender erfaehrt davon nichts weiter: die Antwort traegt das Ergebnis
-/// seines Kommandos, nicht den neuen Zustand des Zuges. Wie ein Client mitbekommt,
-/// dass er dran ist, ist eine Frage des Protokolls und noch offen.
+/// Wie ein Client mitbekommt, dass er dran ist, ist eine Frage des Protokolls und
+/// weiter offen.
 ///
 RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD_Command_t *command);
 

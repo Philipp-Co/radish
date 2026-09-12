@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+message NetGameCreatedEvent
+{
+        
+}
+
+message NetGameFinishedEvent
+{
+
+}
+
+message NetGameEvent
+{
+    oneof event
+    {
+        NetGameCreatedEvent created = 1;
+        NetGameFinishedEvent finished = 2;
+    }
+}

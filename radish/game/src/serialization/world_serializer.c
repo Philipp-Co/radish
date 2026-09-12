@@ -1,6 +1,6 @@
-#include <radish/serialization/world_serializer.h>
-#include <radish/serialization/tile_serializer.h>
-#include <radish/serialization/entity_serializer.h>
+#include <radish/game/serialization/world_serializer.h>
+#include <radish/game/serialization/tile_serializer.h>
+#include <radish/game/serialization/entity_serializer.h>
 #include <string.h>
 
 static RAD_SerializeResult_t RAD_DeserializeTileRows(

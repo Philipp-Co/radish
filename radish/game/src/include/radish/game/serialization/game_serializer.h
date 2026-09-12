@@ -1,10 +1,13 @@
 #ifndef __RAD_GAME_SERIALIZER_H__
 #define __RAD_GAME_SERIALIZER_H__
 
-#include <radish/game/game.h>
-#include <radish/serialization/serialization.h>
-#include <radish/serialization/json_writer.h>
-#include <radish/serialization/json_reader.h>
+// model/game.h und nicht die Fassade game.h daneben: der Serialisierer liest
+// game->world, dafuer braucht er die Struktur und nicht bloss ihren Namen.
+// Dasselbe tut world_serializer.h mit model/world/world.h.
+#include <radish/game/model/game.h>
+#include <radish/game/serialization/serialization.h>
+#include <radish/game/serialization/json_writer.h>
+#include <radish/game/serialization/json_reader.h>
 
 ///
 /// Schema -- das Spiel ist ein JSON-Objekt:

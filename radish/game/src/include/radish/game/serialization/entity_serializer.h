@@ -3,9 +3,9 @@
 
 #include <stdbool.h>
 #include <radish/game/model/entity/entity.h>
-#include <radish/serialization/serialization.h>
-#include <radish/serialization/json_writer.h>
-#include <radish/serialization/json_reader.h>
+#include <radish/game/serialization/serialization.h>
+#include <radish/game/serialization/json_writer.h>
+#include <radish/game/serialization/json_reader.h>
 
 ///
 /// Schema -- eine Entitaet ist ein JSON-Objekt:
@@ -22,7 +22,8 @@
 ///            herrenlos. Als String und nicht als Zahl, weil eine Uuid
 ///            vierundsechzig Bit breit ist -- die Begruendung steht bei
 ///            RAD_JsonWriteUInt64.
-///   x, y     Tile, auf dem die Entitaet steht.
+///   x, y     Tile, auf dem die Entitaet steht. Beide sind int16_t breit; was
+///            nicht hineinpasst, ist RAD_SERIALIZE_ERROR_ENTITY_POSITION.
 ///
 /// Unbekannte Schluessel werden beim Lesen uebergangen; ein fehlendes "owner"
 /// heisst herrenlos. Ein Stand aus der Zeit vor dem Besitz laedt damit weiter,
@@ -31,6 +32,11 @@
 /// Bildet eine einzelne Entitaet treu auf dieses Objekt ab und zurueck. Ob die
 /// gelesene Id vergeben werden kann und das Ziel-Tile frei ist, entscheidet
 /// der World-Serializer -- hier wird nur gelesen, was dasteht.
+///
+/// Die Breite der Koordinatenfelder ist die eine Ausnahme davon, und sie ist
+/// keine: ein Wert, der nicht ins Feld passt, ist nicht gelesen, sondern
+/// verstuemmelt. Ob er auf dem Raster liegt, prueft weiterhin der
+/// World-Serializer -- mit demselben Fehlercode, weil es dieselbe Frage ist.
 ///
 void RAD_SerializeEntity(RAD_JsonWriter_t *writer, const RAD_Entity_t *entity);
 RAD_SerializeResult_t RAD_DeserializeEntity(RAD_JsonReader_t *reader, RAD_Entity_t *entity);

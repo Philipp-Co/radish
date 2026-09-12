@@ -16,6 +16,7 @@ add_executable(client
     src/main.c
     src/rendering/iso_object.c
     src/rendering/iso_map.c
+    src/rendering/game_events/move.c
     
     src/io/user_input.c
 )
@@ -24,11 +25,13 @@ target_include_directories(client PRIVATE
     src/include
 )
 
-# Die Spiel-Header und der jsmn-Suchpfad kommen ueber die Bibliotheken; beide
-# tragen ihre Include-Verzeichnisse PUBLIC.
+# Die Spiel-Header kommen ueber radish_game, das sein include/ PUBLIC traegt. Von
+# der Serialisierung ist darin nichts zu sehen ausser RAD_SaveGameToFile und
+# RAD_LoadGameFromFile in game.h, und der Client braucht auch das nicht: er
+# serialisiert Kommandos (control/command/codec.h), keine Spielstaende. Der
+# jsmn-Suchpfad kommt entsprechend nicht mit.
 target_link_libraries(client PRIVATE
     radish_game
-    radish_serialization
 )
 
 # CMake erkennt "${EMSCRIPTEN_CACHE_DIR}/sysroot/include" als impliziten

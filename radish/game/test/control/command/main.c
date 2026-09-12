@@ -11,6 +11,8 @@
 ///
 
 void test_codec_kennt_die_wire_nummern(void);
+void test_codec_reicht_den_pfad_mit_startfeld_durch(void);
+void test_codec_weist_pfade_ohne_weg_ab(void);
 
 
 void setUp(void) {}
@@ -21,6 +23,8 @@ int main(void)
     UNITY_BEGIN();
 
     RUN_TEST(test_codec_kennt_die_wire_nummern);
+    RUN_TEST(test_codec_reicht_den_pfad_mit_startfeld_durch);
+    RUN_TEST(test_codec_weist_pfade_ohne_weg_ab);
 
     return UNITY_END();
 }

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+import "tile.proto";
+import "game.proto";
+
+message NetEvent
+{
+    oneof event
+    {
+        NetGameEvent game = 1;
+        NetTileEvent tile = 2;
+    }
+}
+

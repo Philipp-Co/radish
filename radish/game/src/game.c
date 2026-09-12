@@ -1,3 +1,5 @@
+#include "radish/game/control/command/command.h"
+#include "radish/game/control/events/event_manager.h"
 #include "radish/game/model/world/world.h"
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
@@ -44,8 +46,10 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
 {
     int32_t result = -1;
     //
-    // Der valide Pfad ist zum Beginn leer.
-    // Er fuellt sich mit jedem Schleifendurchlauf um einen weiteren Schritt.
+    // Der valide Pfad ist zum Beginn leer. Er fuellt sich mit jedem
+    // Schleifendurchlauf um ein weiteres Feld -- und faengt mit dem an, auf dem die
+    // Figur schon steht, damit er dieselbe Gestalt hat wie der hereingekommene
+    // (path.h): erstes Feld der Standort, letztes das Ziel.
     //
     RAD_EntityPath_t valid_path = {
         .number_of_steps = 0
@@ -61,7 +65,26 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
     //
     int32_t x = entity->x;
     int32_t y = entity->y;
-    uint32_t i = 0;
+
+    //
+    // Der Standort ist das erste Feld des gelaufenen Weges. Er wird nicht geprueft:
+    // dort steht die Figur, also ist das Feld besetzt -- von ihr selbst.
+    //
+    valid_path.steps_to[0].x = (int16_t)x;
+    valid_path.steps_to[0].y = (int16_t)y;
+    valid_path.number_of_steps = 1;
+
+    //
+    // Ab eins und nicht ab null: steps_to[0] ist der Standort und kein Schritt
+    // (path.h). Bei null zu beginnen hiesse, das Feld unter der Figur auf Belegung
+    // zu pruefen -- es ist belegt, und jede Bewegung endete sofort.
+    //
+    // Was in steps_to[0] steht, wird dabei nicht mit dem Standort verglichen. Ein
+    // zweimal zugestelltes Kommando muss zum selben Ergebnis fuehren (command.h);
+    // beim zweiten Mal steht die Figur schon am Ziel, und ein Vergleich waere dann
+    // ein Fehlschlag, wo keiner sein soll.
+    //
+    uint32_t i = 1;
     for(;i<((uint32_t)move->path.number_of_steps); ++i)
     {
         //
@@ -81,7 +104,7 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
             // Sobald die naechste Tile besetzt ist, hoert die Bewegung auf.
             //
             result = 0;
-            break; 
+            break;
         }
         x = tmp_x;
         y = tmp_y;
@@ -90,7 +113,17 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
         valid_path.number_of_steps++;
     }
     result = 0;
-    
+
+    //
+    // Nur der Standort im Pfad heisst: kein Schritt ging durch. Dann bleibt der
+    // Pfad leer -- ein Weg aus einem Feld ist keiner, und ein Abonnent soll nicht
+    // erst nachrechnen muessen, ob sich etwas bewegt hat.
+    //
+    if(valid_path.number_of_steps < 2)
+    {
+        valid_path.number_of_steps = 0;
+    }
+
     //
     // Jetzt erst schreiben.
     // 
@@ -106,6 +139,23 @@ end:
     RAD_EventManagerPublishEntityMoved(game->event_manager, entity, &valid_path, result);
 }
 
+
+static void RAD_GameHandleSpawnCommand(RAD_Game_t *game, RAD_CommandSpawnEntity_t *spawn)
+{
+    const int16_t x = spawn->x;
+    const int16_t y = spawn->y;
+    const RAD_Entity_t *entity = RAD_WorldEntityAt(&game->world, x, y);
+    if(NULL != entity)
+    {
+        printf("Unable to spawn Entity at (%i, %i)\n", x, y);
+        return;
+    }
+    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&game->world, spawn->entity_type, x, y); 
+    const RAD_Entity_t *new_entity = RAD_WorldEntityById(&game->world, id);
+
+    RAD_EventManagerPublishEntitySpawned(game->event_manager, new_entity, x, y);
+}
+
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
 {
     switch(command->header.type)
@@ -113,6 +163,8 @@ void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
         case RAD_COMMAND_TYPE_MOVE_ENTITY:
             RAD_GameHandleMoveCommand(game, &command->command.move_entity);
             break;
+        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
+            RAD_GameHandleSpawnCommand(game, &command->command.spawn_entity);
         default:
             break;
     }

@@ -1,4 +1,4 @@
-#include <radish/serialization/json_reader.h>
+#include <radish/game/serialization/json_reader.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>

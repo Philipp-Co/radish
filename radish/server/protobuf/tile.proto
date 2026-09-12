@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+enum NetTileType
+{
+    TILE_TYPE_UNKNOWN = 0;
+    TILE_TYPE_GROUND = 1;
+    TILE_TYPE_WATER = 2;
+}
+
+message NetTile
+{
+    uint32 x = 2;
+    uint32 y = 3;
+    NetTileType type = 4;
+    uint32 entity_id = 5;
+}
+
+message NetTileCreatedEvent 
+{
+    NetTile base = 1;
+}
+
+message NetTileRemovedEvent
+{
+    uint32 x = 1;
+    uint32 y = 2;
+}
+
+message NetTileChangedEvent
+{
+    NetTile base = 1;
+}
+
+message NetTileEvent
+{
+    oneof event
+    {
+        NetTileCreatedEvent created = 1;
+        NetTileRemovedEvent removed = 2;
+        NetTileChangedEvent changed = 3;
+    }
+}
+

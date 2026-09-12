@@ -1,4 +1,5 @@
-#include <radish/serialization/entity_serializer.h>
+#include <radish/game/serialization/entity_serializer.h>
+#include <stdint.h>
 #include <string.h>
 
 ///
@@ -11,6 +12,8 @@ static const char *entity_type_names[] = {
 };
 
 #define RAD_ENTITY_TYPE_COUNT ((int32_t)(sizeof(entity_type_names) / sizeof(entity_type_names[0])))
+
+static RAD_SerializeResult_t RAD_DeserializeCoordinate(RAD_JsonReader_t *reader, int16_t *out);
 
 void RAD_SerializeEntity(RAD_JsonWriter_t *writer, const RAD_Entity_t *entity)
 {
@@ -104,16 +107,18 @@ RAD_SerializeResult_t RAD_DeserializeEntity(RAD_JsonReader_t *reader, RAD_Entity
         }
         else if(strcmp(key, "x") == 0)
         {
-            if(!RAD_JsonReadInt(reader, &entity->x))
+            RAD_SerializeResult_t result = RAD_DeserializeCoordinate(reader, &entity->x);
+            if(result != RAD_SERIALIZE_OK)
             {
-                return RAD_SERIALIZE_ERROR_SCHEMA;
+                return result;
             }
         }
         else if(strcmp(key, "y") == 0)
         {
-            if(!RAD_JsonReadInt(reader, &entity->y))
+            RAD_SerializeResult_t result = RAD_DeserializeCoordinate(reader, &entity->y);
+            if(result != RAD_SERIALIZE_OK)
             {
-                return RAD_SERIALIZE_ERROR_SCHEMA;
+                return result;
             }
         }
         else
@@ -154,4 +159,42 @@ RAD_EntityType_t RAD_EntityTypeFromString(const char *name, bool *ok)
         *ok = false;
     }
     return RAD_ENTITY_TYPE_NONE;
+}
+
+///
+/// Liest eine Koordinate in ein int16_t-Feld.
+///
+/// **Der Umweg ueber die breite Variable ist der Punkt.** RAD_JsonReadInt
+/// schreibt vier Byte durch den Zeiger, den es bekommt; entity->x und entity->y
+/// sind zwei Byte breit (model/entity/entity.h). Direkt uebergeben -- so stand es
+/// hier -- schrieb der Leser also zwei Byte ueber das Feld hinaus, und zwar in das
+/// naechste: bei "x" in y, bei "y" in health. Ein Stand mit gueltigen Koordinaten
+/// kam dabei trotzdem richtig heraus, solange die Bytes danach wieder
+/// ueberschrieben wurden -- weshalb es nur eine Warnung war und nichts aufgefallen
+/// ist.
+///
+/// **Danach die Bereichsgrenze**, denn geprueft ist der Wert damit noch nicht: in
+/// der Datei steht eine beliebige Zahl, und alles jenseits von int16_t liesse sich
+/// nicht hinschreiben, ohne dass es etwas anderes wird. Was aus so einem Wert
+/// wird, entscheidet damit hier und nicht der Compiler.
+///
+/// Die Welt kommt dabei nicht vor: ob (x,y) auf dem Raster liegt, prueft der
+/// World-Serializer, der die Welt hat -- mit demselben Fehlercode. Hier geht es
+/// nur um das Feld, in das der Wert soll.
+///
+static RAD_SerializeResult_t RAD_DeserializeCoordinate(RAD_JsonReader_t *reader, int16_t *out)
+{
+    int32_t value = 0;
+    if(!RAD_JsonReadInt(reader, &value))
+    {
+        return RAD_SERIALIZE_ERROR_SCHEMA;
+    }
+
+    if(value < INT16_MIN || value > INT16_MAX)
+    {
+        return RAD_SERIALIZE_ERROR_ENTITY_POSITION;
+    }
+
+    *out = (int16_t)value;
+    return RAD_SERIALIZE_OK;
 }

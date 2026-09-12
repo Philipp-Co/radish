@@ -31,7 +31,12 @@ RUN cmake -S zucchini -B build/zucchini \
 # Client wird uebersprungen. zucchini_utils und zucchini_api uebersetzt dieser
 # Build sich selbst aus dem Klon nebenan (radish/cmake/zucchini.cmake); deshalb
 # liegt zucchini/ hier als Quelltext im Bild und nicht bloss als Binary.
+#
+# RAD_BUILD_TESTS=OFF wie ZUC_BUILD_REMOTE_CLIENT_TEST oben: die Testsuite haengt
+# am Unity-Klon, und der liegt neben dem Projekt statt darin -- er kaeme nur als
+# vierte COPY-Zeile ins Bild, um dann nichts zu tun, was das Image je ausfuehrt.
 RUN cmake -S radish -B build/radish -DCMAKE_BUILD_TYPE=Release \
+        -DRAD_BUILD_TESTS=OFF \
     && cmake --build build/radish
 
 

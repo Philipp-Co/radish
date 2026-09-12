@@ -1,0 +1,15 @@
+#ifndef __RAD_RENDERING_GAME_EVENTS_H__
+#define __RAD_RENDERING_GAME_EVENTS_H__
+
+#include <radish/io/user_input.h>
+
+void RAD_RenderingOnMoveActionStarted(const RAD_IoUserinputOnMoveActionStartedData_t *data);
+void RAD_RenderingOnMoveActionWaypointAdded(const RAD_IoUserinputOnMoveActionWaypointData_t *data);
+void RAD_RenderingOnMoveActionWaypointRejected(const RAD_IoUserinputOnMoveActionWaypointData_t *data);
+void RAD_RenderingOnMoveActionAccepted(const RAD_IoUserinputOnMoveActionAcceptedData_t *data);
+void RAD_RenderingOnMoveActionRequested(const RAD_IoUserinputOnMoveActionRequestedData_t *data);
+void RAD_RenderingOnMoveActionResponseReceived(const RAD_IoUserinputOnMoveActionResponseReceivedData_t *data);
+void RAD_RenderingOnMoveActionFinished(const RAD_IoUserinputOnMoveActionFinishedData_t *data);
+
+
+#endif
