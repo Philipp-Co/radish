@@ -43,13 +43,15 @@ die ICE-Portvergabe deshalb auf einen schmalen, 1:1 gemappten Bereich ein
 | `radish/` | Das Spiel: CMake-Dachprojekt über drei Unterprojekte |
 | `radish/game/` | Bibliothek `radish_game` — Spiellogik: Spiel, Welt, Tiles, Entitäten, dazu Kommandos und das Speichern als JSON |
 | `radish/client/` | Das Wasm-Programm: `main.c` und die isometrische Darstellung mit SDL2 |
-| `radish/server/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
+| `radish/game-server-core/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
 | `radish/cmake/` | CMake-Beiwerk: die Einbindung von `jsmn`, `zucchini` und `Unity` |
-| `radish/web/` | `index.html` und die daneben erzeugten `client.js` / `client.wasm` |
+| `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` |
+| `radish/frontend/` | Angular-Frontend: Login, Spielübersicht, Spielansicht, Adminbereich (Rolle "Radish-Admin", listet angemeldete Game-Server) — bindet `radish/web/` unter `/wasm/` ein — siehe [radish/frontend/README.md](radish/frontend/README.md) |
+| `radish/backend/` | Django-Matchmaking-API + Keycloak-Login (`api/`), liefert `radish/frontend/` und `radish/web/` unter `/` bzw. `/wasm/` mit aus (`web/`) |
 | `radish/assets/` | Schrift, wird per `--embed-file` ins Wasm-Modul eingebettet |
 | `relay/` | WebRTC-zu-UDP-Relay (Python, `aiortc` + `websockets`) |
-| `docker/` | Dockerfiles: Backend (Zucchini + Spielserver), Relay, nginx für `radish/web/` |
+| `docker/` | Dockerfiles: Backend (Zucchini + Spielserver + Django, baut dabei `radish/frontend/` mit) |
 
 Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,
 `zucchini/`, `Unity/`.
@@ -135,7 +137,7 @@ getrennt — eine `RAD_Entity_t` aus `game/` ist etwas anderes als das, was am
 Bildschirm erscheint. Das Rendering bleibt Teil des Clients und keine eigene
 Bibliothek: es hängt wie er an SDL und hat genau einen Nutzer.
 
-**`server/`** ist die Gegenseite: dasselbe `radish_game`, aber statt SDL die
+**`game-server-core/`** ist die Gegenseite: dasselbe `radish_game`, aber statt SDL die
 Zucchini-Api. Er hält den Spielzustand und wartet in einer Schleife auf
 Nachrichten (`ZUC_ApiReceive`, dann `ZUC_ApiWait` auf der Wakeup-FIFO). Ein
 Wakeup heißt „es liegt etwas an", nicht „genau eine Nachricht" — deshalb wird
@@ -145,7 +147,7 @@ als erstes Argument.
 
 Darunter liegt `src/interface/` — die Außengrenze des Servers, in der aus einer
 Nachricht ein Kommando wird und aus einer Antwort wieder eine Nachricht
-([command.h](radish/server/src/include/radish/server/interface/command.h)). Das Modul kennt Zucchini
+([command.h](radish/game-server-core/src/include/radish/server/interface/command.h)). Das Modul kennt Zucchini
 nicht: es bekommt einen Bytebereich und schreibt in einen, ist also ohne Shared
 Memory prüfbar. Und es ändert nie einen Spielzustand. Das Byteformat selbst liegt
 nicht hier, sondern beim Kommando (siehe `game/`); dieses Modul ist der Adapter
@@ -157,7 +159,7 @@ Kopie. Eingebunden wird es beim Namen seines Moduls,
 `#include <radish/server/interface/command.h>` — wie bei den Bibliotheken.
 
 Daneben liegt `src/control/` — was mit einem Kommando geschieht
-([execute.h](radish/server/src/include/radish/server/control/execute.h)). Die
+([execute.h](radish/game-server-core/src/include/radish/server/control/execute.h)). Die
 Grenze zu `interface/` ist scharf: dort geht es um Bytes, hier um Bedeutung.
 `RAD_ControlExecuteCommand` bekommt das Kommando **const** — es ist der Anlass,
 nicht der Zustand — prüft es und gibt die fertige Antwort zurück, mit dem
@@ -169,7 +171,7 @@ der mitspielt und ob die Figur, die es anfasst, nicht einem anderen gehört.
 Zwei Schritte, in dieser Reihenfolge: **erst darf-er-das, dann geht-das.** Steht
 das Erste fest, übernimmt je eine Datei unter `src/control/execute/` die
 Ausführung ihrer Kommandoart — bisher nur
-[move.c](radish/server/src/control/execute/move.c), der Rest liefert
+[move.c](radish/game-server-core/src/control/execute/move.c), der Rest liefert
 `RAD_CONTROL_ERROR_NOT_EXECUTED`. Diese Ausführenden sind wie der Roster privat:
 ihr Header liegt neben der Quelle, denn sie prüfen nichts mehr — wäre einer von
 außen erreichbar, ließe sich ein Zug an der Berechtigung vorbei ausführen.
@@ -178,7 +180,7 @@ synchron hält; ein abgelehnter Zug lässt die Welt garantiert unverändert, und
 `value` sagt warum (`TARGET_OCCUPIED`, `OUT_OF_BOUNDS`, `NO_SUCH_ENTITY`).
 
 Daneben liegt in `control/` der Loader
-([loader.h](radish/server/src/include/radish/server/control/loader.h)) — woher
+([loader.h](radish/game-server-core/src/include/radish/server/control/loader.h)) — woher
 das Spiel kommt, an dem der Server arbeitet. Dieselbe Frage von der anderen
 Seite: `execute` entscheidet, was mit dem Spielzustand geschieht, der Loader
 bringt ihn hervor. `main` holt das Spiel dort und füttert damit die Steuerung,
@@ -191,7 +193,7 @@ abgebaut, sodass der Aufrufer nichts länger am Leben halten muss als das Spiel
 selbst.
 
 Die Datei selbst nimmt ein Modul im Innern:
-[loader/save_file.c](radish/server/src/control/loader/save_file.c), privat wie
+[loader/save_file.c](radish/game-server-core/src/control/loader/save_file.c), privat wie
 alles unter `control/`. Es macht die Datei auf, misst sie gegen
 `RAD_SAVE_JSON_MAX`, liest sie am Stück und gibt sie an
 `RAD_DeserializeGameFromJson` — das Format steht in `serialization/` und nur
@@ -250,7 +252,7 @@ etwas einbindet:
 
 ```c
 #include <radish/rendering/iso_map.h>          // client/src/include/
-#include <radish/server/interface/command.h>   // server/src/include/
+#include <radish/server/interface/command.h>   // game-server-core/src/include/
 ```
 
 > Stand jetzt ruft [main.c](radish/client/src/main.c) noch ausschließlich das
@@ -259,7 +261,7 @@ etwas einbindet:
 >
 > Der Server liest eingehende Nachrichten als Kommando, gibt sie an `control/` und
 > schickt die Antwort zurück — `handle_message` in
-> [main.c](radish/server/src/main.c). **Ausgeführt** wird davon bisher
+> [main.c](radish/game-server-core/src/main.c). **Ausgeführt** wird davon bisher
 > `move_entity`; die übrigen vier Arten werden geprüft und mit
 > `RAD_CONTROL_ERROR_NOT_EXECUTED` beantwortet, ihr Ausführender fehlt noch.
 >
@@ -311,7 +313,7 @@ Client wird übersprungen statt den Build abzubrechen:
 cmake -S radish -B build-host && cmake --build build-host
 ```
 
-Das Ergebnis liegt als `build-host/server/server` im Build-Verzeichnis. Zu
+Das Ergebnis liegt als `build-host/game-server-core/server` im Build-Verzeichnis. Zu
 diesem Build gehören auch `zucchini_utils` und `zucchini_api` — sie werden aus
 dem Klon neben dem Projekt mitübersetzt, siehe
 [Externe Abhängigkeiten](#externe-abhängigkeiten). Fehlt der Klon, bricht CMake
@@ -401,17 +403,23 @@ rad_add_game_test(model main.c test_turn.c test_world.c)
 docker compose up --build
 ```
 
-Danach liegt der Client unter <http://localhost:8080>. Die Compose-Datei startet
-drei Dienste:
+Danach ist alles unter <http://localhost:8000> erreichbar: Login,
+Spielübersicht und Spielansicht (`radish/frontend/`) ebenso wie der
+Wasm-Client (`radish/web/`, unter `/wasm/`) werden direkt vom
+Django-Backend mit ausgeliefert (siehe `radish/backend/web/`) — kein
+eigener nginx-Container mehr davor.
 
 | Dienst | Port | Aufgabe |
 |---|---|---|
-| `web` | 8080 → 80 | nginx, liefert `radish/web/` aus (mit `application/wasm` als MIME-Typ) |
-| `relay` | 8765, 40000–40019/udp | Signaling und WebRTC-zu-UDP-Brücke |
-| `backend` | 9999/udp | Zucchini an der UDP-Strecke und der Spielserver daran |
+| `backend` | 8000 → 8000 | Django: liefert `radish/frontend/` unter `/`, `radish/web/` unter `/wasm/` und die Matchmaking-/Login-API unter `/api/` |
+| `relay` | 8765, 40000–40019/udp | Signaling und WebRTC-zu-UDP-Brücke — noch nicht in `docker-compose.yaml` enthalten, siehe `relay/server.py` |
+| `game-server` | 9999/udp | Zucchini an der UDP-Strecke und der Spielserver daran |
 
-Der Client muss vor `docker compose up` gebaut sein — das `web`-Image kopiert
-`radish/web/` beim Bauen hinein.
+Der Wasm-Client muss vor `docker compose up --build backend` gebaut sein —
+das `backend`-Image kopiert `radish/web/` beim Bauen hinein.
+`radish/frontend/` baut das Image dagegen in einem eigenen Node-Stage
+selbst mit (siehe [radish/frontend/README.md](radish/frontend/README.md)),
+dafür ist kein vorheriges `npm install` auf dem Host nötig.
 
 ### Das Backend-Image
 

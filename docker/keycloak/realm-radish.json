@@ -1,0 +1,198 @@
+{
+  "realm": "radish",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": true,
+  "clients": [
+    {
+      "clientId": "radish-web",
+      "name": "radish web client",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000",
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-radish-backend",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "radish-backend",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "radish-backend",
+      "name": "radish django backend",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "radish-backend-dev-secret",
+      "redirectUris": [
+        "http://localhost:8000/api/login/callback/"
+      ],
+      "webOrigins": [
+        "http://localhost:8000"
+      ]
+    },
+    {
+      "clientId": "radish-game-server",
+      "name": "radish game-server instance",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "radish-game-server-dev-secret",
+      "protocolMappers": [
+        {
+          "name": "audience-radish-backend",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "radish-backend",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "offline_access",
+        "description": "${role_offline-access}"
+      },
+      {
+        "name": "uma_authorization",
+        "description": "${role_uma_authorization}"
+      },
+      {
+        "name": "Player",
+        "description": "Menschlicher Spieler (per Selbstregistrierung angelegter Account)."
+      },
+      {
+        "name": "Technischer-User-Server",
+        "description": "Technischer Service-Account fuer Server-zu-Server-Aufrufe, kein menschlicher Nutzer."
+      },
+      {
+        "name": "Radish-Admin",
+        "description": "Administrator mit Zugriff auf den Adminbereich (z.B. Liste der angemeldeten Game-Server)."
+      },
+      {
+        "name": "default-roles-radish",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "clientRole": false,
+        "composites": {
+          "realm": [
+            "offline_access",
+            "uma_authorization",
+            "Player"
+          ]
+        }
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-radish",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
+  },
+  "users": [
+    {
+      "username": "test-user",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Player"
+      ],
+      "email": "test-user@example.com",
+      "firstName": "Test",
+      "lastName": "User"
+    },
+    {
+      "username": "technical-server-user",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "technical-server-user@example.com",
+      "firstName": "Technical",
+      "lastName": "Server",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "technical-server-user",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Technischer-User-Server"
+      ]
+    },
+    {
+      "username": "service-account-radish-game-server",
+      "enabled": true,
+      "serviceAccountClientId": "radish-game-server",
+      "realmRoles": [
+        "Technischer-User-Server"
+      ]
+    },
+    {
+      "username": "radish-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "radish-admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Radish-Admin"
+      ],
+      "email": "radish-admin@example.com",
+      "firstName": "Radish",
+      "lastName": "Admin"
+    }
+  ]
+}

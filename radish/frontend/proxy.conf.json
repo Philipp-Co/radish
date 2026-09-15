@@ -1,0 +1,13 @@
+{
+  "//": "Nur fuer `ng serve` (Dev-Server auf :4200): /api und /wasm auf dieselbe Origin (das Django-Backend auf :8000, siehe radish/backend/web/) durchreichen wie im Produktivbetrieb -- dadurch braucht die eigene API keine CORS-Sonderbehandlung. Nur Keycloak (Port 8081) liegt auf einer eigenen Origin, das ist beim OIDC-Redirect-Flow so vorgesehen.",
+  "/api": {
+    "target": "http://localhost:8000",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/wasm": {
+    "target": "http://localhost:8000",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

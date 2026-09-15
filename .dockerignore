@@ -19,9 +19,24 @@ radish/build/
 radish/.cache/
 radish/compile_commands.json
 
-# Nicht das virtuelle Environment mitschleppen -- das Relay-Image installiert
-# seine Abhaengigkeiten selbst aus relay/requirements.txt.
+# Nicht das virtuelle Environment mitschleppen -- Relay- und Backend-Image
+# installieren ihre Abhaengigkeiten selbst aus der jeweiligen requirements.txt.
 relay/.venv/
+radish/backend/.venv/
+radish/game-server/.venv/
 __pycache__/
+
+# Frontend-Abhaengigkeiten/-Build werden im Node-Stage von
+# docker/web/Dockerfile frisch installiert bzw. gebaut.
+radish/frontend/node_modules/
+radish/frontend/dist/
+radish/frontend/.angular/
+
+# Editor-Reste und eine eventuell noch vorhandene alte sqlite-Datei aus der
+# Zeit vor Postgres (siehe docker-compose.yaml, Services "backend" +
+# "backend-db") -- die soll nicht mehr ins Image gelangen.
+radish/backend/db.sqlite3
+radish/game-server/db.sqlite3
+*.swp
 
 README.md

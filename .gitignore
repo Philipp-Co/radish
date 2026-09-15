@@ -6,5 +6,12 @@ build/
 build-host/
 radish/compile_commands.json
 radish/.cache/
+radish/backend/db.sqlite3
+radish/backend/.venv/
+radish/game-server/db.sqlite3
+radish/game-server/.venv/
 *.wasm
 jsmn/
+radish/frontend/node_modules/
+radish/frontend/dist/
+radish/frontend/.angular/

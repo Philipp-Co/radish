@@ -36,7 +36,7 @@ if(EMSCRIPTEN)
     add_subdirectory(client)
 else()
     include(cmake/zucchini.cmake)
-    add_subdirectory(server)
+    add_subdirectory(game-server-core)
 
     # Tests laufen auf der Maschine, nicht im Browser: sie sind Programme, die
     # der Host startet und deren Rueckgabewert ctest liest. Unter emcc gaebe es

@@ -1,56 +1,73 @@
-# Zucchini und der Spielserver in einem Image -- und in einem Container: sie
-# reden nicht ueber das Netz, sondern ueber zwei Ringpuffer im Shared Memory und
-# eine FIFO zum Aufwecken (siehe zucchini/api/api.h). Beides ist lokal, beide
-# Prozesse muessen sich also denselben IPC-Namensraum und dasselbe /tmp teilen.
+# Django-Backend (radish/backend/): die Matchmaking-API (Game/GameServer/
+# Player unter api/client/, api/servers/) sowie Login/Logout und die
+# JWT-Absicherung gegen Keycloak (siehe api/auth_views.py, api/authentication.py).
+# Liefert ausserdem das gesamte Frontend aus -- das Angular-Frontend
+# (radish/frontend/, Login/Spielübersicht/Spielansicht) unter "/" und den
+# Wasm-Client (radish/web/) unter "/wasm/" (siehe radish/backend/web/) --
+# es gibt dafuer bewusst keinen separaten nginx-Container mehr.
 #
-# Der Build-Kontext ist die Wurzel des Repositorys, weil drei Verzeichnisse
-# hineingehoeren: radish/ selbst und die beiden Klone jsmn/ und zucchini/ daneben
-# -- radishs CMake sucht sie genau dort. Was nicht mit hineingehoert, steht in
-# .dockerignore; ohne die waere emsdk/ mit im Kontext.
-FROM alpine:3.20 AS build
-
-RUN apk add --no-cache build-base cmake
-
-WORKDIR /src
-
-COPY zucchini/ zucchini/
-COPY jsmn/ jsmn/
-COPY radish/ radish/
-
-# Zucchini zuerst, als eigenes Dachprojekt: daraus kommen zucchini_server und der
-# Admin-Client, mit dem der Einstiegspunkt spaeter die Whitelist setzt.
-# ZUC_BUILD_REMOTE_CLIENT_TEST=OFF wie in zucchinis eigenem Test-Image -- die
-# Testwerkzeuge braucht hier niemand.
-RUN cmake -S zucchini -B build/zucchini \
-        -DZUC_PLATFORM=linux \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DZUC_BUILD_REMOTE_CLIENT_TEST=OFF \
-    && cmake --build build/zucchini
-
-# Dann radish ohne Emscripten -- das baut die Bibliotheken und den Server, der
-# Client wird uebersprungen. zucchini_utils und zucchini_api uebersetzt dieser
-# Build sich selbst aus dem Klon nebenan (radish/cmake/zucchini.cmake); deshalb
-# liegt zucchini/ hier als Quelltext im Bild und nicht bloss als Binary.
+# Drei Stages: "frontend-builder" baut nur das Angular-Bundle (Node),
+# "builder" nur die Python-Abhaengigkeiten (siehe unten), das eigentliche
+# Image uebernimmt aus beiden nur das fertige Ergebnis -- weder Node noch
+# Rust/gcc landen im laufenden Container.
 #
-# RAD_BUILD_TESTS=OFF wie ZUC_BUILD_REMOTE_CLIENT_TEST oben: die Testsuite haengt
-# am Unity-Klon, und der liegt neben dem Projekt statt darin -- er kaeme nur als
-# vierte COPY-Zeile ins Bild, um dann nichts zu tun, was das Image je ausfuehrt.
-RUN cmake -S radish -B build/radish -DCMAKE_BUILD_TYPE=Release \
-        -DRAD_BUILD_TESTS=OFF \
-    && cmake --build build/radish
+# Der Python-Teil ist zweistufig aus demselben Grund wie docker/relay/Dockerfile:
+# simplejwts [crypto]-Extra zieht "cryptography" nach sich, und dafuer gibt es
+# fuer Alpine (musl statt glibc) keine vorgefertigten Wheels -- der Build
+# braucht Rust/gcc/die -dev-Header, das fertige Image nur noch die
+# Laufzeitbibliotheken.
+#
+# Fuer die lokale Entwicklung reicht der eingebaute Dev-Server; kein
+# WSGI/ASGI-Server, kein Reverse-Proxy davor.
+FROM node:20-alpine AS frontend-builder
+WORKDIR /frontend-src
+COPY radish/frontend/package.json radish/frontend/package-lock.json* ./
+RUN npm install
+COPY radish/frontend/ ./
+RUN npm run build -- --configuration production
 
 
-FROM alpine:3.20
+FROM python:3.12-alpine AS builder
 
-# Im Ziel-Image heisst das Programm radish_server, im Quellbaum bloss "server".
-# Neben zucchini_server waere "server" nicht mehr eindeutig.
-COPY --from=build /src/build/zucchini/server/zucchini_server             /usr/local/bin/zucchini_server
-COPY --from=build /src/build/zucchini/admin_client/zucchini_admin_client /usr/local/bin/zucchini_admin_client
-COPY --from=build /src/build/radish/server/server                       /usr/local/bin/radish_server
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    cargo \
+    rust
+
+COPY radish/backend/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
+
+
+FROM python:3.12-alpine
+
+RUN apk add --no-cache \
+    libffi \
+    openssl
+
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+COPY radish/backend/ /app/
+
+# Wasm-Client fuer die Django-App "web" (siehe radish/backend/web/views.py,
+# WASM_DIR = Geschwisterverzeichnis von BASE_DIR): lokal liegt radish/web/
+# neben radish/backend/, im Image muss das also parallel zu /app nach /web --
+# sonst laeuft views.wasm_file() im Container ins Leere (404), obwohl es
+# lokal (ausserhalb von Docker) funktioniert.
+COPY radish/web/ /web/
+
+# Gebautes Angular-Frontend (siehe Stage "frontend-builder" oben) --
+# radish/backend/web/views.py erwartet es unter FRONTEND_DIST_DIR =
+# Geschwisterverzeichnis von BASE_DIR, genau wie /web/ oben.
+COPY --from=frontend-builder /frontend-src/dist/radish-frontend/browser /frontend/dist/radish-frontend/browser
 
 COPY docker/backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 9999/udp
+EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
