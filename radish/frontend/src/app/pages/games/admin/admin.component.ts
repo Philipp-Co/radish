@@ -36,7 +36,7 @@ import { ApiService, GameServerEntry } from '../../../core/api.service';
           <thead>
             <tr>
               <th>Name</th>
-              <th>IP</th>
+              <th>Adresse</th>
               <th>Port</th>
               <th>Status</th>
             </tr>
@@ -45,7 +45,7 @@ import { ApiService, GameServerEntry } from '../../../core/api.service';
             @for (server of servers(); track server.id) {
               <tr>
                 <td>{{ server.name }}</td>
-                <td>{{ server.ip_address }}</td>
+                <td>{{ server.address }}</td>
                 <td>{{ server.port }}</td>
                 <td>{{ server.is_occupied ? 'belegt' : 'frei' }}</td>
               </tr>

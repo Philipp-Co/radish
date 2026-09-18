@@ -11,14 +11,16 @@
 # Image uebernimmt aus beiden nur das fertige Ergebnis -- weder Node noch
 # Rust/gcc landen im laufenden Container.
 #
-# Der Python-Teil ist zweistufig aus demselben Grund wie docker/relay/Dockerfile:
-# simplejwts [crypto]-Extra zieht "cryptography" nach sich, und dafuer gibt es
+# Der Python-Teil ist zweistufig: simplejwts [crypto]-Extra zieht
+# "cryptography" nach sich, und dafuer gibt es
 # fuer Alpine (musl statt glibc) keine vorgefertigten Wheels -- der Build
 # braucht Rust/gcc/die -dev-Header, das fertige Image nur noch die
 # Laufzeitbibliotheken.
 #
-# Fuer die lokale Entwicklung reicht der eingebaute Dev-Server; kein
-# WSGI/ASGI-Server, kein Reverse-Proxy davor.
+# ASGI statt WSGI: config/asgi.py routet HTTP weiter an Django wie
+# bisher, WebSocket-Verbindungen (siehe radish/backend/api/routing.py,
+# api/consumers.py) laufen ueber Channels. Ausgeliefert wird beides ueber
+# Daphne (siehe entrypoint.sh) -- weiterhin kein Reverse-Proxy davor.
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend-src
 COPY radish/frontend/package.json radish/frontend/package-lock.json* ./
@@ -51,6 +53,15 @@ RUN apk add --no-cache \
 COPY --from=builder /install /usr/local
 
 WORKDIR /app
+
+# Ohne das puffert Python stdout blockweise, sobald es nicht an ein
+# Terminal haengt (also praktisch immer in Docker) -- print()-Ausgaben
+# aus dem Anwendungscode (siehe api/consumers.py) wuerden sonst erst mit
+# grosser Verzoegerung oder gar nicht in "docker compose logs" auftauchen,
+# waehrend Daphnes eigene Zugriffslogs (WSCONNECT/WSREJECT/...) ueber das
+# logging-Modul laufen und davon nicht betroffen sind.
+ENV PYTHONUNBUFFERED=1
+
 COPY radish/backend/ /app/
 
 # Wasm-Client fuer die Django-App "web" (siehe radish/backend/web/views.py,

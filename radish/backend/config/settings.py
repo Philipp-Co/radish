@@ -38,6 +38,13 @@ ALLOWED_HOSTS = ["backend", "localhost", "127.0.0.1"]
 # Application definition
 
 INSTALLED_APPS = [
+    # Muss vor 'django.contrib.staticfiles' stehen: sobald 'daphne' hier
+    # gelistet ist, ersetzt es Djangos eingebauten `manage.py runserver`
+    # durch Daphnes ASGI-Dev-Server, der auch WebSockets bedient (siehe
+    # config/asgi.py, api/routing.py) -- damit verhaelt sich lokales
+    # `manage.py runserver` genauso wie der Container (siehe
+    # docker/backend/entrypoint.sh, dort laeuft direkt Daphne).
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -45,6 +52,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'channels',
     'api',
     'web',
 ]
@@ -77,6 +85,25 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+# config/wsgi.py bleibt bestehen, ausgeliefert wird das Backend aber ueber
+# ASGI (config/asgi.py, siehe auch docker/backend/entrypoint.sh) -- nur
+# darueber laufen WebSocket-Verbindungen (api/routing.py).
+ASGI_APPLICATION = 'config.asgi.application'
+
+# In-Memory reicht, solange genau ein Backend-Prozess laeuft (aktuell ein
+# einzelner "backend"-Container ohne Replikation, siehe
+# docker-compose.yaml): Nachrichten zwischen Consumern (z.B.
+# Channels-Gruppen) muessen dann nicht prozessuebergreifend verteilt
+# werden. Sobald mehrere Worker/Container gleichzeitig laufen, braucht es
+# stattdessen einen geteilten Channel-Layer (z.B.
+# channels_redis.core.RedisChannelLayer) -- bewusst nicht jetzt schon, um
+# keinen (noch) ungenutzten Redis-Service einzufuehren.
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
 
 
 # Database

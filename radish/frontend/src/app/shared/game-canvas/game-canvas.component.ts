@@ -1,6 +1,7 @@
-import { AfterViewInit, Component, ElementRef, Input, OnDestroy, ViewChild, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, OnDestroy, ViewChild, inject } from '@angular/core';
 
 import { environment } from '../../../environments/environment';
+import { GameSocketService } from '../../core/game-socket.service';
 
 /*
  * Emscripten legt beim Laden von client.js eine globale Fabrikfunktion an
@@ -17,30 +18,33 @@ declare global {
   }
 }
 
-type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
-
 /**
- * Das eigentliche Spiel-Canvas samt WASM-Client und WebRTC/Relay-Verbindung
- * -- ausgelagert aus dem, was bis vor Kurzem GameComponent alleine war
- * (siehe deren Docstring-Historie), damit dieselbe Logik an mehreren Stellen
- * eingebettet werden kann, ohne sie zu verlassen bzw. neu zu laden:
- * einerseits weiterhin unter der eigenstaendigen Route "/game/:name" (siehe
- * GameComponent, z.B. nach dem Erstellen/Beitreten eines Spiels), andererseits
- * direkt eingebettet auf "Aktuelles Spiel" (siehe CurrentGameComponent) --
- * dort ausdruecklich ohne Umleitung auf eine andere Seite.
+ * Das eigentliche Spiel-Canvas samt WASM-Client -- ausgelagert aus dem, was
+ * bis vor Kurzem GameComponent alleine war (siehe deren Docstring-Historie),
+ * damit dieselbe Logik an mehreren Stellen eingebettet werden kann, ohne sie
+ * zu verlassen bzw. neu zu laden: einerseits weiterhin unter der
+ * eigenstaendigen Route "/game/:name" (siehe GameComponent, z.B. nach dem
+ * Erstellen/Beitreten eines Spiels), andererseits direkt eingebettet auf
+ * "Aktuelles Spiel" (siehe CurrentGameComponent) -- dort ausdruecklich ohne
+ * Umleitung auf eine andere Seite.
  *
- * gameName ist rein informativ (fuer eine optionale Anzeige durch die
- * einbettende Seite) und fliesst nicht in den Verbindungsaufbau selbst ein --
- * der Relay ist aktuell fest auf eine einzige Spielserver-Instanz verdrahtet,
- * siehe Docstring von connectToRelay() weiter unten.
+ * Laedt aktuell nur den WASM-Client und haengt ihn ans Canvas -- die
+ * bisherige WebRTC/Relay-Verbindung (radish/relay/server.py) ist entfernt,
+ * weil der Relay entfaellt (die UDP-Bruecke laeuft stattdessen ueber den
+ * Django-Backend-WebSocket, siehe radish/backend/api/consumers.py,
+ * EchoConsumer). Der WASM-Client bekommt dadurch aktuell KEINE Verbindung
+ * zu einem Spielserver mehr -- das Verdrahten mit dem WebSocket (siehe
+ * core/game-socket.service.ts) ist ein spaeterer Schritt.
+ *
+ * gameName ist weiterhin rein informativ (fuer eine optionale Anzeige durch
+ * die einbettende Seite).
  */
 @Component({
   selector: 'app-game-canvas',
   standalone: true,
   template: `
     <div class="game-canvas">
-      <p class="muted">Verbindung: {{ status() }}</p>
-      <canvas #canvas width="640" height="420" tabindex="0"></canvas>
+      <canvas id="canvas" #canvas width="640" height="420" tabindex="0"></canvas>
     </div>
   `,
   styles: [
@@ -65,11 +69,18 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
   /** Nur fuer eine moegliche Anzeige durch die einbettende Seite, siehe Klassen-Docstring. */
   @Input() gameName = '';
 
-  readonly status = signal<ConnectionStatus>('connecting');
-
-  private webSocket: WebSocket | null = null;
-  private peerConnection: RTCPeerConnection | null = null;
+  private readonly gameSocket = inject(GameSocketService);
   private scriptEl: HTMLScriptElement | null = null;
+  /*
+   * Ergebnis von loadWasmModule() (Module.ccall/._malloc/.HEAPU8/... aus der
+   * Emscripten-Laufzeit, siehe Kommentar bei Window.createZucchiniModule
+   * oben) -- wird in forwardToWasm() gebraucht, um eingehende "event"-Bytes
+   * von GameSocketService an zuc_on_response() (client/src/main.c)
+   * weiterzureichen. Deshalb bewusst als `any` belassen statt einer selbst
+   * ausgedachten Typdefinition.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private wasmModule: any = null;
 
   /*
    * Der Emscripten/SDL2-Client haengt seine Tastatur-Handler (keydown/
@@ -103,19 +114,51 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
 
   async ngAfterViewInit(): Promise<void> {
     try {
-      const wasmModule = await this.loadWasmModule();
-      this.connectToRelay(wasmModule);
+      this.wasmModule = await this.loadWasmModule();
+      // Wird von zuc_js_send() (client/src/main.c) aufgerufen, wenn der
+      // WASM-Client ein Kommando ans Backend schicken will.
+      this.wasmModule.sendToChannel = (bytes: Uint8Array | ArrayBuffer) => this.sendToBackend(bytes);
+      this.gameSocket.setWasmEventHandler((bytes) => this.forwardToWasm(bytes));
     } catch (err) {
       console.error('[game-canvas] WASM-Client konnte nicht geladen werden:', err);
-      this.status.set('error');
     }
   }
 
   ngOnDestroy(): void {
-    this.webSocket?.close();
-    this.peerConnection?.close();
+    this.gameSocket.setWasmEventHandler(null);
     this.scriptEl?.remove();
     this.releaseGlobalKeyListeners();
+  }
+
+  /**
+   * Kopiert die von GameSocketService dekodierten "event"-Bytes ins
+   * WASM-Heap und ruft zuc_on_response() (siehe client/src/main.c) --
+   * gleiches Muster wie zuvor in web/index.html (forwardResponseToWasm)
+   * fuer die inzwischen entfernte WebRTC/Relay-Verbindung.
+   */
+  private forwardToWasm(bytes: Uint8Array): void {
+    const module = this.wasmModule;
+    if (!module) {
+      return;
+    }
+    const ptr = module._malloc(bytes.length);
+    module.HEAPU8.set(bytes, ptr);
+    module.ccall('zuc_on_response', null, ['number', 'number'], [ptr, bytes.length]);
+    module._free(ptr);
+  }
+
+  /**
+   * Umgekehrte Richtung: reicht ein vom WASM-Client gesendetes Kommando
+   * (Module.sendToChannel, siehe ngAfterViewInit) an
+   * GameSocketService.sendCommand() weiter, das es Base64-kodiert als
+   * {"type":"command","data":...} ans Backend schickt. HEAPU8.slice() in
+   * zuc_js_send() (client/src/main.c) liefert bereits ein Uint8Array --
+   * der ArrayBuffer-Fall bleibt trotzdem als Absicherung erhalten, falls
+   * eine kuenftige client.js-Version das anders macht.
+   */
+  private sendToBackend(bytes: Uint8Array | ArrayBuffer): void {
+    const payload = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
+    this.gameSocket.sendCommand(payload);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,104 +231,5 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     this.capturedKeyListeners.length = 0;
     this.restoreAddEventListeners?.();
     this.restoreAddEventListeners = null;
-  }
-
-  /**
-   * Baut die WebRTC-DataChannel-Verbindung zum Relay auf (siehe
-   * radish/relay/server.py) -- inhaltlich unveraendert gegenueber dem
-   * bisherigen radish/web/index.html, nur nach TypeScript uebertragen.
-   *
-   * Bewusst unabhaengig vom konkreten Spiel (gameName): der Relay ist
-   * aktuell fest auf eine einzige Spielserver-Instanz verdrahtet
-   * (--udp-host/--udp-port beim Start von server.py), und die Matchmaking-API
-   * gibt den einem Spiel zugewiesenen Server absichtlich nicht an den Client
-   * heraus (siehe radish/backend/api/serializers.py, GameDetailSerializer-
-   * Docstring). Eine Verdrahtung "dieses Spiel -> dieser Relay/Server"
-   * existiert serverseitig noch nicht und ist ein spaeterer Schritt.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private connectToRelay(wasmModule: any): void {
-    const ws = new WebSocket(environment.relay.signalingUrl);
-    this.webSocket = ws;
-    let channel: RTCDataChannel | null = null;
-
-    wasmModule.sendToChannel = (bytes: Uint8Array | ArrayBuffer) => {
-      if (!channel || channel.readyState !== 'open') {
-        return;
-      }
-      const payload = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
-      channel.send(payload);
-    };
-
-    const forwardResponseToWasm = (buffer: ArrayBuffer) => {
-      const bytes = new Uint8Array(buffer);
-      const ptr = wasmModule._malloc(bytes.length);
-      wasmModule.HEAPU8.set(bytes, ptr);
-      wasmModule.ccall('zuc_on_response', null, ['number', 'number'], [ptr, bytes.length]);
-      wasmModule._free(ptr);
-    };
-
-    const notifyConnectionState = (state: number) => {
-      wasmModule.ccall('zuc_on_connection_state', null, ['number'], [state]);
-    };
-
-    ws.onopen = async () => {
-      try {
-        const pc = new RTCPeerConnection();
-        this.peerConnection = pc;
-        pc.onconnectionstatechange = () => console.log('[game-canvas] connectionState=' + pc.connectionState);
-        pc.oniceconnectionstatechange = () =>
-          console.log('[game-canvas] iceConnectionState=' + pc.iceConnectionState);
-
-        channel = pc.createDataChannel('zucchini');
-        channel.binaryType = 'arraybuffer';
-        channel.onopen = () => {
-          this.status.set('connected');
-          notifyConnectionState(1);
-        };
-        channel.onclose = () => {
-          this.status.set('disconnected');
-          notifyConnectionState(2);
-        };
-        channel.onerror = (event) => console.error('[game-canvas] channel error:', event);
-        channel.onmessage = (event: MessageEvent<ArrayBuffer>) => forwardResponseToWasm(event.data);
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        await new Promise<void>((resolve) => {
-          if (pc.iceGatheringState === 'complete') {
-            resolve();
-            return;
-          }
-          pc.onicegatheringstatechange = () => {
-            if (pc.iceGatheringState === 'complete') {
-              resolve();
-            }
-          };
-        });
-
-        ws.send(JSON.stringify({ type: pc.localDescription!.type, sdp: pc.localDescription!.sdp }));
-      } catch (err) {
-        console.error('[game-canvas] Verbindungsaufbau fehlgeschlagen:', err);
-        this.status.set('error');
-      }
-    };
-
-    ws.onmessage = async (event) => {
-      try {
-        const answer = JSON.parse(event.data);
-        await this.peerConnection?.setRemoteDescription(answer);
-      } catch (err) {
-        console.error('[game-canvas] Antwort konnte nicht verarbeitet werden:', err);
-        this.status.set('error');
-      }
-    };
-
-    ws.onerror = () => {
-      console.error('[game-canvas] WebSocket-Fehler.');
-      this.status.set('error');
-    };
-    ws.onclose = () => this.status.set('disconnected');
   }
 }

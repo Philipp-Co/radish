@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { Subscription, interval, startWith, switchMap } from 'rxjs';
 
 import { ApiService, GameDetail } from '../../../core/api.service';
+import { GameSocketService } from '../../../core/game-socket.service';
 import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.component';
 
 /**
@@ -68,50 +68,47 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
 })
 export class CurrentGameComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly gameSocket = inject(GameSocketService);
 
   readonly game = signal<GameDetail | null>(null);
   readonly loading = signal(true);
   readonly leaving = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
-  private pollSubscription: Subscription | null = null;
-
   ngOnInit(): void {
-    // Wie GamesListComponent: kein Server-Push, deshalb Polling alle 5s --
-    // z.B. relevant, wenn ein zweiter Spieler zwischenzeitlich beitritt.
-    this.pollSubscription = interval(5000)
-      .pipe(
-        startWith(0),
-        switchMap(() => this.api.getCurrentGame()),
-      )
-      .subscribe({
-        next: (response) => {
-          this.game.set(response.game);
-          this.loading.set(false);
-        },
-        error: () => {
-          this.errorMessage.set('Aktuelles Spiel konnte nicht geladen werden.');
-          this.loading.set(false);
-        },
-      });
+    this.loadCurrentGame();
   }
 
   ngOnDestroy(): void {
-    this.pollSubscription?.unsubscribe();
+    this.gameSocket.disconnect();
   }
 
-  refresh(): void {
-    this.loading.set(true);
+  /**
+   * Kein Polling mehr: der Zustand aendert sich nicht, waehrend man auf
+   * dieser Ansicht bleibt, deshalb reicht eine einzelne Abfrage beim
+   * Oeffnen der Ansicht (bzw. per "Aktualisieren"-Button, siehe refresh()).
+   * Liefert getCurrentGame() ein Spiel, wird zusaetzlich die
+   * WebSocket-Verbindung geoeffnet (siehe GameSocketService).
+   */
+  private loadCurrentGame(): void {
     this.api.getCurrentGame().subscribe({
       next: (response) => {
         this.game.set(response.game);
         this.loading.set(false);
+        if (response.game) {
+          this.gameSocket.connect();
+        }
       },
       error: () => {
         this.errorMessage.set('Aktuelles Spiel konnte nicht geladen werden.');
         this.loading.set(false);
       },
     });
+  }
+
+  refresh(): void {
+    this.loading.set(true);
+    this.loadCurrentGame();
   }
 
   leaveGame(): void {
@@ -123,9 +120,8 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
     this.api.leaveGame().subscribe({
       next: () => {
         this.leaving.set(false);
-        // Direkt lokal auf "kein Spiel" setzen statt auf den naechsten
-        // Poll-Tick zu warten (bis zu 5s, siehe ngOnInit).
         this.game.set(null);
+        this.gameSocket.disconnect();
       },
       error: (err: HttpErrorResponse) => {
         this.leaving.set(false);

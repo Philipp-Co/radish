@@ -12,7 +12,4 @@ export const environment = {
     redirectUri: 'http://localhost:8000/callback',
     postLogoutRedirectUri: 'http://localhost:8000/',
   },
-  relay: {
-    signalingUrl: 'ws://localhost:8765',
-  },
 };

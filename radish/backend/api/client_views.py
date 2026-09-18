@@ -3,20 +3,18 @@ Endpunkte fuer den Spielclient unter api/client/.
 
 Ein Client kann hierueber ein Spiel erstellen, einem Spiel beitreten, es
 wieder verlassen, die offenen Spiele auflisten, sein eigenes laufendes
-Spiel abfragen, ein Kommando an sein Spiel schicken, einen SSE-Stream zu
-seinem Spiel oeffnen und seinen eigenen Zustand abfragen. Erstellen,
-Beitreten, Verlassen, Auflisten, das eigene laufende Spiel und Kommando
-sind bereits echt umgesetzt; Stream und Zustand sind noch Platzhalter
-(siehe jeweilige Docstrings).
-"""
+Spiel abfragen und seinen eigenen Zustand abfragen. Erstellen, Beitreten,
+Verlassen, Auflisten und das eigene laufende Spiel sind bereits echt
+umgesetzt; Zustand ist noch Platzhalter (siehe dessen Docstring).
 
-import json
-import socket
-import time
+Kommandos an den Spielserver und ein laufender Event-Stream dazu laufen
+nicht mehr ueber eigene REST-Endpunkte (ehemals CommandView unter
+client/command/ bzw. StreamView unter client/stream/), sondern ueber den
+WebSocket (siehe api/consumers.py, EchoConsumer).
+"""
 
 from django.db import transaction
 from django.db.models import Q
-from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -25,26 +23,11 @@ from rest_framework.views import APIView
 from .models import Game, GameServer, Player
 from .permissions import HasPlayerRole
 from .serializers import (
-    CommandSerializer,
     GameCreateSerializer,
     GameDetailSerializer,
     GameJoinSerializer,
     GameListSerializer,
 )
-
-
-def _send_udp_message(ip_address, port, message):
-    """
-    Schickt message (Text) als UDP-Datagramm an ip_address:port.
-
-    Fire-and-forget wie UDP selbst: es wird nicht auf eine Antwort
-    gewartet, das gehoert (falls ueberhaupt) in den SSE-Stream. Das
-    eigentliche Byteformat, das radish/game-server-core/ erwartet (siehe
-    dessen protobuf/ und command.h), ist hier noch nicht nachgebildet --
-    die Nachricht geht aktuell 1:1 als UTF-8 raus.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-        udp_socket.sendto(message.encode("utf-8"), (ip_address, port))
 
 
 def _get_or_create_player(user):
@@ -211,7 +194,7 @@ class CurrentGameView(APIView):
     normale, haeufigste Fall (nicht jeder eingeloggte Spieler ist gerade in
     einem Spiel), deshalb 200 statt 404. Legt dabei anders als
     GameCreateView/GameJoinView auch KEIN neues Player-Objekt an (dieselbe
-    Ueberlegung wie bei CommandView): ohne Player-Objekt kann es ohnehin kein
+    Ueberlegung wie bei LeaveGameView unten): ohne Player-Objekt kann es ohnehin kein
     Spiel geben.
     """
 
@@ -255,14 +238,13 @@ class LeaveGameView(APIView):
 
     Anders als GameCreateView/GameJoinView legt dieser Endpunkt fuer einen
     Nutzer ohne Player-Objekt KEINEN neuen Player an (dieselbe Ueberlegung
-    wie bei CommandView): ohne Player-Objekt kann er ohnehin in keinem
+    wie bei CurrentGameView oben): ohne Player-Objekt kann er ohnehin in keinem
     Spiel sein.
 
     Schickt bewusst (noch) keine Nachricht an den eigentlichen Spielserver
-    (radish/game-server-core/) -- das Ingame-Protokoll dafuer (WebRTC/Relay
-    direkt zum Server, siehe GameComponent im Frontend) ist von dieser
-    Matchmaking-API noch nicht angebunden, siehe ApiService-Docstring im
-    Frontend.
+    (radish/game-server-core/) -- das Ingame-Protokoll dafuer laeuft ueber
+    den WebSocket (siehe api/consumers.py, EchoConsumer) und ist von dieser
+    Matchmaking-API unabhaengig, siehe ApiService-Docstring im Frontend.
     """
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
@@ -305,89 +287,6 @@ class LeaveGameView(APIView):
                 server.save(update_fields=["is_occupied"])
 
         return Response({"status": "left"})
-
-
-class CommandView(APIView):
-    """
-    Schickt eine Nachricht des anfragenden Spielers per UDP an den Server
-    des Spiels, in dem er gerade mitspielt.
-
-    Anders als GameCreateView/GameJoinView legt dieser Endpunkt fuer einen
-    Nutzer ohne Player-Objekt KEINEN neuen Player an: um ein Kommando zu
-    schicken, muss der Spieler ohnehin schon in einem Spiel sein -- fehlt
-    sein Player-Objekt in der Datenbank, kann das nie der Fall sein, und
-    ein neu angelegter Player waere sofort wieder in keinem Spiel. Das ist
-    also ein klarer Fehlerfall statt einer stillen Neuanlage.
-    """
-
-    permission_classes = [IsAuthenticated, HasPlayerRole]
-
-    def post(self, request):
-        serializer = CommandSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        message = serializer.validated_data["message"]
-
-        try:
-            player = Player.objects.get(user=request.user)
-        except Player.DoesNotExist:
-            return Response(
-                {"detail": "Kein Spieler-Profil vorhanden -- noch nie ein Spiel erstellt oder ihm beigetreten."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        game = (
-            Game.objects.filter(Q(host=player) | Q(second_player=player))
-            .select_related("server")
-            .first()
-        )
-        if game is None:
-            return Response(
-                {"detail": "Spieler ist in keinem Spiel."},
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        try:
-            _send_udp_message(game.server.ip_address, game.server.port, message)
-        except OSError as exc:
-            return Response(
-                {"detail": f"Nachricht konnte nicht gesendet werden: {exc}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        return Response({"status": "sent"})
-
-
-class StreamView(APIView):
-    """
-    Platzhalter-Endpunkt, der SSE-Events zum eigenen Spiel streamt.
-
-    Welche Daten hier tatsaechlich gestreamt werden sollen, ist noch offen;
-    aktuell schickt der Generator im Sekundentakt ein Heartbeat-Event.
-
-    Gibt bewusst eine StreamingHttpResponse und keine DRF-Response zurueck:
-    Response geht durch die Renderer- und Content-Negotiation-Pipeline von
-    DRF, die den kompletten Body auf einmal erwartet -- fuer einen
-    Generator, der nie endet, ist das nicht gedacht. APIView erlaubt aber
-    ausdruecklich, aus den Handlern auch eine gewoehnliche Django-Response
-    zurueckzugeben, genau fuer solche Faelle.
-    """
-
-    permission_classes = [IsAuthenticated, HasPlayerRole]
-
-    def get(self, request):
-        response = StreamingHttpResponse(
-            self._event_stream(), content_type="text/event-stream"
-        )
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"  # falls spaeter hinter nginx, wie bei radish/web
-        return response
-
-    @staticmethod
-    def _event_stream():
-        while True:
-            payload = json.dumps({"ts": time.time()})
-            yield f"event: heartbeat\ndata: {payload}\n\n"
-            time.sleep(1)
 
 
 class PlayerStateView(APIView):

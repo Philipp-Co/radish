@@ -18,20 +18,20 @@ export interface GameDetail {
 export interface GameServerEntry {
   id: number;
   name: string;
-  ip_address: string;
+  /** Muss keine IP sein -- siehe radish/backend/api/models.py, GameServer.address. */
+  address: string;
   port: number;
   is_occupied: boolean;
 }
 
 /**
  * Duenner Wrapper um die Matchmaking-Endpunkte unter api/client/ (siehe
- * radish/backend/api/client_views.py, urls.py). command/, stream/ und
- * state/ existieren serverseitig zwar schon (teils noch als Platzhalter,
- * siehe dortige Docstrings), sind hier aber bewusst noch nicht angebunden:
- * das eigentliche Ingame-Geschehen laeuft aktuell ueber den WASM-Client
- * direkt per WebRTC/Relay (siehe shared/game-canvas/GameCanvasComponent), nicht ueber diese
- * REST-Endpunkte -- das ist Aufgabe eines spaeteren Schritts, sobald das
- * Server-Protokoll dafuer steht.
+ * radish/backend/api/client_views.py, urls.py). stream/ und state/
+ * existieren serverseitig zwar schon (teils noch als Platzhalter, siehe
+ * dortige Docstrings), sind hier aber bewusst noch nicht angebunden. Das
+ * eigentliche Ingame-Geschehen (frueher: command/) laeuft inzwischen ueber
+ * den WebSocket (siehe core/game-socket.service.ts, radish/backend/api/
+ * consumers.py).
  */
 @Injectable({ providedIn: 'root' })
 export class ApiService {

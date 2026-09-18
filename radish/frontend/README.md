@@ -5,8 +5,10 @@ PKCE gegen den oeffentlichen Client `radish-web`), Uebersicht/Erstellen/
 Beitreten offener Spiele (`api/client/game*`, siehe
 `radish/backend/api/client_views.py`) und die eigentliche Spielansicht, die
 den bestehenden WASM-Client (`radish/client/`, gebaut nach `radish/web/`)
-in einem `<canvas>` einbindet und wie bisher per WebRTC/Relay mit dem
-Backend spricht (siehe `radish/relay/server.py`).
+in einem `<canvas>` einbindet. Die bisherige WebRTC/Relay-Verbindung zum
+Spielserver ist entfernt (siehe Root-`README.md`, Abschnitt "Datenfluss")
+-- eine Anbindung an den WebSocket des Backends
+(`radish/backend/api/consumers.py`) ist noch offen.
 
 Ersetzt das bisherige, sehr schlichte `radish/web/index.html` als
 UI-Schicht -- `radish/web/` bleibt als Build-Ziel des WASM-Clients bestehen
@@ -25,9 +27,7 @@ Django-Backend (`radish/backend/`, Service `backend` in
 
 - Node.js (LTS) + npm
 - Das uebrige `docker compose up` (Backend, Keycloak, ggf. game-server) muss
-  laufen, siehe Root-`README.md`. Der `relay`-Server (`radish/relay/`) muss
-  zusaetzlich separat gestartet werden -- er ist noch kein Teil von
-  `docker-compose.yaml`.
+  laufen, siehe Root-`README.md`.
 
 ## Lokale Entwicklung
 
@@ -85,10 +85,12 @@ Ergebnis mit hinein -- siehe dort und `radish/backend/web/views.py`).
   - `admin/` -- nur sichtbar/erreichbar mit der Keycloak-Realm-Rolle
     "Radish-Admin": listet die angemeldeten Game-Server auf
     (`api/admin/servers/`, pollt alle 5s wie `list/`).
-- `src/app/shared/game-canvas` -- `GameCanvasComponent`: Canvas, WASM-Client
-  (`client.js`/`client.wasm`) und WebRTC-Verbindung zum Relay -- eingebettet
-  sowohl in `pages/game` (`/game/:name`) als auch direkt in
-  `pages/games/current` (kein Seitenwechsel dafuer noetig).
+- `src/app/shared/game-canvas` -- `GameCanvasComponent`: Canvas und
+  WASM-Client (`client.js`/`client.wasm`), aktuell ohne Verbindung zu einem
+  Spielserver (die bisherige WebRTC/Relay-Verbindung ist entfernt, siehe
+  Root-`README.md`) -- eingebettet sowohl in `pages/game` (`/game/:name`)
+  als auch direkt in `pages/games/current` (kein Seitenwechsel dafuer
+  noetig).
 - `src/app/pages/game` -- eigenstaendige Seite fuer `/game/:name`: nur noch
   Titel/Zurueck-Link als Rahmen um `GameCanvasComponent`. Nach dem
   Erstellen/Beitreten (`create/`/`join/`) geht es nicht mehr hierher,

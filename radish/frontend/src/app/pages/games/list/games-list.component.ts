@@ -75,9 +75,9 @@ export class GamesListComponent implements OnInit, OnDestroy {
   private pollSubscription: Subscription | null = null;
 
   ngOnInit(): void {
-    // Kein Server-Push (StreamView in radish/backend/api/client_views.py ist
-    // noch ein Platzhalter, siehe dessen Docstring) -- deshalb einfaches
-    // Polling alle 5s statt eines Live-Updates.
+    // Kein Server-Push fuer die Spieleliste (anders als das aktuelle Spiel,
+    // siehe CurrentGameComponent/GameSocketService, die ueber den WebSocket
+    // laufen) -- deshalb einfaches Polling alle 5s statt eines Live-Updates.
     this.pollSubscription = interval(5000)
       .pipe(
         startWith(0),

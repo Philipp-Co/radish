@@ -1,44 +1,25 @@
 #!/bin/sh
-#
-# Migrationen vor dem eigentlichen Start (siehe DATABASES in settings.py --
-# Postgres via DJANGO_DB_HOST/... aus docker-compose.yaml).
-#
-# "depends_on" in docker-compose sorgt nur dafuer, dass der
-# Postgres-Container VOR diesem hier STARTET -- nicht, dass er beim Start
-# dieses Containers auch schon Verbindungen annimmt (Postgres braucht nach
-# dem Start noch etwas Zeit fuer initdb/Recovery). Deshalb hier aktiv auf
-# eine echte DB-Verbindung warten, bevor migrate versucht wird.
-#
-set -e
-
-python3 - <<'PYEOF'
-import os
-import sys
-import time
-
-import psycopg2
-
-host = os.environ.get("DJANGO_DB_HOST", "localhost")
-port = os.environ.get("DJANGO_DB_PORT", "5433")
-name = os.environ.get("DJANGO_DB_NAME", "radish")
-user = os.environ.get("DJANGO_DB_USER", "radish")
-password = os.environ.get("DJANGO_DB_PASSWORD", "radish")
-
-deadline = time.time() + 30
-last_error = None
-while time.time() < deadline:
-    try:
-        conn = psycopg2.connect(host=host, port=port, dbname=name, user=user, password=password)
-        conn.close()
-        sys.exit(0)
-    except psycopg2.OperationalError as exc:
-        last_error = exc
-        time.sleep(1)
-
-print(f"Postgres unter {host}:{port} nach 30s nicht erreichbar: {last_error}", file=sys.stderr)
-sys.exit(1)
-PYEOF
 
 python manage.py migrate --noinput
 
-exec python manage.py runserver 0.0.0.0:8000
+# Timeouts/Limits bewusst explizit statt Daphne-Default:
+# --websocket_timeout -1: WebSocket-Verbindungen sollen beliebig lange
+#   offen bleiben (die UDP-Bruecke in api/consumers.py.EchoConsumer laeuft,
+#   solange das Spiel laeuft -- keine feste Obergrenze gewuenscht).
+# --websocket_connect_timeout 30: 30s Zeit fuers Handshake (inkl. der
+#   Keycloak-Token-Pruefung in api/middleware.py).
+# --http-timeout 5 / --application-close-timeout 5: kurze Timeouts fuer
+#   HTTP-Requests bzw. zum sauberen Beenden nach einem Disconnect.
+# --websocket-max-message-size / --websocket-max-frame-size 1024: klein
+#   gehalten, um unauthentifizierten Speicherverbrauch durch grosse
+#   WebSocket-Nachrichten zu begrenzen.
+exec daphne \
+    -b 0.0.0.0 \
+    -p 8000 \
+    --websocket_timeout -1 \
+    --websocket_connect_timeout 30 \
+    --http-timeout 5 \
+    --application-close-timeout 5 \
+    --websocket-max-message-size 1024 \
+    --websocket-max-frame-size 1024 \
+    config.asgi:application

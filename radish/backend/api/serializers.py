@@ -6,7 +6,7 @@ from .models import Game, GameServer
 class GameServerSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameServer
-        fields = ["id", "name", "ip_address", "port", "is_occupied"]
+        fields = ["id", "name", "address", "port", "is_occupied"]
 
 
 class GameListSerializer(serializers.ModelSerializer):
@@ -57,9 +57,10 @@ class GameDetailSerializer(serializers.ModelSerializer):
     Antwort auf ein erstelltes/beigetretenes Spiel. Ohne password -- die
     muss der Client ohnehin schon kennen, es besteht kein Grund, sie in
     der Antwort zu wiederholen. Bewusst auch ohne den belegten Server:
-    IP und Port eines GameServer sollen ueber diese Endpunkte nicht nach
-    aussen dringen (die Verbindung zum Server laeuft ja ueber Django,
-    siehe client_views.CommandView -- der Client braucht sie dafuer nicht).
+    Adresse und Port eines GameServer sollen ueber diese Endpunkte nicht
+    nach aussen dringen (die UDP-Bruecke zum Server laeuft ueber den
+    WebSocket-Consumer, siehe consumers.EchoConsumer -- der Client braucht
+    die Serveradresse dafuer nicht).
 
     host/second_player sind Player-Fremdschluessel -- nach aussen aber
     weiterhin einfach deren Kennung (identifier), keine verschachtelten
@@ -77,14 +78,3 @@ class GameDetailSerializer(serializers.ModelSerializer):
         model = Game
         fields = ["id", "name", "host_identifier", "second_player_identifier"]
 
-
-class CommandSerializer(serializers.Serializer):
-    """
-    Eingabe fuer ein Kommando: nur noch die Nachricht selbst (Rohformat
-    noch offen -- aktuell ein einfacher Text, der 1:1 als UDP-Payload
-    rausgeht). Der sendende Spieler kommt nicht mehr vom Client (kein
-    player_identifier mehr), sondern aus request.user (siehe
-    client_views.CommandView).
-    """
-
-    message = serializers.CharField()

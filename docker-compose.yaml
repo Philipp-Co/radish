@@ -102,12 +102,27 @@ services:
       # unabhaengig vom Zucchini-Instanznamen (siehe
       # game-instance-entrypoint.sh).
       RADISH_GAME_SERVER_NAME: "game-instance-1"
-      # Bewusst keine automatische Ermittlung der eigenen Container-IP:
-      # die waere nur innerhalb dieses Docker-Netzes gueltig. Hier muss die
-      # tatsaechlich von aussen erreichbare Adresse dieser Instanz stehen --
-      # der Platzhalter unten passt nur fuer rein lokales docker compose up
-      # und muss fuer einen echten Host angepasst werden.
-      RADISH_GAME_SERVER_IP: "127.0.0.1"
+      # War hier lange 127.0.0.1, in der Annahme, das reiche fuer "rein
+      # lokales docker compose up". Das stimmt aber nicht: backend und
+      # game-server sind getrennte Container, 127.0.0.1 ist aus Sicht von
+      # backend dessen eigener Loopback, nicht der von game-server. Das
+      # Backend schickte UDP-Pakete deshalb an sich selbst statt an
+      # game-server und bekam dafuer "Connection refused" (siehe
+      # radish/backend/api/consumers.py, _UdpProtocol.error_received).
+      #
+      # Jetzt einfach der Docker-Compose-Servicename: ueber Docker-DNS aus
+      # dem backend-Container heraus aufloesbar, unabhaengig davon, welche
+      # IP game-server beim naechsten Neustart bekommt -- die feste IP im
+      # unten definierten "default"-Netz (siehe networks: am Dateiende)
+      # ist dafuer nicht mehr noetig, schadet als zusaetzlicher, stabiler
+      # Zugang aber auch nicht und bleibt deshalb stehen. Ging vorher
+      # nicht: GameServer.address (radish/backend/api/models.py) war ein
+      # GenericIPAddressField und haette den Servicenamen als ungueltig
+      # abgelehnt -- jetzt ein CharField, das jede Adresse annimmt (siehe
+      # dortigen Kommentar). Fuer einen echten (Nicht-Docker-)Host muss
+      # diese Adresse weiterhin auf die von aussen erreichbare Adresse
+      # dieser Instanz angepasst werden.
+      RADISH_GAME_SERVER_ADDRESS: "game-server"
       RADISH_GAME_SERVER_PORT: "9999"
     ports:
       - "8090:8000"
@@ -115,6 +130,9 @@ services:
     depends_on:
       - keycloak
       - backend
+    networks:
+      default:
+        ipv4_address: 172.28.1.10
     restart: unless-stopped
 
   keycloak-db:
@@ -165,3 +183,16 @@ services:
 volumes:
   keycloak-db-data:
   backend-postgres-data:
+
+# Eigenes Subnetz fuers Standardnetzwerk dieses Compose-Projekts, nur damit
+# game-server oben eine feste, fuer alle anderen Services erreichbare IP
+# bekommen kann (siehe RADISH_GAME_SERVER_ADDRESS) -- ohne das wuerde Docker dem
+# Service bei jedem Neustart irgendeine freie Adresse aus seinem eigenen
+# Standard-Bereich zuweisen. Andere Services bleiben unveraendert: sie
+# haengen weiterhin ohne eigenen networks-Eintrag an diesem "default"-Netz
+# und bekommen ihre Adresse wie bisher automatisch zugewiesen.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24

@@ -34,9 +34,9 @@ class ServerListTests(APITestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_list_returns_all_registered_servers(self):
-        GameServer.objects.create(name="server-a", ip_address="10.0.0.1", port=7000)
+        GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
         GameServer.objects.create(
-            name="server-b", ip_address="10.0.0.2", port=7001, is_occupied=True
+            name="server-b", address="10.0.0.2", port=7001, is_occupied=True
         )
 
         response = self.client.get("/api/servers/")
@@ -56,7 +56,7 @@ class ServerListTests(APITestCase):
         self.assertEqual(response.data["servers"], [])
 
     def test_get_by_name_returns_single_server(self):
-        GameServer.objects.create(name="server-a", ip_address="10.0.0.1", port=7000)
+        GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
 
         response = self.client.get("/api/servers/server-a/")
 
@@ -100,9 +100,9 @@ class AdminServerListTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_admin_role_can_list_servers(self):
-        GameServer.objects.create(name="server-a", ip_address="10.0.0.1", port=7000)
+        GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
         GameServer.objects.create(
-            name="server-b", ip_address="10.0.0.2", port=7001, is_occupied=True
+            name="server-b", address="10.0.0.2", port=7001, is_occupied=True
         )
         self.client.force_authenticate(user=self.admin_user, token=ADMIN_TOKEN)
 
@@ -125,7 +125,7 @@ class GameJoinTests(APITestCase):
         self.host_user = User.objects.create(username="host-user")
         self.host_player = Player.objects.create(user=self.host_user)
         self.server = GameServer.objects.create(
-            name="server-a", ip_address="10.0.0.1", port=7000, is_occupied=True
+            name="server-a", address="10.0.0.1", port=7000, is_occupied=True
         )
         self.game = Game.objects.create(
             name="own-game", password="secret", server=self.server, host=self.host_player
@@ -144,7 +144,7 @@ class GameJoinTests(APITestCase):
 
     def test_second_player_cannot_join_a_second_game(self):
         other_server = GameServer.objects.create(
-            name="server-b", ip_address="10.0.0.2", port=7001
+            name="server-b", address="10.0.0.2", port=7001
         )
         other_game = Game.objects.create(
             name="other-game", password="secret2", server=other_server, host=self.host_player

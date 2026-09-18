@@ -10,14 +10,23 @@ class GameServer(models.Model):
 
     "Server" allein waere hier mehrdeutig (siehe radish/game-server-core/ vs.
     zucchini_server) -- deshalb GameServer, auch wenn es hier erstmal nur um
-    die Ablage von IP, Port und Name geht, ohne weitere Logik.
+    die Ablage von Adresse, Port und Name geht, ohne weitere Logik.
     """
 
     # unique, weil das Entfernen eines Servers ueber genau diesen Namen
     # laeuft (siehe server_views.ServerUnregisterView) -- ohne Eindeutigkeit
     # waere nicht klar, welcher Eintrag beim Entfernen gemeint ist.
     name = models.CharField(max_length=255, unique=True)
-    ip_address = models.GenericIPAddressField()
+    # Bewusst CharField statt GenericIPAddressField: "address" muss keine
+    # rohe IP sein, sondern alles, worueber sich diese Instanz erreichen
+    # laesst -- z.B. auch ein Docker-Compose-Servicename wie "game-server"
+    # (siehe docker-compose.yaml, RADISH_GAME_SERVER_ADDRESS), den ein
+    # GenericIPAddressField als ungueltig abgelehnt haette. Die Aufloesung
+    # (Hostname -> IP) uebernimmt ohnehin schon asyncios
+    # create_datagram_endpoint() beim Verbindungsaufbau (siehe consumers.py,
+    # EchoConsumer.connect()), hier wird nichts vorab validiert oder
+    # aufgeloest.
+    address = models.CharField(max_length=255)
     port = models.PositiveIntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(65535)]
     )
@@ -29,7 +38,7 @@ class GameServer(models.Model):
     is_occupied = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.name} ({self.ip_address}:{self.port})"
+        return f"{self.name} ({self.address}:{self.port})"
 
 
 def _generate_player_identifier():

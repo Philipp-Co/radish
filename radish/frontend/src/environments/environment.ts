@@ -24,14 +24,4 @@ export const environment = {
     redirectUri: 'http://localhost:4200/callback',
     postLogoutRedirectUri: 'http://localhost:4200/',
   },
-  relay: {
-    // Signaling-Server aus radish/relay/server.py -- muss separat laufen
-    // (siehe README.md im Repo-Wurzelverzeichnis), ist noch nicht Teil von
-    // docker-compose.yaml. Bezieht sich auf genau eine Spielserver-Instanz
-    // (--udp-host/--udp-port beim Start von relay/server.py): welches
-    // Game man im Game-Browser erstellt/beitritt, aendert daran aktuell
-    // nichts, da GameDetailSerializer den zugewiesenen Server bewusst nicht
-    // nach aussen gibt (siehe radish/backend/api/serializers.py).
-    signalingUrl: 'ws://localhost:8765',
-  },
 };

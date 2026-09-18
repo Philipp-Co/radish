@@ -27,7 +27,7 @@ class ServerView(APIView):
 
     Wie beim Registrieren nur IsAuthenticated (keine HasPlayerRole): das
     ist fuer den technischen Server-Account gedacht (siehe permissions.py),
-    nicht fuer Spieler-Clients -- die Antwort enthaelt bewusst IP und
+    nicht fuer Spieler-Clients -- die Antwort enthaelt bewusst Adresse und
     Port, anders als z.B. GameDetailSerializer fuer Spiele.
     """
 
@@ -35,7 +35,7 @@ class ServerView(APIView):
 
     def get(self, request, name=None):
         """
-        Liefert registrierte Server, inklusive IP, Port und
+        Liefert registrierte Server, inklusive Adresse, Port und
         Belegungsstatus (is_occupied).
 
         Ohne "name" (Pfad "servers/") alle Server als Liste. Die Klasse
@@ -59,7 +59,7 @@ class ServerView(APIView):
 
     def post(self, request):
         """
-        Macht einen Server bekannt: legt ihn mit Name, IP und Port an.
+        Macht einen Server bekannt: legt ihn mit Name, Adresse und Port an.
 
         Der Name muss eindeutig sein (siehe models.GameServer) -- ein
         Server mit bereits vergebenem Namen liefert 400 statt eines

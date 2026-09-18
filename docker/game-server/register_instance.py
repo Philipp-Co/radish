@@ -76,14 +76,17 @@ def register():
     ausser bei 400 (Name schon vergeben), siehe unten.
     """
     name = _env("RADISH_GAME_SERVER_NAME")
-    ip_address = _env("RADISH_GAME_SERVER_IP")
+    # Muss keine IP sein -- radish/backend/api/models.py, GameServer.address
+    # ist ein CharField und nimmt z.B. auch einen Docker-Compose-
+    # Servicenamen wie "game-server" an (siehe docker-compose.yaml).
+    address = _env("RADISH_GAME_SERVER_ADDRESS")
     port = _env("RADISH_GAME_SERVER_PORT")
     backend_url = _env("RADISH_BACKEND_URL")
 
     token = _fetch_access_token()
     response = requests.post(
         f"{backend_url}/api/servers/",
-        json={"name": name, "ip_address": ip_address, "port": int(port)},
+        json={"name": name, "address": address, "port": int(port)},
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )

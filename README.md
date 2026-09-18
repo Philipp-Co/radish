@@ -3,38 +3,29 @@
 Isometrischer Spielclient in C, der als WebAssembly im Browser läuft und über
 eine WebRTC-Strecke mit einem UDP-Backend spricht.
 
-Das Repository fasst mehrere Teile zusammen: den Client selbst (`radish/`), einen
-Relay, der die Brücke zwischen Browser und UDP schlägt (`relay/`), sowie die
-Container-Definitionen, mit denen sich das Ganze lokal starten lässt (`docker/`).
+Das Repository fasst mehrere Teile zusammen: den Client selbst (`radish/`) sowie
+die Container-Definitionen, mit denen sich das Ganze lokal starten lässt
+(`docker/`).
 
 ## Datenfluss
 
-Der Browser kann kein UDP. Deshalb hängt zwischen Client und Backend ein Relay,
-das einen WebRTC-DataChannel auf UDP-Pakete abbildet:
+Der bisherige Relay, der einen WebRTC-DataChannel im Browser per UDP-Bruecke
+mit dem Spielserver verband, ist entfernt (siehe `relay/`, vormals `aiortc` +
+`websockets`). Die UDP-Bruecke soll stattdessen ueber das Django-Backend
+laufen: dessen WebSocket (`radish/backend/api/consumers.py`, `EchoConsumer`)
+oeffnet serverseitig bereits ein UDP-Socket zum `GameServer` des aktuellen
+Spiels und leitet Daten in beide Richtungen weiter. Der WASM-Client im
+Browser ist an diesen WebSocket aber noch nicht angebunden (siehe
+`radish/frontend/src/app/shared/game-canvas/game-canvas.component.ts`) --
+das ist ein noch offener, spaeterer Schritt.
 
-```
-Browser                        Relay                     Zucchini                 radish
-┌─────────────────┐            ┌──────────────┐          ┌──────────┐          ┌────────────┐
-│ index.html      │  WebSocket │              │          │          │          │            │
-│  client.js      │ ─────────► │  Signaling   │          │          │          │  Spiel-    │
-│  client.wasm    │  :8765     │              │          │          │Ringpuffer│  zustand   │
-│                 │            │              │          │          │◄────────►│            │
-│  SDL2 / Canvas  │  DataChan. │  UdpBridge   │   UDP    │  Server  │  (SHM)   │  server    │
-│                 │ ◄────────► │              │ ◄──────► │  :9999   │          │            │
-└─────────────────┘   WebRTC   └──────────────┘          └──────────┘          └────────────┘
-```
-
-Rechts hängt der Server dieses Projekts. Aus Sicht von Zucchini ist er ein
-lokaler Client: zwei Ringpuffer im Shared Memory plus eine FIFO zum Aufwecken,
-gekapselt in der Zucchini-Api. Es sind also zwei Prozesse — `zucchini_server`
-nimmt die UDP-Pakete an, `server` hält den Spielzustand. Das 8-Byte-Codefeld,
-das der Client jedem Paket voranstellt, wertet Zucchini selbst aus (Whitelist)
-und schneidet es ab; beim Server kommt nur die Nutzlast an.
-
-Der Container hat keine vom Browser aus erreichbare eigene IP. Der Relay schränkt
-die ICE-Portvergabe deshalb auf einen schmalen, 1:1 gemappten Bereich ein
-(40000–40019/udp) und schreibt die Kandidaten-IP im SDP-Answer auf
-`--external-ip` um. Details stehen in [docker-compose.yaml](docker-compose.yaml).
+Rechts vom Browser/WASM-Client haengt der Server dieses Projekts. Aus Sicht
+von Zucchini ist er ein lokaler Client: zwei Ringpuffer im Shared Memory
+plus eine FIFO zum Aufwecken, gekapselt in der Zucchini-Api. Es sind also
+zwei Prozesse — `zucchini_server` nimmt die UDP-Pakete an, `server` hält
+den Spielzustand. Das 8-Byte-Codefeld, das der Client jedem Paket
+voranstellt, wertet Zucchini selbst aus (Whitelist) und schneidet es ab;
+beim Server kommt nur die Nutzlast an.
 
 ## Verzeichnisse
 
@@ -50,7 +41,6 @@ die ICE-Portvergabe deshalb auf einen schmalen, 1:1 gemappten Bereich ein
 | `radish/frontend/` | Angular-Frontend: Login, Spielübersicht, Spielansicht, Adminbereich (Rolle "Radish-Admin", listet angemeldete Game-Server) — bindet `radish/web/` unter `/wasm/` ein — siehe [radish/frontend/README.md](radish/frontend/README.md) |
 | `radish/backend/` | Django-Matchmaking-API + Keycloak-Login (`api/`), liefert `radish/frontend/` und `radish/web/` unter `/` bzw. `/wasm/` mit aus (`web/`) |
 | `radish/assets/` | Schrift, wird per `--embed-file` ins Wasm-Modul eingebettet |
-| `relay/` | WebRTC-zu-UDP-Relay (Python, `aiortc` + `websockets`) |
 | `docker/` | Dockerfiles: Backend (Zucchini + Spielserver + Django, baut dabei `radish/frontend/` mit) |
 
 Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,
@@ -412,7 +402,6 @@ eigener nginx-Container mehr davor.
 | Dienst | Port | Aufgabe |
 |---|---|---|
 | `backend` | 8000 → 8000 | Django: liefert `radish/frontend/` unter `/`, `radish/web/` unter `/wasm/` und die Matchmaking-/Login-API unter `/api/` |
-| `relay` | 8765, 40000–40019/udp | Signaling und WebRTC-zu-UDP-Brücke — noch nicht in `docker-compose.yaml` enthalten, siehe `relay/server.py` |
 | `game-server` | 9999/udp | Zucchini an der UDP-Strecke und der Spielserver daran |
 
 Der Wasm-Client muss vor `docker compose up --build backend` gebaut sein —
@@ -435,9 +424,9 @@ Gebaut wird [aus dem Quelltext](docker/backend/Dockerfile), mit der Wurzel des
 Repositorys als Kontext: das Image braucht `radish/`, `jsmn/` und `zucchini/`
 zusammen. Was nicht in den Kontext gehört, steht in
 [.dockerignore](.dockerignore) — ohne die gingen die 2,1 GB aus `emsdk/` mit,
-auch bei `web` und `relay`.
+auch bei `web`.
 
-Nur das Backend, ohne Browser und Relay:
+Nur das Backend, ohne Browser:
 
 ```bash
 docker compose up --build backend

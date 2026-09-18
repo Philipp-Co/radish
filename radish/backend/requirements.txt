@@ -6,3 +6,10 @@ typing_extensions==4.16.0
 requests==2.32.3
 djangorestframework-simplejwt[crypto]==5.3.1
 psycopg2-binary==2.9.13
+
+# ASGI-Server + Channels fuer WebSocket-Unterstuetzung (siehe config/asgi.py,
+# api/routing.py, api/consumers.py, api/middleware.py). Reine Python-/
+# musllinux-Wheels, keine zusaetzlichen Alpine-Build-Abhaengigkeiten noetig
+# (im Gegensatz zu simplejwt[crypto] oben).
+channels==4.3.2
+daphne==4.2.3

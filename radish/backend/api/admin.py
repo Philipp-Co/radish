@@ -5,7 +5,7 @@ from .models import Game, GameServer, Player
 
 @admin.register(GameServer)
 class GameServerAdmin(admin.ModelAdmin):
-    list_display = ("name", "ip_address", "port", "is_occupied")
+    list_display = ("name", "address", "port", "is_occupied")
 
 
 @admin.register(Player)
