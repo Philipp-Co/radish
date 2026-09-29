@@ -31,19 +31,31 @@ int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game)
 
     // Das Raster ist vollstaendig besetzt -- es gibt kein "leeres" Tile, ein Feld
     // ohne Inhalt ist RAD_TILE_TYPE_VOID und zaehlt mit. Die Anzahl ist damit die
-    // Groesse des Rasters und keine Zaehlung.
-    return (int32_t)(RAD_WORLD_WIDTH * RAD_WORLD_HEIGHT);
+    // Groesse der Welt und keine Zaehlung.
+    return game->world.width * game->world.height;
+}
+
+int32_t RAD_GameWorldWidth(const RAD_Game_t *game)
+{
+    return (game == NULL) ? 0 : game->world.width;
+}
+
+int32_t RAD_GameWorldHeight(const RAD_Game_t *game)
+{
+    return (game == NULL) ? 0 : game->world.height;
 }
 
 bool RAD_GameTileAt(const RAD_Game_t *game, int16_t x, int16_t y, RAD_Tile_t *output)
 {
-    assert((x >= 0) && (x < RAD_WORLD_WIDTH));
-    assert((y >= 0) && (y < RAD_WORLD_HEIGHT));
-
     if((game == NULL) || (output == NULL))
     {
         return false;
     }
+
+    // Erst nach dem Zeiger: die Grenze steht in der Welt, nicht mehr in den
+    // Konstanten.
+    assert((x >= 0) && (x < game->world.width));
+    assert((y >= 0) && (y < game->world.height));
 
     // Zeilenweise, Zeile 0 zuerst -- dieselbe Reihenfolge wie im Serializer.
     *output = game->world.tiles[y][x];

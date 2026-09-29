@@ -44,28 +44,12 @@ RAD_SerializeResult_t RAD_DeserializeGameFromJson(RAD_Game_t *game, const char *
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
 
-    // Erster Lauf ohne Token-Array: jsmn zaehlt nur, wie viele es werden. So
-    // wird genau so viel belegt wie noetig, ohne feste Obergrenze.
-    jsmn_parser parser;
-    jsmn_init(&parser);
-    int number_of_tokens = jsmn_parse(&parser, json, length, NULL, 0);
-    if(number_of_tokens < 1)
+    jsmntok_t *tokens = NULL;
+    int32_t parsed = 0;
+    RAD_SerializeResult_t tokenized = RAD_JsonTokenize(json, length, &tokens, &parsed);
+    if(tokenized != RAD_SERIALIZE_OK)
     {
-        return RAD_SERIALIZE_ERROR_SYNTAX;
-    }
-
-    jsmntok_t *tokens = malloc((size_t)number_of_tokens * sizeof(jsmntok_t));
-    if(tokens == NULL)
-    {
-        return RAD_SERIALIZE_ERROR_OUT_OF_MEMORY;
-    }
-
-    jsmn_init(&parser);
-    int parsed = jsmn_parse(&parser, json, length, tokens, (unsigned int)number_of_tokens);
-    if(parsed < 1)
-    {
-        free(tokens);
-        return RAD_SERIALIZE_ERROR_SYNTAX;
+        return tokenized;
     }
 
     // In ein eigenes Spiel lesen und erst bei Erfolg uebernehmen, damit ein
@@ -93,8 +77,7 @@ RAD_SerializeResult_t RAD_DeserializeGameFromJson(RAD_Game_t *game, const char *
     // wieder mitspielt.
     //
     // Ein RAD_InitWorld() steht hier bewusst nicht: RAD_DeserializeWorld()
-    // initialisiert die Welt selbst, bevor es sie fuellt. Ein zweiter Durchlauf
-    // wuerde nur ein zweites Mal 64 Tile-Ereignisse veroeffentlichen.
+    // setzt die Welt selbst zurueck, bevor es sie fuellt -- und zwar still.
     *scratch = *game;
     scratch->world.number_of_entities = 0;
 
@@ -104,12 +87,56 @@ RAD_SerializeResult_t RAD_DeserializeGameFromJson(RAD_Game_t *game, const char *
     RAD_SerializeResult_t result = RAD_DeserializeRoot(&reader, scratch);
     if(result == RAD_SERIALIZE_OK)
     {
+        // Die Tile-Ereignisse erst nach der Uebernahme und gegen den alten Stand:
+        // ein misslungener Ladevorgang meldet nichts, ein gelungener genau die
+        // Felder, die sich geaendert haben -- mit Zeigern in das Spiel und nicht
+        // in den Zwischenstand, der gleich freigegeben wird.
+        RAD_Tile_t previous[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
+        memcpy(previous, game->world.tiles, sizeof(previous));
+        const int32_t previous_width = game->world.width;
+        const int32_t previous_height = game->world.height;
+
         *game = *scratch;
+
+        RAD_WorldPublishTileChanges(&game->world, previous, previous_width, previous_height);
     }
 
     free(scratch);
     free(tokens);
     return result;
+}
+
+RAD_SerializeResult_t RAD_JsonTokenize(const char *json, size_t length, jsmntok_t **tokens, int32_t *number_of_tokens)
+{
+    *tokens = NULL;
+    *number_of_tokens = 0;
+
+    // Erster Lauf ohne Token-Array: jsmn zaehlt nur, wie viele es werden.
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    int counted = jsmn_parse(&parser, json, length, NULL, 0);
+    if(counted < 1)
+    {
+        return RAD_SERIALIZE_ERROR_SYNTAX;
+    }
+
+    jsmntok_t *allocated = malloc((size_t)counted * sizeof(jsmntok_t));
+    if(allocated == NULL)
+    {
+        return RAD_SERIALIZE_ERROR_OUT_OF_MEMORY;
+    }
+
+    jsmn_init(&parser);
+    int parsed = jsmn_parse(&parser, json, length, allocated, (unsigned int)counted);
+    if(parsed < 1)
+    {
+        free(allocated);
+        return RAD_SERIALIZE_ERROR_SYNTAX;
+    }
+
+    *tokens = allocated;
+    *number_of_tokens = parsed;
+    return RAD_SERIALIZE_OK;
 }
 
 const char* RAD_SerializeResultText(RAD_SerializeResult_t result)
@@ -129,6 +156,7 @@ const char* RAD_SerializeResultText(RAD_SerializeResult_t result)
         case RAD_SERIALIZE_ERROR_ENTITY_POSITION:     return "Entitaet ausserhalb der Welt";
         case RAD_SERIALIZE_ERROR_TILE_OCCUPIED:       return "zwei Entitaeten auf einem Tile";
         case RAD_SERIALIZE_ERROR_INCONSISTENT:        return "Datei widerspricht sich selbst";
+        case RAD_SERIALIZE_ERROR_WORLD_OCCUPIED:      return "auf der Welt stehen schon Figuren";
         case RAD_SERIALIZE_ERROR_OUT_OF_MEMORY:       return "kein Speicher";
         default:                                      return "unbekannter Fehler";
     }
@@ -178,7 +206,7 @@ static RAD_SerializeResult_t RAD_DeserializeRoot(RAD_JsonReader_t *reader, RAD_G
             {
                 return RAD_SERIALIZE_ERROR_SCHEMA;
             }
-            if(version != RAD_SAVE_FORMAT_VERSION)
+            if(version < RAD_SAVE_FORMAT_VERSION_MIN || version > RAD_SAVE_FORMAT_VERSION)
             {
                 return RAD_SERIALIZE_ERROR_VERSION;
             }

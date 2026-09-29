@@ -74,12 +74,21 @@ struct RAD_Tile
 
 ///
 /// Wie viele Tiles es gibt. Das Raster ist vollstaendig besetzt -- ein Feld ohne
-/// Inhalt ist RAD_TILE_TYPE_VOID und zaehlt mit --, die Anzahl ist also
-/// unveraenderlich und zugleich der einzige Weg, von aussen die Groesse der Welt
-/// zu erfahren: RAD_WORLD_WIDTH und RAD_WORLD_HEIGHT liegen privat
-/// (game_definitions.h). 0 fuer ein NULL-Spiel.
+/// Inhalt ist RAD_TILE_TYPE_VOID und zaehlt mit --, die Anzahl ist also Breite
+/// mal Hoehe der Welt. Sie aendert sich nur, wenn eine Welt geladen wird
+/// (RAD_LoadWorldFromFile, RAD_LoadGameFromFile). 0 fuer ein NULL-Spiel.
 ///
 int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game);
+
+///
+/// Breite und Hoehe der Welt in Feldern. Sie stehen in der Welt selbst und kommen
+/// aus der geladenen Weltdefinition; RAD_WORLD_WIDTH und RAD_WORLD_HEIGHT
+/// (game_definitions.h) sind nur die Obergrenze und liegen privat. Wer die
+/// Abmessungen von aussen braucht -- etwa um sie einem Client zu melden --, fragt
+/// hier. 0 fuer ein NULL-Spiel.
+///
+int32_t RAD_GameWorldWidth(const RAD_Game_t *game);
+int32_t RAD_GameWorldHeight(const RAD_Game_t *game);
 
 ///
 /// Holt das Tile an dieser Stelle, gefragt wird nach x und y -- denselben zwei
@@ -92,10 +101,9 @@ int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game);
 /// entsteht.
 ///
 /// Das ist die punktuelle Frage -- ein Feld, nach dem der Aufrufer schon einen
-/// Grund hat zu fragen, etwa das angeklickte. Die ganze Karte kommt nicht so
-/// heraus: RAD_WORLD_WIDTH und RAD_WORLD_HEIGHT liegen privat
-/// (game_definitions.h), von aussen ist ueber das Raster also gar nicht zu
-/// laufen. Wer alles sehen will, abonniert die Tile-Ereignisse
+/// Grund hat zu fragen, etwa das angeklickte. Ueber das ganze Raster zu laufen
+/// ginge mit RAD_GameWorldWidth und RAD_GameWorldHeight, ist aber nicht der
+/// gedachte Weg: wer alles sehen will, abonniert die Tile-Ereignisse
 /// (event_manager.h) -- der Aufbau der Welt meldet jedes Feld einmal, und jede
 /// spaetere Aenderung meldet sich von selbst.
 ///

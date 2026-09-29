@@ -33,6 +33,20 @@ void test_tile_ohne_spiel_ist_kein_absturz(void);
 void test_tile_ereignisse_kommen_beim_abonnenten_an(void);
 void test_tile_ohne_aenderung_kommt_kein_ereignis_an(void);
 
+void test_laden_meldet_nur_die_geaenderten_tiles(void);
+void test_misslungenes_laden_meldet_nichts(void);
+void test_laden_behaelt_hoehen_und_groesse(void);
+void test_laden_liest_version_1_ohne_hoehen(void);
+
+void test_weltdefinition_baut_gelaende_und_hoehen_auf(void);
+void test_weltdefinition_ohne_hoehen_ist_flach(void);
+void test_weltdefinition_reihenfolge_der_schluessel_ist_egal(void);
+void test_weltdefinition_in_voller_groesse(void);
+void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void);
+void test_weltdefinition_mit_figur_im_spiel_wird_abgelehnt(void);
+void test_weltdefinition_meldet_geaenderte_und_weggefallene_felder(void);
+void test_weltdefinition_aus_datei(void);
+
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -63,6 +77,20 @@ int main(void)
     RUN_TEST(test_tile_ohne_spiel_ist_kein_absturz);
     RUN_TEST(test_tile_ereignisse_kommen_beim_abonnenten_an);
     RUN_TEST(test_tile_ohne_aenderung_kommt_kein_ereignis_an);
+
+    RUN_TEST(test_laden_meldet_nur_die_geaenderten_tiles);
+    RUN_TEST(test_misslungenes_laden_meldet_nichts);
+    RUN_TEST(test_laden_behaelt_hoehen_und_groesse);
+    RUN_TEST(test_laden_liest_version_1_ohne_hoehen);
+
+    RUN_TEST(test_weltdefinition_baut_gelaende_und_hoehen_auf);
+    RUN_TEST(test_weltdefinition_ohne_hoehen_ist_flach);
+    RUN_TEST(test_weltdefinition_reihenfolge_der_schluessel_ist_egal);
+    RUN_TEST(test_weltdefinition_in_voller_groesse);
+    RUN_TEST(test_weltdefinition_lehnt_fehlerhafte_dateien_ab);
+    RUN_TEST(test_weltdefinition_mit_figur_im_spiel_wird_abgelehnt);
+    RUN_TEST(test_weltdefinition_meldet_geaenderte_und_weggefallene_felder);
+    RUN_TEST(test_weltdefinition_aus_datei);
 
     return UNITY_END();
 }

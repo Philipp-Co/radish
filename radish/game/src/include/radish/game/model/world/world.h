@@ -11,7 +11,16 @@
 
 struct RAD_World
 {
+    ///
+    /// Das Raster, in der groessten Form, die das Programm kennt. Zur Welt gehoert
+    /// davon nur das Rechteck width x height ab (0,0); was daneben liegt, ist
+    /// Speicher und kein Feld. Die Groesse steht in der Welt und nicht in den
+    /// Konstanten, weil sie aus der Weltdefinition kommt (world_definition.h) --
+    /// RAD_WORLD_WIDTH und RAD_WORLD_HEIGHT sind nur die Obergrenze.
+    ///
     RAD_Tile_t tiles[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
+    int32_t width;
+    int32_t height;
 
     ///
     /// Pool mit Luecken: freie Slots tragen id == RAD_ENTITY_NONE. Der
@@ -26,8 +35,31 @@ struct RAD_World
     RAD_EventManager_t *event_manager;
 };
 
+///
+/// Eine Welt in der groessten Form (RAD_WORLD_WIDTH x RAD_WORLD_HEIGHT). Solange
+/// keine Weltdefinition geladen ist, ist das die Welt des Spiels.
+///
 RAD_World_t RAD_CreateWorld(RAD_EventManager_t *event_manager);
+
+///
+/// Bringt die Welt in den Grundzustand: jedes Feld Boden auf Hoehe 0, keine Figur.
+///
+/// RAD_InitWorld meldet danach jedes Feld als added -- der Aufbau einer Welt,
+/// die es vorher nicht gab. RAD_ResetWorld tut dasselbe still. Es ist fuer den
+/// Fall, in dem der Grundzustand nur ein Zwischenschritt ist, wie beim Laden
+/// (world_serializer.c): dort wuerde sonst jedes Feld als Boden gemeldet, der
+/// gleich darauf ueberschrieben wird. Wer still zuruecksetzt, meldet danach
+/// selbst, was sich geaendert hat (RAD_WorldPublishTileChanges).
+///
+/// Beide behalten die Groesse der Welt. RAD_ResetWorldToSize setzt genauso still
+/// zurueck und gibt der Welt dabei eine neue; sie liefert false und schreibt
+/// nichts, wenn die Groesse nicht in 1..RAD_WORLD_WIDTH bzw. 1..RAD_WORLD_HEIGHT
+/// liegt. Der Speicher ausserhalb der neuen Groesse wird VOID, damit dort nichts
+/// Altes stehenbleibt, das nach Gelaende aussieht.
+///
 void RAD_InitWorld(RAD_World_t *world);
+void RAD_ResetWorld(RAD_World_t *world);
+bool RAD_ResetWorldToSize(RAD_World_t *world, int32_t width, int32_t height);
 
 bool RAD_WorldInBounds(const RAD_World_t *world, int32_t x, int32_t y);
 RAD_Tile_t* RAD_WorldTileAt(RAD_World_t *world, int32_t x, int32_t y);
@@ -43,7 +75,7 @@ RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y);
 /// "Hinzufuegen" und "Entfernen" heisst hier also: Gelaende auf ein Feld stellen
 /// und es davon wegnehmen. Kein Gelaende ist RAD_TILE_TYPE_VOID, ein Zustand des
 /// Feldes und keine fehlende Angabe -- genauso sieht es das Kommando dazu
-/// (control/command/create_tile.h).
+/// (RAD_CommandCreateTile_t, control/command/command.h).
 ///
 /// **Das Ereignis folgt dem Uebergang, nicht dem Namen der Funktion:**
 ///
@@ -77,6 +109,28 @@ RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y);
 ///
 bool RAD_WorldAddTile(RAD_World_t *world, int32_t x, int32_t y, int32_t z, RAD_TileType_t type);
 bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y);
+
+///
+/// Meldet fuer jedes Feld den Uebergang von "previous" zum jetzigen Stand, nach
+/// derselben Tabelle wie oben. Fuer eine Welt, die als Ganzes ersetzt wurde
+/// (RAD_DeserializeGameFromJson): ein Abonnent kennt den alten Stand und erfaehrt
+/// so genau die Felder, die anders sind -- und die Zeiger in den Ereignissen
+/// zeigen in diese Welt und nicht in einen Zwischenpuffer.
+///
+/// **Die Groesse darf sich dabei geaendert haben.** previous_width und
+/// previous_height sind die Groesse, zu der "previous" gehoert. Verglichen wird
+/// ueber beide Rechtecke, und ein Feld ausserhalb einer Welt zaehlt als VOID --
+/// es hat kein Gelaende, so wie ein leeres Feld. Damit bleibt es bei der Tabelle:
+/// schrumpft die Welt, sind die wegfallenden Felder removed, waechst sie, sind die
+/// neuen added. Das Ereignis fuer ein weggefallenes Feld zeigt in den Speicher
+/// ausserhalb der Welt; dort steht es mit seinem x und y und dem Typ VOID.
+///
+void RAD_WorldPublishTileChanges(
+    RAD_World_t *world,
+    const RAD_Tile_t previous[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
+    int32_t previous_width,
+    int32_t previous_height
+);
 
 ///
 /// Die einzigen drei Funktionen, die eine Entitaetsposition schreiben duerfen.

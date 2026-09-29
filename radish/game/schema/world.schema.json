@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radish.local/schema/world.schema.json",
+  "title": "radish Weltdefinition",
+  "description": "Beschreibt eine Spielwelt, bevor gespielt wird: Gelaende und Hoehen, sonst nichts. Wo Figuren stehen, gehoert nicht zur Welt und nicht in diese Datei -- das entscheidet sich im Spiel. Die Spielinstanz liest die Datei genau einmal, baut daraus RAD_World_t auf und verwirft sie -- es ist kein Spielstand. Breite und Hoehe stehen nicht in der Datei, sie ergeben sich aus 'rows'. Die Obergrenzen (RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT) stehen bewusst nicht hier: sie sind eine Eigenschaft des Programms und nicht des Formats, und der Loader weist eine zu grosse Welt ab. Was dieses Schema nicht ausdruecken kann, prueft ebenfalls der Loader -- es steht jeweils in der description des Feldes.",
+  "type": "object",
+  "required": ["version", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "Verweis auf dieses Schema, damit Editoren beim Bearbeiten pruefen. Der Loader ueberspringt ihn.",
+      "type": "string"
+    },
+    "version": {
+      "description": "Version des Formats. Aendert sich nur, wenn eine alte Datei nicht mehr so gelesen werden kann wie bisher.",
+      "const": 1
+    },
+    "name": {
+      "description": "Anzeigename der Welt.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "rows": {
+      "description": "Das Gelaende, eine Zeile je String, von oben (y = 0) nach unten; innerhalb der Zeile ist das Zeichen an Stelle x das Feld (x, y). Die Hoehe der Welt ist die Anzahl der Zeilen, die Breite die Laenge einer Zeile. Loader: alle Zeilen muessen gleich lang sein.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/terrainRow" }
+    },
+    "heights": {
+      "description": "Optional: die Hoehe z je Feld, als Ziffer 0 bis 9, im selben Raster wie 'rows'. Fehlt das Feld, steht alles auf z = 0. Loader: gleich viele Zeilen wie 'rows' und jede so lang wie die Zeile dort. Auf einem Feld ohne Gelaende ('_') muss 0 stehen -- was nicht da ist, hat keine Hoehe.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/heightRow" }
+    }
+  },
+  "$defs": {
+    "terrainRow": {
+      "description": "Eine Zeile Gelaende. '_' kein Gelaende (RAD_TILE_TYPE_VOID), '.' Boden (RAD_TILE_TYPE_GROUND), '~' Wasser (RAD_TILE_TYPE_WATER). Ein neuer Tile-Typ braucht hier ein neues Zeichen.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[_.~]+$"
+    },
+    "heightRow": {
+      "description": "Eine Zeile Hoehen, eine Ziffer je Feld.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+$"
+    }
+  }
+}

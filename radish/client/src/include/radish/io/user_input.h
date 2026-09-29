@@ -1,11 +1,10 @@
 #ifndef __RAD_IO_USER_INPUT_H__
 #define __RAD_IO_USER_INPUT_H__
 
-#include "radish/game/model/entity/entity.h"
+#include <stdbool.h>
 #include <stdint.h>
-#include <radish/game/game.h>
-#include <radish/game/model/tile/tile.h>
-#include <radish/game/control/command/command.h>
+#include <radish/io/net_types.h>
+#include <radish/model/world.h>
 
 //
 // Click in a tile:
@@ -60,7 +59,7 @@ typedef struct
 typedef struct
 {
     void *user_data;    
-    const RAD_Entity_t *entity;
+    RAD_NetEntityId_t entity_id;
     int16_t x;
     int16_t y;
 } RAD_IoUserinputOnMoveActionStartedData_t;
@@ -136,12 +135,12 @@ typedef void (*RAD_IoUserinputOnShootActionRequested_t)();
 typedef void (*RAD_IoUserinputOnShootActionResponseReceived_t)();
 
 
-typedef bool (*RAD_IoUserinputSendCommandCallback_t)(const RAD_Command_t *command);
+typedef bool (*RAD_IoUserinputSendCommandCallback_t)(const RAD_NetMoveRequest_t *request);
 
 
 typedef struct
 {
-    RAD_EntityPath_t path;
+    RAD_NetPath_t path;
 } RAD_IoUserinputStateMove_t;
 
 typedef struct
@@ -151,16 +150,21 @@ typedef struct
         RAD_IoUserinputStateMove_t move;
     } data;
     
-    RAD_Tile_t selected_tile;
+    RAD_NetTile_t selected_tile;
 
     RAD_IoUserInputState_t state; 
-    RAD_Game_t *game;
+    const RAD_ClientWorld_t *world;
+
+    ///
+    /// Absender und naechste Sequenznummer der Kommandos, die hier entstehen.
+    ///
+    RAD_NetUserId_t user;
+    RAD_NetSequence_t next_sequence;
 
     RAD_IoUserinputSendCommandCallback_t send_command;
     struct 
     {
-        uint32_t sequence;
-        RAD_CommandType_t type;
+        RAD_NetSequence_t sequence;
     } command_info;
 
     struct
@@ -176,11 +180,10 @@ void RAD_IoUserinputSubscribeToMoveActionEvents(
     RAD_IoUserinputMoveActionCallbacks_t callbacks
 );
 
-RAD_IoUserInput_t RAD_CreateIoUserInputState(RAD_Game_t *game, RAD_IoUserinputSendCommandCallback_t send_callback);
+RAD_IoUserInput_t RAD_CreateIoUserInputState(const RAD_ClientWorld_t *world, RAD_NetUserId_t user, RAD_IoUserinputSendCommandCallback_t send_callback);
 void RAD_DestroyIoUserInput(RAD_IoUserInputState_t *state);
 
 void RAD_IoUserInputOnLeftClick(RAD_IoUserInput_t *state, int32_t x, int32_t y);
-void RAD_IoUserInputOnRightClick(RAD_IoUserInput_t *state, int32_t x, int32_t y);
-void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, RAD_CommandResponse_t *response);
+void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, const RAD_NetCommandResponse_t *response);
 
 #endif

@@ -16,8 +16,9 @@
 ///       "entities": [ { "id": 0, ... }, ... ]
 ///     }
 ///
-///   width,   Weltgroesse. Muss RAD_WORLD_WIDTH bzw. RAD_WORLD_HEIGHT
-///   height   entsprechen, sonst RAD_SERIALIZE_ERROR_SIZE_MISMATCH.
+///   width,   Weltgroesse. Muss in 1..RAD_WORLD_WIDTH bzw. 1..RAD_WORLD_HEIGHT
+///   height   liegen, sonst RAD_SERIALIZE_ERROR_SIZE_MISMATCH -- die Konstanten
+///            sind die Obergrenze, die Welt selbst kann kleiner sein.
 ///   tiles    "height" Zeilen zu je "width" Tile-Objekten, Zeile 0 zuerst --
 ///            also in der Reihenfolge von world->tiles[y][x]. Siehe
 ///            tile_serializer.h.

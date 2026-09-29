@@ -1,1 +1,5 @@
-rad_add_game_test(game main.c test_game.c test_move_command.c test_view.c test_tile.c)
+rad_add_game_test(game main.c test_game.c test_move_command.c test_view.c test_tile.c test_load.c test_world_definition.c)
+
+# Die Welt aus dem Repository, fuer den Test, der wirklich eine Datei liest
+# (test_world_definition.c).
+target_compile_definitions(test_game PRIVATE RAD_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../../assets")

@@ -70,6 +70,11 @@ int32_t RAD_GameNumberOfPlayers(const RAD_Game_t *game)
     return RAD_TurnNumberOfUsers(&game->turn);
 }
 
+RAD_UserId_t RAD_GamePlayerAt(const RAD_Game_t *game, int32_t index)
+{
+    return RAD_TurnUserAt(&game->turn, index);
+}
+
 RAD_UserId_t RAD_GameCurrentUser(const RAD_Game_t *game)
 {
     return RAD_TurnCurrentUser(&game->turn);

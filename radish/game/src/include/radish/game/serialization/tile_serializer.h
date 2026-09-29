@@ -10,11 +10,13 @@
 ///
 /// Schema -- ein Tile ist ein JSON-Objekt:
 ///
-///     { "x": 3, "y": 5, "type": "water", "entity": 7 }
+///     { "x": 3, "y": 5, "z": 1, "type": "water", "entity": 7 }
 ///
 ///   x, y     Position im Raster. Wird beim Lesen gegen die Stelle geprueft, an
 ///            der das Tile im "tiles"-Raster steht; weichen sie ab, ist die
 ///            Datei widerspruechlich (RAD_SERIALIZE_ERROR_INCONSISTENT).
+///   z        Hoehe des Feldes. Seit Version 2 des Spielstands; fehlt sie, wie
+///            in Version 1, ist sie 0.
 ///   type     "void", "ground" oder "water" -- die Namen aus
 ///            RAD_TileTypeToString, nicht die Zahlwerte des enum. Ein spaeter
 ///            in der Mitte eingefuegter Tile-Typ deutet gespeicherte Staende so

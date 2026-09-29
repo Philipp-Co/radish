@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <string.h>
 #include <radish/game/model/world/world.h>
 
 ///
@@ -244,6 +245,173 @@ void test_world_tile_entfernen_ist_idempotent(void)
     TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 7, 7, 0, RAD_TILE_TYPE_VOID));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
     TEST_ASSERT_EQUAL_INT(0, gezaehlt.added);
+
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Der Aufbau selbst: RAD_InitWorld meldet jedes Feld genau einmal als added --
+/// wer vorher abonniert, kennt danach die ganze Welt. RAD_ResetWorld meldet nichts.
+///
+void test_world_init_meldet_jedes_feld_einmal(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_TileEreignisse_t gezaehlt;
+    abonniere_tile_ereignisse(events, &gezaehlt);
+
+    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_InitWorld(&world);
+
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH * RAD_WORLD_HEIGHT, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.removed);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.changed);
+
+    RAD_ResetWorld(&world);
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH * RAD_WORLD_HEIGHT, gezaehlt.added);
+
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// RAD_WorldPublishTileChanges meldet genau die Felder, die sich gegenueber dem
+/// alten Stand geaendert haben, nach derselben Tabelle wie RAD_WorldAddTile.
+///
+void test_world_aenderungen_gegen_alten_stand(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_InitWorld(&world);
+    TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 1, 0));
+    TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 3, 0));
+
+    RAD_Tile_t vorher[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
+    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    {
+        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        {
+            vorher[y][x] = world.tiles[y][x];
+        }
+    }
+
+    RAD_TileEreignisse_t gezaehlt;
+    abonniere_tile_ereignisse(events, &gezaehlt);
+
+    // Still umschreiben, wie es das Laden tut -- ohne die Ereignisse der
+    // Schreibfunktionen.
+    world.tiles[0][0].type = RAD_TILE_TYPE_VOID;    // X -> VOID
+    world.tiles[0][1].type = RAD_TILE_TYPE_GROUND;  // VOID -> X
+    world.tiles[0][2].type = RAD_TILE_TYPE_WATER;   // X -> Y
+    world.tiles[1][0].z = 2;                        // X mit anderem z
+    world.tiles[0][3].z = 5;                        // VOID bleibt VOID: keines
+
+    RAD_WorldPublishTileChanges(&world, vorher, world.width, world.height);
+
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
+    TEST_ASSERT_EQUAL_INT(2, gezaehlt.changed);
+
+    // Und ein zweiter Lauf gegen den jetzigen Stand meldet nichts mehr.
+    RAD_WorldPublishTileChanges(&world, world.tiles, world.width, world.height);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
+    TEST_ASSERT_EQUAL_INT(2, gezaehlt.changed);
+
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Die Groesse der Welt (RAD_ResetWorldToSize). Sie steht in der Welt, und alles,
+/// was nach "in der Welt" fragt, fragt nach ihr und nicht nach den Konstanten.
+///
+void test_world_groesse_laesst_sich_setzen(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_InitWorld(&world);
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, world.width);
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_HEIGHT, world.height);
+
+    TEST_ASSERT_TRUE(RAD_ResetWorldToSize(&world, 3, 2));
+    TEST_ASSERT_EQUAL_INT(3, world.width);
+    TEST_ASSERT_EQUAL_INT(2, world.height);
+
+    TEST_ASSERT_TRUE(RAD_WorldInBounds(&world, 2, 1));
+    TEST_ASSERT_FALSE(RAD_WorldInBounds(&world, 3, 1));
+    TEST_ASSERT_FALSE(RAD_WorldInBounds(&world, 2, 2));
+    TEST_ASSERT_NULL(RAD_WorldTileAt(&world, 3, 0));
+
+    // Neben der Welt ist Speicher, kein Gelaende -- und eine Figur kommt dort
+    // nicht hin.
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, world.tiles[1][2].type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, world.tiles[1][3].type);
+    TEST_ASSERT_EQUAL_INT(RAD_ENTITY_NONE, RAD_WorldSpawnEntity(&world, RAD_ENTITY_TYPE_PLAYER, 3, 0));
+    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, 2, 0, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
+
+    RAD_DestroyEventManager(&events);
+}
+
+void test_world_ungueltige_groesse_aendert_nichts(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_InitWorld(&world);
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 1, RAD_TILE_TYPE_WATER));
+
+    TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, 0, 4));
+    TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, 4, 0));
+    TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, RAD_WORLD_WIDTH + 1, 4));
+    TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, 4, RAD_WORLD_HEIGHT + 1));
+
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, world.width);
+    TEST_ASSERT_EQUAL_INT(RAD_WORLD_HEIGHT, world.height);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, world.tiles[0][0].type);
+
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// RAD_WorldPublishTileChanges ueber eine andere Groesse hinweg: ausserhalb einer
+/// Welt ist VOID, und damit gilt dieselbe Tabelle -- beim Schrumpfen removed,
+/// beim Wachsen added. Ein Feld, das es in beiden nicht gibt, meldet nichts.
+///
+void test_world_aenderungen_ueber_eine_neue_groesse(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_World_t world = RAD_CreateWorld(events);
+    TEST_ASSERT_TRUE(RAD_ResetWorldToSize(&world, 4, 4));
+
+    RAD_Tile_t vorher[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
+    memcpy(vorher, world.tiles, sizeof(vorher));
+
+    RAD_TileEreignisse_t gezaehlt;
+    abonniere_tile_ereignisse(events, &gezaehlt);
+
+    // 4 x 4 -> 2 x 2: zwoelf Felder fallen weg, vier bleiben unveraendert.
+    TEST_ASSERT_TRUE(RAD_ResetWorldToSize(&world, 2, 2));
+    RAD_WorldPublishTileChanges(&world, vorher, 4, 4);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(12, gezaehlt.removed);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.changed);
+
+    // 2 x 2 -> 3 x 1: (2,0) kommt dazu, (0,1) und (1,1) fallen weg.
+    memcpy(vorher, world.tiles, sizeof(vorher));
+    gezaehlt = (RAD_TileEreignisse_t){ .added = 0, .removed = 0, .changed = 0 };
+    TEST_ASSERT_TRUE(RAD_ResetWorldToSize(&world, 3, 1));
+    RAD_WorldPublishTileChanges(&world, vorher, 2, 2);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(2, gezaehlt.removed);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.changed);
 
     RAD_DestroyEventManager(&events);
 }

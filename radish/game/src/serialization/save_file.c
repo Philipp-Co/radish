@@ -1,5 +1,6 @@
 #include <radish/game/game.h>
 #include <radish/game/serialization/serialization.h>
+#include <radish/game/serialization/world_definition.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,7 @@
 ///
 
 static RAD_GameSaveResult_t RAD_GameSaveResultFromSerialize(RAD_SerializeResult_t result);
+static RAD_GameSaveResult_t RAD_ReadWholeFile(const char *path, char **json, size_t *length);
 static long RAD_SaveFileSize(FILE *file);
 
 
@@ -65,6 +67,7 @@ const char* RAD_GameSaveResultText(RAD_GameSaveResult_t result)
         case RAD_GAME_SAVE_ERROR_TILE_OCCUPIED:       return "zwei Entitaeten auf einem Tile";
 
         case RAD_GAME_SAVE_ERROR_INCONSISTENT:        return "Spielstand widerspricht sich selbst";
+        case RAD_GAME_SAVE_ERROR_WORLD_OCCUPIED:      return "auf der Welt stehen schon Figuren";
 
         default:                                      return "unbekanntes Ergebnis";
     }
@@ -124,7 +127,61 @@ RAD_GameSaveResult_t RAD_SaveGameToFile(const RAD_Game_t *game, const char *path
 
 RAD_GameSaveResult_t RAD_LoadGameFromFile(RAD_Game_t *game, const char *path)
 {
-    if(game == NULL || path == NULL)
+    if(game == NULL)
+    {
+        return RAD_GAME_SAVE_ERROR_NOT_FOUND;
+    }
+
+    char *json = NULL;
+    size_t length = 0;
+    const RAD_GameSaveResult_t read = RAD_ReadWholeFile(path, &json, &length);
+    if(read != RAD_GAME_SAVE_OK)
+    {
+        return read;
+    }
+
+    const RAD_SerializeResult_t result = RAD_DeserializeGameFromJson(game, json, length);
+
+    free(json);
+
+    return RAD_GameSaveResultFromSerialize(result);
+}
+
+RAD_GameSaveResult_t RAD_LoadWorldFromFile(RAD_Game_t *game, const char *path)
+{
+    if(game == NULL)
+    {
+        return RAD_GAME_SAVE_ERROR_NOT_FOUND;
+    }
+
+    char *json = NULL;
+    size_t length = 0;
+    const RAD_GameSaveResult_t read = RAD_ReadWholeFile(path, &json, &length);
+    if(read != RAD_GAME_SAVE_OK)
+    {
+        return read;
+    }
+
+    const RAD_SerializeResult_t result = RAD_DeserializeWorldDefinitionFromJson(game, json, length);
+
+    free(json);
+
+    return RAD_GameSaveResultFromSerialize(result);
+}
+
+///
+/// Die Datei ganz in den Speicher, fuer beide Leser oben: dieselben vier Fragen
+/// -- oeffnen, messen, Grenze, lesen -- und dieselbe Grenze RAD_SAVE_JSON_MAX.
+/// Eine Weltdefinition ist kleiner als ein Spielstand derselben Welt, sie passt
+/// also immer, wenn der Spielstand passt. Bei RAD_GAME_SAVE_OK gehoert "*json" dem
+/// Aufrufer und wird mit free() freigegeben.
+///
+static RAD_GameSaveResult_t RAD_ReadWholeFile(const char *path, char **json, size_t *length)
+{
+    *json = NULL;
+    *length = 0;
+
+    if(path == NULL)
     {
         return RAD_GAME_SAVE_ERROR_NOT_FOUND;
     }
@@ -153,27 +210,25 @@ RAD_GameSaveResult_t RAD_LoadGameFromFile(RAD_Game_t *game, const char *path)
     // hinaus --, sondern damit auch eine leere Datei eine Anforderung ueber null
     // Byte vermeidet: malloc(0) darf NULL liefern, und das saehe hier aus wie
     // "kein Speicher" statt wie "kein JSON".
-    char *json = malloc((size_t)size + 1);
-    if(json == NULL)
+    char *buffer = malloc((size_t)size + 1);
+    if(buffer == NULL)
     {
         fclose(file);
         return RAD_GAME_SAVE_ERROR_OUT_OF_MEMORY;
     }
 
-    const size_t read = fread(json, 1, (size_t)size, file);
+    const size_t read = fread(buffer, 1, (size_t)size, file);
     fclose(file);
 
     if(read != (size_t)size)
     {
-        free(json);
+        free(buffer);
         return RAD_GAME_SAVE_ERROR_UNREADABLE;
     }
 
-    const RAD_SerializeResult_t result = RAD_DeserializeGameFromJson(game, json, read);
-
-    free(json);
-
-    return RAD_GameSaveResultFromSerialize(result);
+    *json = buffer;
+    *length = read;
+    return RAD_GAME_SAVE_OK;
 }
 
 ///
@@ -214,6 +269,7 @@ static RAD_GameSaveResult_t RAD_GameSaveResultFromSerialize(RAD_SerializeResult_
         case RAD_SERIALIZE_ERROR_TILE_OCCUPIED:       return RAD_GAME_SAVE_ERROR_TILE_OCCUPIED;
 
         case RAD_SERIALIZE_ERROR_INCONSISTENT:        return RAD_GAME_SAVE_ERROR_INCONSISTENT;
+        case RAD_SERIALIZE_ERROR_WORLD_OCCUPIED:      return RAD_GAME_SAVE_ERROR_WORLD_OCCUPIED;
     }
 
     // Ein Wert ausserhalb der Aufzaehlung. Erreichbar nur ueber eine Zahl, die

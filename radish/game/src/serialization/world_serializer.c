@@ -5,7 +5,10 @@
 
 static RAD_SerializeResult_t RAD_DeserializeTileRows(
     RAD_JsonReader_t *reader,
+    int32_t width,
+    int32_t height,
     RAD_TileType_t types[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
+    int32_t heights[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
     RAD_EntityId_t tile_entity[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH]
 );
 static RAD_SerializeResult_t RAD_DeserializeEntityList(
@@ -19,17 +22,17 @@ void RAD_SerializeWorld(RAD_JsonWriter_t *writer, const RAD_World_t *world)
     RAD_JsonWriteBeginObject(writer);
 
     RAD_JsonWriteKey(writer, "width");
-    RAD_JsonWriteInt(writer, RAD_WORLD_WIDTH);
+    RAD_JsonWriteInt(writer, world->width);
 
     RAD_JsonWriteKey(writer, "height");
-    RAD_JsonWriteInt(writer, RAD_WORLD_HEIGHT);
+    RAD_JsonWriteInt(writer, world->height);
 
     RAD_JsonWriteKey(writer, "tiles");
     RAD_JsonWriteBeginArray(writer);
-    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    for(int32_t y=0;y < world->height; ++y)
     {
         RAD_JsonWriteBeginArray(writer);
-        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        for(int32_t x=0;x < world->width; ++x)
         {
             RAD_SerializeTile(writer, &world->tiles[y][x]);
         }
@@ -65,11 +68,16 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
     int32_t height = -1;
 
     RAD_TileType_t types[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
+    int32_t heights[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
     RAD_EntityId_t tile_entity[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
     RAD_Entity_t entities[RAD_MAX_ENTITIES];
     int32_t number_of_entities = 0;
 
-    bool have_tiles = false;
+    // Die Zeilen lassen sich erst pruefen, wenn die Groesse bekannt ist, und
+    // "width"/"height" duerfen nach "tiles" stehen. Also wird die Stelle von
+    // "tiles" gemerkt und das Raster nach der Schleife gelesen -- dasselbe Muster
+    // wie beim "game"-Schluessel in RAD_DeserializeRoot.
+    int32_t tiles_token = -1;
     bool have_entities = false;
 
     for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
@@ -77,6 +85,7 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
         for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
         {
             types[y][x] = RAD_TILE_TYPE_VOID;
+            heights[y][x] = 0;
             tile_entity[y][x] = RAD_ENTITY_NONE;
         }
     }
@@ -105,12 +114,8 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
         }
         else if(strcmp(key, "tiles") == 0)
         {
-            RAD_SerializeResult_t result = RAD_DeserializeTileRows(reader, types, tile_entity);
-            if(result != RAD_SERIALIZE_OK)
-            {
-                return result;
-            }
-            have_tiles = true;
+            tiles_token = reader->cursor;
+            RAD_JsonSkipValue(reader);
         }
         else if(strcmp(key, "entities") == 0)
         {
@@ -131,21 +136,36 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
     {
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
-    if(!have_tiles || !have_entities || width < 0 || height < 0)
+    if((tiles_token < 0) || !have_entities || width < 0 || height < 0)
     {
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
-    if(width != RAD_WORLD_WIDTH || height != RAD_WORLD_HEIGHT)
+    if(width < 1 || width > RAD_WORLD_WIDTH || height < 1 || height > RAD_WORLD_HEIGHT)
     {
         return RAD_SERIALIZE_ERROR_SIZE_MISMATCH;
     }
 
-    RAD_InitWorld(world);
-    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    // Zurueck zu den Zeilen, und danach wieder ans Ende der Welt: der Aufrufer
+    // liest hinter ihr weiter (RAD_DeserializeGame).
+    const int32_t end_token = reader->cursor;
+    reader->cursor = tiles_token;
+    RAD_SerializeResult_t rows_result = RAD_DeserializeTileRows(reader, width, height, types, heights, tile_entity);
+    reader->cursor = end_token;
+    if(rows_result != RAD_SERIALIZE_OK)
     {
-        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        return rows_result;
+    }
+
+    // Still: die Welt hier ist ein Zwischenstand und wird erst uebernommen, wenn
+    // alles geprueft ist. Gemeldet wird danach, gegen den Stand vorher
+    // (RAD_DeserializeGameFromJson).
+    RAD_ResetWorldToSize(world, width, height);
+    for(int32_t y=0;y < height; ++y)
+    {
+        for(int32_t x=0;x < width; ++x)
         {
             world->tiles[y][x].type = types[y][x];
+            world->tiles[y][x].z = heights[y][x];
         }
     }
 
@@ -182,9 +202,9 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
     // Gegenprobe: die Zuordnung aus der Datei muss der aus der Entitaetsliste
     // wieder aufgebauten entsprechen. Damit ist tile.entity keine Zierde,
     // sondern eine gepruefte Angabe.
-    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    for(int32_t y=0;y < height; ++y)
     {
-        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        for(int32_t x=0;x < width; ++x)
         {
             if(tile_entity[y][x] != world->tiles[y][x].entity)
             {
@@ -203,7 +223,10 @@ RAD_SerializeResult_t RAD_DeserializeWorld(RAD_JsonReader_t *reader, RAD_World_t
 
 static RAD_SerializeResult_t RAD_DeserializeTileRows(
     RAD_JsonReader_t *reader,
+    int32_t width,
+    int32_t height,
     RAD_TileType_t types[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
+    int32_t heights[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
     RAD_EntityId_t tile_entity[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH])
 {
     int32_t number_of_rows = 0;
@@ -211,7 +234,7 @@ static RAD_SerializeResult_t RAD_DeserializeTileRows(
     {
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
-    if(number_of_rows != RAD_WORLD_HEIGHT)
+    if(number_of_rows != height)
     {
         return RAD_SERIALIZE_ERROR_SIZE_MISMATCH;
     }
@@ -223,7 +246,7 @@ static RAD_SerializeResult_t RAD_DeserializeTileRows(
         {
             return RAD_SERIALIZE_ERROR_SCHEMA;
         }
-        if(number_of_columns != RAD_WORLD_WIDTH)
+        if(number_of_columns != width)
         {
             return RAD_SERIALIZE_ERROR_SIZE_MISMATCH;
         }
@@ -245,6 +268,7 @@ static RAD_SerializeResult_t RAD_DeserializeTileRows(
             }
 
             types[y][x] = tile.type;
+            heights[y][x] = tile.z;
             tile_entity[y][x] = tile.entity;
         }
     }

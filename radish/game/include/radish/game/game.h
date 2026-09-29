@@ -74,7 +74,7 @@ typedef enum
 } RAD_GameResult_t;
 
 ///
-/// Macht daraus einen Text zum Loggen, wie RAD_CommandCodecResultText. Immer ein
+/// Macht daraus einen Text zum Loggen, wie RAD_ControlResultText. Immer ein
 /// gueltiger Zeiger, auch bei einem Wert ausserhalb der Aufzaehlung.
 ///
 const char* RAD_GameResultText(RAD_GameResult_t result);
@@ -117,6 +117,14 @@ void RAD_GameRemovePlayer(RAD_Game_t *game, RAD_UserId_t user);
 
 bool RAD_GameIsPlaying(const RAD_Game_t *game, RAD_UserId_t user);
 int32_t RAD_GameNumberOfPlayers(const RAD_Game_t *game);
+
+///
+/// Der Mitspieler an Stelle "index" der Zugreihenfolge, 0 ist der, der die Runde
+/// eroeffnet. RAD_USER_NONE fuer einen Index ausserhalb
+/// [0, RAD_GameNumberOfPlayers). Mit beiden zusammen laesst sich die Reihe von
+/// aussen ablaufen, ohne dass ihre Groesse bekannt sein muss.
+///
+RAD_UserId_t RAD_GamePlayerAt(const RAD_Game_t *game, int32_t index);
 
 ///
 /// Wer dran ist; RAD_USER_NONE, solange niemand mitspielt.
@@ -280,7 +288,11 @@ typedef enum
     RAD_GAME_SAVE_ERROR_FORMAT,
     RAD_GAME_SAVE_ERROR_VERSION,
 
-    /// Die Welt im Spielstand hat andere Abmessungen als die dieses Programms.
+    ///
+    /// Die Welt in der Datei hat Abmessungen, die dieses Programm nicht halten
+    /// kann -- groesser als seine Obergrenze oder leer --, oder ihre Zeilen passen
+    /// nicht zu ihrer eigenen Groesse.
+    ///
     RAD_GAME_SAVE_ERROR_WORLD_SIZE,
 
     RAD_GAME_SAVE_ERROR_TILE_TYPE,
@@ -293,7 +305,13 @@ typedef enum
     /// Die Datei widerspricht sich selbst -- etwa wenn ein Tile auf eine andere
     /// Entitaet zeigt als die, die dort laut ihrer eigenen Position steht.
     ///
-    RAD_GAME_SAVE_ERROR_INCONSISTENT
+    RAD_GAME_SAVE_ERROR_INCONSISTENT,
+
+    ///
+    /// Nur RAD_LoadWorldFromFile: im Spiel stehen schon Figuren. Eine Welt wird
+    /// nur ersetzt, solange keine darauf steht (unten).
+    ///
+    RAD_GAME_SAVE_ERROR_WORLD_OCCUPIED
 } RAD_GameSaveResult_t;
 
 ///
@@ -315,5 +333,29 @@ RAD_GameSaveResult_t RAD_SaveGameToFile(const RAD_Game_t *game, const char *path
 /// Liest den Spielstand aus "path" in "game", das ein angelegtes Spiel sein muss.
 ///
 RAD_GameSaveResult_t RAD_LoadGameFromFile(RAD_Game_t *game, const char *path);
+
+///
+/// Weltdefinition -- die Welt, bevor gespielt wird.
+///
+/// Liest aus "path" Gelaende und Hoehen einer Welt und ersetzt damit die Welt von
+/// "game"; die Groesse der Welt kommt aus der Datei. Das Format beschreibt
+/// game/schema/world.schema.json, die Regeln, die ein Schema nicht fassen kann,
+/// stehen in world_definition.h.
+///
+/// **Kein Spielstand.** Die Datei beschreibt nur die Welt -- keine Figuren, keinen
+/// Besitz, keinen Zug. Gelesen wird sie einmal, beim Aufbau eines Spiels, und
+/// danach nicht mehr gebraucht. Deshalb dieselben Ergebniswerte wie beim
+/// Spielstand: die Fragen an die Datei sind dieselben.
+///
+/// **Nur eine Welt ohne Figuren.** Stehen schon welche im Spiel, liefert sie
+/// RAD_GAME_SAVE_ERROR_WORLD_OCCUPIED und aendert nichts: was mit einer Figur
+/// geschieht, deren Feld es in der neuen Welt nicht gibt, ist eine Regel, die es
+/// nicht gibt -- dieselbe Haltung wie beim Entfernen eines Tiles unter einer Figur.
+///
+/// Wie beim Spielstand: ein misslungener Ladevorgang laesst das Spiel unangetastet
+/// und meldet nichts, ein gelungener meldet genau die Felder, die sich geaendert
+/// haben -- auch die, die mit einer kleineren Welt wegfallen (removed).
+///
+RAD_GameSaveResult_t RAD_LoadWorldFromFile(RAD_Game_t *game, const char *path);
 
 #endif

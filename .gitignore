@@ -1,5 +1,4 @@
 emsdk/
-relay/.venv/
 __pycache__/
 zucchini/
 build/
@@ -12,6 +11,7 @@ radish/game-server/db.sqlite3
 radish/game-server/.venv/
 *.wasm
 jsmn/
+protobuf-c/
 radish/frontend/node_modules/
 radish/frontend/dist/
 radish/frontend/.angular/

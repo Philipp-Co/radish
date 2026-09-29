@@ -26,10 +26,11 @@ typedef struct
 /// aendert das nichts, und genau deshalb steht diese Grenze zwischen ihm und der
 /// Herkunft.
 ///
-/// Zwei Wege hinein: ohne Pfad entsteht ein leeres Spiel, so wie RAD_CreateGame
-/// es hergibt -- ein Raster aus Grund und die eine Figur, die RAD_InitWorld setzt.
-/// Mit Pfad kommt RAD_LoadGameFromFile darueber, und damit ist der Spielstand fuer
-/// diese Datei eine Zeile: Datei aufmachen, Format erkennen, Inhalt pruefen und
+/// Drei Schritte, die beiden hinteren nur mit Pfad: es entsteht ein leeres Spiel,
+/// so wie RAD_CreateGame es hergibt -- ein Raster aus Grund in der groessten Form.
+/// Mit einer Weltdefinition kommt RAD_LoadWorldFromFile darueber und gibt der Welt
+/// Gelaende, Hoehen und Groesse; mit einem Spielstand danach RAD_LoadGameFromFile.
+/// Beides ist fuer diese Datei eine Zeile: Datei aufmachen, Format erkennen, Inhalt pruefen und
 /// einsetzen macht das Spielmodul (radish/game/game.h). Ein eigenes Modul dafuer
 /// gab es hier, solange die Serialisierung nur Puffer kannte -- seit sie Pfade
 /// nimmt, waere es eine Weiterleitung ohne Inhalt.
@@ -71,11 +72,14 @@ typedef struct
 ///
 /// Legt das Spiel des Servers an.
 ///
-/// "save_path" ist der Spielstand, der geladen werden soll, oder NULL fuer ein
-/// leeres Spiel.
+/// "world_path" ist die Weltdefinition, mit der das Spiel beginnt
+/// (game/schema/world.schema.json), oder NULL fuer das Raster aus Grund.
+/// "save_path" ist der Spielstand, der danach geladen werden soll, oder NULL fuer
+/// keinen. Ein Spielstand ersetzt die Welt mit seiner eigenen; beide anzugeben
+/// ist erlaubt, aber nur der Spielstand bestimmt dann, wie die Welt aussieht.
 ///
-/// "game" im Ergebnis ist NULL, wenn keines zustande kam: kein Speicher, oder der
-/// Spielstand liess sich nicht lesen -- ein angegebener Pfad, der nicht traegt,
+/// "game" im Ergebnis ist NULL, wenn keines zustande kam: kein Speicher, oder die
+/// Welt oder der Spielstand liess sich nicht lesen -- ein angegebener Pfad, der nicht traegt,
 /// ist ein Abbruchgrund und kein Anlass, stillschweigend leer weiterzumachen. Der
 /// Grund steht dann schon im Log; der Aufrufer muss ihn nicht auch noch erfahren.
 /// Das Ergebnis laesst sich in diesem Fall trotzdem an RAD_ControlDestroyGame
@@ -91,7 +95,7 @@ typedef struct
 /// RAD_USER_NONE: der Server sitzt an keinem Client. Ein geladener Spielstand
 /// aendert das nicht -- gespeichert wird die Welt, nicht das laufende Programm.
 ///
-RAD_ControlGame_t RAD_ControlCreateGame(const char *save_path, RAD_EventCallbacks_t *callbacks);
+RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save_path, RAD_EventCallbacks_t *callbacks);
 
 ///
 /// Gibt beides wieder her und setzt beide Zeiger auf NULL, wie RAD_DestroyGame.

@@ -1,7 +1,7 @@
 # radish
 
 Isometrischer Spielclient in C, der als WebAssembly im Browser läuft und über
-eine WebRTC-Strecke mit einem UDP-Backend spricht.
+den WebSocket des Django-Backends mit einem UDP-Spielserver sprechen soll.
 
 Das Repository fasst mehrere Teile zusammen: den Client selbst (`radish/`) sowie
 die Container-Definitionen, mit denen sich das Ganze lokal starten lässt
@@ -10,8 +10,8 @@ die Container-Definitionen, mit denen sich das Ganze lokal starten lässt
 ## Datenfluss
 
 Der bisherige Relay, der einen WebRTC-DataChannel im Browser per UDP-Bruecke
-mit dem Spielserver verband, ist entfernt (siehe `relay/`, vormals `aiortc` +
-`websockets`). Die UDP-Bruecke soll stattdessen ueber das Django-Backend
+mit dem Spielserver verband, ist entfernt (vormals `relay/`, `aiortc` +
+`websockets`, samt der Testseite `radish/web/index.html`). Die UDP-Bruecke soll stattdessen ueber das Django-Backend
 laufen: dessen WebSocket (`radish/backend/api/consumers.py`, `EchoConsumer`)
 oeffnet serverseitig bereits ein UDP-Socket zum `GameServer` des aktuellen
 Spiels und leitet Daten in beide Richtungen weiter. Der WASM-Client im
@@ -174,10 +174,12 @@ Daneben liegt in `control/` der Loader
 das Spiel kommt, an dem der Server arbeitet. Dieselbe Frage von der anderen
 Seite: `execute` entscheidet, was mit dem Spielzustand geschieht, der Loader
 bringt ihn hervor. `main` holt das Spiel dort und füttert damit die Steuerung,
-kennt seine Herkunft also nicht. `RAD_ControlCreateGame(save_path)` legt ein
-leeres Spiel an und liest, wenn ein Pfad dasteht, einen Spielstand hinein; ohne
-Pfad bleibt es leer, mit einem Pfad, der nicht trägt, gibt es kein Spiel und der
-Server bricht ab. Der Event-Manager, an dem das Spiel hängt, gehört dabei dem
+kennt seine Herkunft also nicht. `RAD_ControlCreateGame(world_path, save_path)`
+legt ein leeres Spiel an, lädt, wenn ein Pfad dasteht, zuerst eine
+Weltdefinition (Gelände, Höhen, Größe — Format in
+[world.schema.json](radish/game/schema/world.schema.json)) und danach einen
+Spielstand; ohne Pfade bleibt es leer, mit einem Pfad, der nicht trägt, gibt es
+kein Spiel und der Server bricht ab. Der Event-Manager, an dem das Spiel hängt, gehört dabei dem
 Loader — er liegt auf dem Heap und wird in `RAD_ControlDestroyGame` mit
 abgebaut, sodass der Aufrufer nichts länger am Leben halten muss als das Spiel
 selbst.
@@ -255,9 +257,12 @@ etwas einbindet:
 > `move_entity`; die übrigen vier Arten werden geprüft und mit
 > `RAD_CONTROL_ERROR_NOT_EXECUTED` beantwortet, ihr Ausführender fehlt noch.
 >
-> Der Spielzustand dazu kommt aus dem Loader: ohne Argument ein leeres Spiel —
-> 8×8 Grund und die eine Figur, die `RAD_InitWorld` setzt —, mit einem zweiten
-> Argument ein Spielstand aus einer JSON-Datei (`server zucchini stand.json`).
+> Der Spielzustand dazu kommt aus dem Loader: die Welt aus der Weltdefinition,
+> auf die `RADISH_WORLD_PATH` zeigt — das Docker-Image bringt
+> [assets/worlds/](radish/assets/worlds/) unter `/usr/local/share/radish/worlds/`
+> mit und setzt die Variable auf `default.json` —, ohne sie 8×8 Grund; mit einem
+> zweiten Argument darüber ein Spielstand aus einer JSON-Datei
+> (`server zucchini stand.json`).
 > Zugeordnet wird eine Figur bisher von niemandem
 > (`RAD_ControlBindUserEntity` hat keinen Aufrufer): solange keine einen Besitzer
 > hat, darf jeder Mitspieler jede ziehen.

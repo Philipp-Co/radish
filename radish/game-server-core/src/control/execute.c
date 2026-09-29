@@ -152,6 +152,45 @@ int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control)
     return RAD_GameNumberOfPlayers(control->game);
 }
 
+RAD_UserId_t RAD_ControlCurrentUser(RAD_Control_t control)
+{
+    return RAD_GameCurrentUser(control->game);
+}
+
+RAD_UserId_t RAD_ControlPlayerAt(RAD_Control_t control, int32_t index)
+{
+    return RAD_GamePlayerAt(control->game, index);
+}
+
+int32_t RAD_ControlWorldWidth(RAD_Control_t control)
+{
+    return RAD_GameWorldWidth(control->game);
+}
+
+int32_t RAD_ControlWorldHeight(RAD_Control_t control)
+{
+    return RAD_GameWorldHeight(control->game);
+}
+
+bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *output)
+{
+    if(output == NULL)
+    {
+        return false;
+    }
+
+    // Die Grenze aus dem Spiel, nicht aus den Konstanten: die Welt kann kleiner
+    // sein als die groesste (RAD_LoadWorldFromFile). Damit ist auch der Schritt
+    // auf int16_t unten sicher -- eine Welt ist nie breiter als RAD_WORLD_WIDTH.
+    if((x < 0) || (x >= RAD_GameWorldWidth(control->game)) ||
+       (y < 0) || (y >= RAD_GameWorldHeight(control->game)))
+    {
+        return false;
+    }
+
+    return RAD_GameTileAt(control->game, (int16_t)x, (int16_t)y, output);
+}
+
 RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD_Command_t *command)
 {
     const RAD_ControlResult_t allowed = RAD_ControlCheckCommand(control, command);

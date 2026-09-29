@@ -19,19 +19,28 @@ add_executable(client
     src/rendering/game_events/move.c
     
     src/io/user_input.c
+    src/io/net_codec.c
+    src/io/camera_control.c
+
+    src/events/event_manager.c
+
+    src/model/world.c
 )
 
 target_include_directories(client PRIVATE
     src/include
 )
 
-# Die Spiel-Header kommen ueber radish_game, das sein include/ PUBLIC traegt. Von
-# der Serialisierung ist darin nichts zu sehen ausser RAD_SaveGameToFile und
-# RAD_LoadGameFromFile in game.h, und der Client braucht auch das nicht: er
-# serialisiert Kommandos (control/command/codec.h), keine Spielstaende. Der
-# jsmn-Suchpfad kommt entsprechend nicht mit.
+# Kein radish_game: der Client kennt das Spielmodul nicht. Was er von der Welt
+# weiss, kommt ueber die Verbindung und steht in eigenen Typen
+# (src/include/radish/io/net_types.h, src/model/world.c); die Schnittstelle zum
+# Server ist allein protobuf/*.proto.
+#
+# radish_protobuf traegt den generierten Protobuf-Code (protobuf/CMakeLists.txt)
+# und bringt ueber protobuf-c::protobuf-c auch dessen Header/Bibliothek mit --
+# das braucht ausschliesslich src/io/net_codec.c, siehe dort.
 target_link_libraries(client PRIVATE
-    radish_game
+    radish_protobuf
 )
 
 # CMake erkennt "${EMSCRIPTEN_CACHE_DIR}/sysroot/include" als impliziten

@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "tile.proto";
+
 message NetGameCreatedEvent
 {
         
@@ -10,11 +12,44 @@ message NetGameFinishedEvent
 
 }
 
+// Wer gerade am Zug ist (RAD_GameCurrentUser). 0 heisst: niemand -- es spielt
+// noch keiner mit (RAD_USER_NONE).
+message NetCurrentPlayerEvent
+{
+    uint64 user_id = 1;
+}
+
+// Alle, die gerade mitspielen, in der Reihenfolge ihrer Zuege.
+message NetPlayersEvent
+{
+    repeated uint64 user_ids = 1;
+}
+
+// Groesse des Spielfelds in Feldern.
+message NetWorldSizeEvent
+{
+    uint32 width = 1;
+    uint32 height = 2;
+}
+
+// Felder der Welt mit ihren Attributen, als Stand und nicht als Aenderung --
+// Aenderungen gehen als NetTileEvent (tile.proto). Gedacht als Antwort auf eine
+// Discover-Anfrage, in Stuecken (etwa eine Nachricht je Zeile), damit eine
+// Nachricht auch bei groesseren Welten in einen Slot passt.
+message NetTilesEvent
+{
+    repeated NetTile tiles = 1;
+}
+
 message NetGameEvent
 {
     oneof event
     {
         NetGameCreatedEvent created = 1;
         NetGameFinishedEvent finished = 2;
+        NetCurrentPlayerEvent current_player = 3;
+        NetPlayersEvent players = 4;
+        NetWorldSizeEvent world_size = 5;
+        NetTilesEvent tiles = 6;
     }
 }

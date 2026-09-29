@@ -24,6 +24,15 @@ include(cmake/jsmn.cmake)
 
 add_subdirectory(game)
 
+# radish_protobuf wird von beiden ausfuehrbaren Zielen gebraucht: der Client
+# packt/entpackt Nachrichten client-seitig (siehe protobuf/CMakeLists.txt),
+# der Server tut dasselbe server-seitig (siehe
+# game-server-core/CMakeLists.txt). Deshalb steht das hier vor der
+# Verzweigung und nicht in einem der beiden Zweige -- ein Host-Build braucht
+# protoc und protoc-gen-c jetzt ebenso wie ein Wasm-Build.
+include(cmake/protobuf-c.cmake)
+add_subdirectory(protobuf)
+
 # Zwei ausfuehrbare Ziele, die sich gegenseitig ausschliessen: der Client haengt
 # an Emscripten und laeuft als Wasm im Browser, der Server haengt an der
 # Zucchini-Api (mkfifo, poll, POSIX-Shared-Memory) und laeuft auf dem Host.

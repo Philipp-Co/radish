@@ -79,8 +79,8 @@ struct RAD_Game
 /// darf, uebersetzt innerhalb von radish_game -- von aussen gibt es keinen
 /// Suchpfad hierher, und deshalb kann niemand das Gelaende aendern, ohne die Regeln
 /// zu fragen. Von draussen fuehrt der Weg ueber ein Kommando
-/// (control/command/create_tile.h und remove_tile.h); dass es noch niemand
-/// verdrahtet hat, aendert an der Grenze nichts.
+/// (RAD_CommandCreateTile_t und RAD_CommandRemoveTile_t, control/command/command.h);
+/// dass es noch niemand verdrahtet hat, aendert an der Grenze nichts.
 ///
 /// Beide reichen an die Welt weiter und halten selbst keine Regel: die Uebergaenge,
 /// die Ereignisse und der Grund, warum eine Figur ihr Gelaende haelt, stehen in

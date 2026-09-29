@@ -29,18 +29,6 @@ add_library(radish_game STATIC
     src/model/world.c
     src/model/turn.c
 
-    src/control/command/byte_writer.c
-    src/control/command/byte_reader.c
-    src/control/command/codec.c
-    src/control/command/spawn_entity.c
-    src/control/command/move_entity.c
-    src/control/command/remove_entity.c
-    src/control/command/create_tile.c
-    src/control/command/remove_tile.c
-    src/control/command/shoot.c
-    src/control/command/use.c
-    src/control/command/response.c
-    
     src/control/events/event_manager.c
     src/control/execute/entity.c
 
@@ -53,6 +41,7 @@ add_library(radish_game STATIC
     src/serialization/game_serializer.c
     src/serialization/serialization.c
     src/serialization/save_file.c
+    src/serialization/world_definition.c
 )
 
 # Zwei Suchpfade, und der Unterschied ist die Grenze des Moduls: unter include/

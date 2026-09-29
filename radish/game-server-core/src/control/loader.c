@@ -37,24 +37,40 @@
 /// Spielmoduls, und was davon schiefgegangen ist, steht in einem Wert.
 ///
 
-static RAD_ControlGame_t RAD_ControlCreateEmptyGame(void);
+static RAD_ControlGame_t RAD_ControlCreateEmptyGame(RAD_EventCallbacks_t *callbacks);
 
 
-RAD_ControlGame_t RAD_ControlCreateGame(const char *save_path, RAD_EventCallbacks_t *callbacks)
+RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save_path, RAD_EventCallbacks_t *callbacks)
 {
-    RAD_ControlGame_t created = RAD_ControlCreateEmptyGame();
+    RAD_ControlGame_t created = RAD_ControlCreateEmptyGame(callbacks);
     if(created.game == NULL)
     {
         printf("Spiel nicht angelegt -- kein Speicher.\n");
         return created;
     }
 
+    // Erst die Welt, dann der Spielstand: die Welt ist der Grundzustand, und ein
+    // Spielstand ersetzt sie ohnehin als Ganzes. Umgekehrt ginge es auch nicht --
+    // eine Weltdefinition laesst sich nur in ein Spiel ohne Figuren laden
+    // (RAD_LoadWorldFromFile), und ein Spielstand bringt seine mit.
+    if(world_path != NULL)
+    {
+        const RAD_GameSaveResult_t world_result = RAD_LoadWorldFromFile(created.game, world_path);
+        if(world_result != RAD_GAME_SAVE_OK)
+        {
+            printf("Welt '%s' nicht geladen: %s\n", world_path, RAD_GameSaveResultText(world_result));
+            RAD_ControlDestroyGame(&created);
+            return created;
+        }
+
+        printf("Welt '%s' geladen, %d x %d Felder.\n",
+            world_path, RAD_GameWorldWidth(created.game), RAD_GameWorldHeight(created.game));
+    }
+
     if(save_path == NULL)
     {
         return created;
     }
-
-    RAD_EventManagerSubscribeToTileEvents(created.event_manager, callbacks->tile_changed);
 
     // Ein Ergebnis fuer Datei und Inhalt: ob die Datei fehlte oder ihr Inhalt
     // abgelehnt wurde, steht in demselben Wert, und fuer den Betrieb ist es
@@ -97,7 +113,7 @@ void RAD_ControlDestroyGame(RAD_ControlGame_t *game)
 /// stehen: der Manager wird wieder abgebaut, wenn das Spiel an ihm nicht zustande
 /// kommt. Nur eines von beiden waere ein Leck, das erst beim Beenden auffiele.
 ///
-static RAD_ControlGame_t RAD_ControlCreateEmptyGame(void)
+static RAD_ControlGame_t RAD_ControlCreateEmptyGame(RAD_EventCallbacks_t *callbacks)
 {
     RAD_ControlGame_t created = {
         .game = NULL,
@@ -109,6 +125,11 @@ static RAD_ControlGame_t RAD_ControlCreateEmptyGame(void)
     {
         return created;
     }
+
+    // Abonniert wird vor RAD_CreateGame: das Spiel baut seine Welt schon beim
+    // Anlegen auf und meldet dabei jedes Feld. Wer erst danach abonniert, hat den
+    // Aufbau verpasst -- und kennt nur die Felder, die sich spaeter aendern.
+    RAD_EventManagerSubscribeToTileEvents(created.event_manager, callbacks->tile_changed);
 
     // RAD_USER_NONE: der Server sitzt an keinem Client. Kommandos, die er selbst
     // erzeugt, haetten keinen Absender -- wer mitspielt, fuehrt die Steuerung,

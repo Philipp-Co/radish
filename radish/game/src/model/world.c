@@ -3,10 +3,13 @@
 #include <stdio.h>
 
 static RAD_EntityId_t RAD_WorldFindFreeEntitySlot(RAD_World_t *world);
+static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t previous_type, int32_t previous_z, const RAD_Tile_t *tile);
 
 RAD_World_t RAD_CreateWorld(RAD_EventManager_t *event_manager)
 {
     RAD_World_t world;
+    world.width = RAD_WORLD_WIDTH;
+    world.height = RAD_WORLD_HEIGHT;
     world.number_of_entities = 0;
     world.event_manager = event_manager;
     return world;
@@ -14,18 +17,49 @@ RAD_World_t RAD_CreateWorld(RAD_EventManager_t *event_manager)
 
 void RAD_InitWorld(RAD_World_t *world)
 {
+    RAD_ResetWorld(world);
+
+    // Vorher war nichts, jetzt ist Boden: fuer einen Abonnenten ist das VOID -> X,
+    // also added -- derselbe Uebergang wie in RAD_WorldAddTile.
+    for(int32_t y=0;y < world->height; ++y)
+    {
+        for(int32_t x=0;x < world->width; ++x)
+        {
+            RAD_EventManagerPublishTileAddedToGameEvent(world->event_manager, &(world->tiles[y][x]));
+        }
+    }
+}
+
+void RAD_ResetWorld(RAD_World_t *world)
+{
+    RAD_ResetWorldToSize(world, world->width, world->height);
+}
+
+bool RAD_ResetWorldToSize(RAD_World_t *world, int32_t width, int32_t height)
+{
+    if(width < 1 || width > RAD_WORLD_WIDTH || height < 1 || height > RAD_WORLD_HEIGHT)
+    {
+        return false;
+    }
+
+    world->width = width;
+    world->height = height;
+
+    // Der ganze Speicher, nicht nur die Welt: auch ein Feld daneben traegt sein x
+    // und y, denn RAD_WorldPublishTileChanges meldet es, wenn es beim Schrumpfen
+    // wegfaellt (world.h).
     for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
     {
         for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
         {
+            const bool inside = (x < width) && (y < height);
             world->tiles[y][x] = (RAD_Tile_t){
                 .x = x,
                 .y = y,
                 .z = 0,
-                .type = RAD_TILE_TYPE_GROUND,
+                .type = inside ? RAD_TILE_TYPE_GROUND : RAD_TILE_TYPE_VOID,
                 .entity = RAD_ENTITY_NONE
             };
-            RAD_EventManagerPublishTileAddedToGameEvent(world->event_manager, &(world->tiles[y][x]));
         }
     }
 
@@ -41,12 +75,13 @@ void RAD_InitWorld(RAD_World_t *world)
     }
 
     world->number_of_entities = 0;
+
+    return true;
 }
 
 bool RAD_WorldInBounds(const RAD_World_t *world, int32_t x, int32_t y)
 {
-    (void)world;
-    return (x >= 0) && (x < RAD_WORLD_WIDTH) && (y >= 0) && (y < RAD_WORLD_HEIGHT);
+    return (x >= 0) && (x < world->width) && (y >= 0) && (y < world->height);
 }
 
 RAD_Tile_t* RAD_WorldTileAt(RAD_World_t *world, int32_t x, int32_t y)
@@ -107,19 +142,11 @@ bool RAD_WorldAddTile(RAD_World_t *world, int32_t x, int32_t y, int32_t z, RAD_T
         return true;
     }
 
+    const int32_t previous_z = tile->z;
     tile->type = type;
     tile->z = z;
 
-    // Das Ereignis nach dem Uebergang: aus nichts wird ein Tile, aus einem Tile
-    // ein anderes. Der Unterschied ist der, den ein Abonnent zeichnen muss.
-    if(previous == RAD_TILE_TYPE_VOID)
-    {
-        RAD_EventManagerPublishTileAddedToGameEvent(world->event_manager, tile);
-    }
-    else
-    {
-        RAD_EventManagerPublishTileStateChangeEvent(world->event_manager, tile);
-    }
+    RAD_WorldPublishTileTransition(world, previous, previous_z, tile);
 
     return true;
 }
@@ -148,11 +175,65 @@ bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y)
 
     // Nur der Typ. x, y, z und die Entitaet bleiben stehen: weggenommen wird das
     // Gelaende und nicht das Feld.
+    const RAD_TileType_t previous = tile->type;
     tile->type = RAD_TILE_TYPE_VOID;
 
-    RAD_EventManagerPublishTileRemovedFromGameEvent(world->event_manager, tile);
+    RAD_WorldPublishTileTransition(world, previous, tile->z, tile);
 
     return true;
+}
+
+void RAD_WorldPublishTileChanges(
+    RAD_World_t *world,
+    const RAD_Tile_t previous[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH],
+    int32_t previous_width,
+    int32_t previous_height)
+{
+    const int32_t width = (world->width > previous_width) ? world->width : previous_width;
+    const int32_t height = (world->height > previous_height) ? world->height : previous_height;
+
+    for(int32_t y=0;y < height; ++y)
+    {
+        for(int32_t x=0;x < width; ++x)
+        {
+            // Ausserhalb der alten Welt war nichts. Ausserhalb der neuen steht nach
+            // RAD_ResetWorldToSize schon VOID im Speicher, das Feld selbst sagt es.
+            const bool was_inside = (x < previous_width) && (y < previous_height);
+            const RAD_TileType_t previous_type = was_inside ? previous[y][x].type : RAD_TILE_TYPE_VOID;
+
+            RAD_WorldPublishTileTransition(world, previous_type, previous[y][x].z, &world->tiles[y][x]);
+        }
+    }
+}
+
+///
+/// Die Tabelle aus world.h, an einer Stelle: RAD_WorldAddTile, RAD_WorldRemoveTile
+/// und RAD_WorldPublishTileChanges melden alle ueber sie, damit ein Uebergang nicht
+/// je nach Weg anders heisst. Die Hoehe zaehlt nur zwischen zwei Feldern mit
+/// Gelaende -- was nicht da ist, hat keine Hoehe zu melden.
+///
+static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t previous_type, int32_t previous_z, const RAD_Tile_t *tile)
+{
+    const bool was_void = (previous_type == RAD_TILE_TYPE_VOID);
+    const bool is_void = (tile->type == RAD_TILE_TYPE_VOID);
+
+    if(was_void && is_void)
+    {
+        return;
+    }
+
+    if(was_void)
+    {
+        RAD_EventManagerPublishTileAddedToGameEvent(world->event_manager, tile);
+    }
+    else if(is_void)
+    {
+        RAD_EventManagerPublishTileRemovedFromGameEvent(world->event_manager, tile);
+    }
+    else if((previous_type != tile->type) || (previous_z != tile->z))
+    {
+        RAD_EventManagerPublishTileStateChangeEvent(world->event_manager, tile);
+    }
 }
 
 RAD_EntityId_t RAD_WorldSpawnEntity(RAD_World_t *world, RAD_EntityType_t type, int32_t x, int32_t y)
@@ -347,9 +428,14 @@ bool RAD_WorldIsConsistent(const RAD_World_t *world)
         return false;
     }
 
-    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    if(world->width < 1 || world->width > RAD_WORLD_WIDTH || world->height < 1 || world->height > RAD_WORLD_HEIGHT)
     {
-        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        return false;
+    }
+
+    for(int32_t y=0;y < world->height; ++y)
+    {
+        for(int32_t x=0;x < world->width; ++x)
         {
             const RAD_Tile_t *tile = &world->tiles[y][x];
             if(tile->x != x || tile->y != y)

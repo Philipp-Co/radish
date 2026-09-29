@@ -1,6 +1,3 @@
-#include "radish/game/game.h"
-#include "radish/game/model/entity/entity.h"
-#include "radish/game/model/tile/tile.h"
 #include <radish/io/user_input.h>
 
 #include <assert.h>
@@ -28,11 +25,13 @@ void RAD_IoUserinputSubscribeToMoveActionEvents(
     state->move_action_subscriber.user_argument = user_data;
 }
 
-RAD_IoUserInput_t RAD_CreateIoUserInputState(RAD_Game_t *game, RAD_IoUserinputSendCommandCallback_t send_callback)
+RAD_IoUserInput_t RAD_CreateIoUserInputState(const RAD_ClientWorld_t *world, RAD_NetUserId_t user, RAD_IoUserinputSendCommandCallback_t send_callback)
 {
     RAD_IoUserInput_t state = {
         .state = RAD_IO_USERINPUT_STATE_IDLE,
-        .game = game,
+        .world = world,
+        .user = user,
+        .next_sequence = 1,
         .send_command = send_callback,
         .move_action_subscriber = {
             .user_argument=NULL,
@@ -102,6 +101,7 @@ void RAD_IoUserInputOnLeftClick(RAD_IoUserInput_t *state, int32_t x, int32_t y)
             break;
         case RAD_IO_USERINPUT_STATE_SHOOT:
             state->state = RAD_IoUserinputStateHandleShooteOnLeftClick(state, x, y);
+            break;
         default:
            break; 
     }
@@ -116,12 +116,12 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleIdleOnLeftClick(RAD_IoUs
     // idle -> idle: Selected Tile does not contain an Entity
     // idle -> entity_selected: Selected Tile contains an Entity
     //
-    const bool result = RAD_GameTileAt(state->game, x, y, &state->selected_tile);
+    const bool result = RAD_ClientWorldTileAt(state->world, x, y, &state->selected_tile);
     if(!result)
     {
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
-    if(state->selected_tile.entity != RAD_ENTITY_NONE)
+    if(state->selected_tile.entity_id != RAD_NET_ENTITY_NONE)
     {
         return RAD_IO_USERINPUT_STATE_ENTITY_SELECTED;
     }
@@ -130,41 +130,36 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleIdleOnLeftClick(RAD_IoUs
 
 static RAD_IoUserInputState_t RAD_IoUserinputStateHandleEntitySelectedOnLeftClick(RAD_IoUserInput_t *state, int32_t x, int32_t y)
 {
-    RAD_Tile_t tile;
-    const bool result = RAD_GameTileAt(state->game, x, y, &tile);
+    RAD_NetTile_t tile;
+    const bool result = RAD_ClientWorldTileAt(state->world, x, y, &tile);
     if(!result)
     {
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
 
-    const int16_t selected_x = state->selected_tile.x;
-    const int16_t selected_y = state->selected_tile.y;
+    const int16_t selected_x = (int16_t)state->selected_tile.x;
+    const int16_t selected_y = (int16_t)state->selected_tile.y;
 
-    if((tile.x == selected_x) && (tile.y == selected_y))
+    if(((int16_t)tile.x == selected_x) && ((int16_t)tile.y == selected_y))
     {
         return RAD_IO_USERINPUT_STATE_SHOOT;
     }
     //
     // we are sure, that x, y point to a different tile then the selected one.
     //
-    if(RAD_ENTITY_NONE == tile.entity)
+    if(RAD_NET_ENTITY_NONE == tile.entity_id)
     {
         RAD_IoUserinputOnMoveActionStartedData_t data = {
-            .entity=NULL,
+            .entity_id=state->selected_tile.entity_id,
             .user_data=state->move_action_subscriber.user_argument,
-            .x=-1,
-            .y=-1
+            .x=selected_x,
+            .y=selected_y
         };
         state->data.move.path.number_of_steps = 0;
         state->data.move.path.steps_to[state->data.move.path.number_of_steps].x = selected_x;
         state->data.move.path.steps_to[state->data.move.path.number_of_steps].y = selected_y;
         state->data.move.path.number_of_steps++;
 
-        RAD_Entity_t entity;
-        RAD_GameEntityAt(state->game, state->selected_tile.entity, &entity);
-        data.entity = &entity;
-        data.x = selected_x;
-        data.y = selected_y;
         state->move_action_subscriber.callback.started(&data);
         
         state->data.move.path.steps_to[state->data.move.path.number_of_steps].x = x;
@@ -172,8 +167,8 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleEntitySelectedOnLeftClic
         state->data.move.path.number_of_steps++;
         RAD_IoUserinputOnMoveActionWaypointData_t waypoint_data = {
             .user_data=state->move_action_subscriber.user_argument,
-            .x=tile.x,
-            .y=tile.y
+            .x=(int16_t)tile.x,
+            .y=(int16_t)tile.y
         };
         state->move_action_subscriber.callback.waypoint_added(&waypoint_data);
 
@@ -184,8 +179,8 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleEntitySelectedOnLeftClic
 
 static RAD_IoUserInputState_t RAD_IoUserinputStateHandleMoveOnLeftClick(RAD_IoUserInput_t *state, int32_t x, int32_t y)
 {
-    RAD_Tile_t tile;
-    const bool result = RAD_GameTileAt(state->game, x, y, &tile);
+    RAD_NetTile_t tile;
+    const bool result = RAD_ClientWorldTileAt(state->world, x, y, &tile);
     if(!result)
     {
         RAD_IoUserinputOnMoveActionFinishedData_t data = {
@@ -195,10 +190,10 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleMoveOnLeftClick(RAD_IoUs
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
     
-    const int16_t selected_x = state->selected_tile.x;
-    const int16_t selected_y = state->selected_tile.y;
+    const int16_t selected_x = (int16_t)state->selected_tile.x;
+    const int16_t selected_y = (int16_t)state->selected_tile.y;
     
-    if((tile.x == selected_x) && (tile.y == selected_y))
+    if(((int16_t)tile.x == selected_x) && ((int16_t)tile.y == selected_y))
     {
         state->data.move.path.number_of_steps = 0;
         RAD_IoUserinputOnMoveActionFinishedData_t data = {
@@ -218,29 +213,35 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleMoveOnLeftClick(RAD_IoUs
         (state->data.move.path.steps_to[state->data.move.path.number_of_steps-1].y == y) 
     )
     {
-        RAD_Command_t command;
-        const RAD_EntityId_t entity_id = state->selected_tile.entity;
-
         RAD_IoUserinputOnMoveActionAcceptedData_t accepted_data = {
             .user_data=state->move_action_subscriber.user_argument
         };
         state->move_action_subscriber.callback.accepted(&accepted_data);
 
-        if(RAD_GameMoveEntity(state->game, entity_id, &state->data.move.path, &command))
+        //
+        // A Path needs at least the start and one more Tile (net_types.h).
+        //
+        if(state->data.move.path.number_of_steps >= 2)
         {
-            state->command_info.sequence = command.header.sequence;
-            state->command_info.type = command.header.type;
-
-            state->send_command(&command);
-
-            RAD_IoUserinputOnMoveActionRequestedData_t requested_data = {
-                .user_data=state->move_action_subscriber.user_argument
+            const RAD_NetMoveRequest_t request = {
+                .sequence=state->next_sequence++,
+                .user=state->user,
+                .entity=state->selected_tile.entity_id,
+                .path=state->data.move.path
             };
-            state->move_action_subscriber.callback.action_requested(&requested_data);
-            return RAD_IO_USERINPUT_STATE_WAIT_FOR_ACK; 
+            state->command_info.sequence = request.sequence;
+
+            if(state->send_command(&request))
+            {
+                RAD_IoUserinputOnMoveActionRequestedData_t requested_data = {
+                    .user_data=state->move_action_subscriber.user_argument
+                };
+                state->move_action_subscriber.callback.action_requested(&requested_data);
+                return RAD_IO_USERINPUT_STATE_WAIT_FOR_ACK;
+            }
         }
         //
-        // If unable to create a Command -> invalid Move.
+        // Invalid Move or not sent -> no Response will come.
         //
         state->data.move.path.number_of_steps = 0;
         RAD_IoUserinputOnMoveActionFinishedData_t data = {
@@ -249,15 +250,15 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleMoveOnLeftClick(RAD_IoUs
         state->move_action_subscriber.callback.finished(&data);
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
-    else if(state->data.move.path.number_of_steps < RAD_PATH_MAX_STEPS)
+    else if(state->data.move.path.number_of_steps < RAD_NET_PATH_MAX_STEPS)
     {
-        state->data.move.path.steps_to[state->data.move.path.number_of_steps].x = tile.x;
-        state->data.move.path.steps_to[state->data.move.path.number_of_steps].y = tile.y;
+        state->data.move.path.steps_to[state->data.move.path.number_of_steps].x = (int16_t)tile.x;
+        state->data.move.path.steps_to[state->data.move.path.number_of_steps].y = (int16_t)tile.y;
         state->data.move.path.number_of_steps++;
         RAD_IoUserinputOnMoveActionWaypointData_t data = {
             .user_data=state->move_action_subscriber.user_argument,
-            .x=tile.x,
-            .y=tile.y
+            .x=(int16_t)tile.x,
+            .y=(int16_t)tile.y
         };
         state->move_action_subscriber.callback.waypoint_added(&data);
         return RAD_IO_USERINPUT_STATE_MOVE; 
@@ -273,17 +274,17 @@ static RAD_IoUserInputState_t RAD_IoUserinputStateHandleMoveOnLeftClick(RAD_IoUs
     return RAD_IO_USERINPUT_STATE_IDLE;
 }
 
-void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, RAD_CommandResponse_t *response)
+void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, const RAD_NetCommandResponse_t *response)
 {
     switch(state->state)
     {
         case RAD_IO_USERINPUT_STATE_WAIT_FOR_ACK:
-            if(response->header.sequence == state->command_info.sequence && response->header.type == state->command_info.type)
+            if(response->sequence == state->command_info.sequence)
             {
                 printf("Received Response to known command!\n");
             }
             RAD_IoUserinputOnMoveActionResponseReceivedData_t response_data = {
-                .request_accepted=true,
+                .request_accepted=response->success,
                 .user_data=state->move_action_subscriber.user_argument
             };
             state->move_action_subscriber.callback.response_received(&response_data);
@@ -291,7 +292,6 @@ void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, RAD_Comm
                 .user_data=state->move_action_subscriber.user_argument
             };
             state->move_action_subscriber.callback.finished(&finished_data);
-            RAD_GameExecuteCommand(state->game, &response->command);
             state->state = RAD_IO_USERINPUT_STATE_IDLE;
             break;
         default:
@@ -301,27 +301,26 @@ void RAD_IoUserInputOnCommandResponseReceived(RAD_IoUserInput_t *state, RAD_Comm
 
 static RAD_IoUserInputState_t RAD_IoUserinputStateHandleShooteOnLeftClick(RAD_IoUserInput_t *state, int32_t x, int32_t y)
 {
-    RAD_Tile_t tile;
-    const bool result = RAD_GameTileAt(state->game, x, y, &tile);
+    RAD_NetTile_t tile;
+    const bool result = RAD_ClientWorldTileAt(state->world, x, y, &tile);
     if(!result)
     {
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
     
-    const int16_t selected_x = state->selected_tile.x;
-    const int16_t selected_y = state->selected_tile.y;
+    const int16_t selected_x = (int16_t)state->selected_tile.x;
+    const int16_t selected_y = (int16_t)state->selected_tile.y;
     
-    if((tile.x == selected_x) && (tile.y == selected_y))
+    if(((int16_t)tile.x == selected_x) && ((int16_t)tile.y == selected_y))
     {
         return RAD_IO_USERINPUT_STATE_IDLE;
     }
     
-    RAD_Command_t command;
-    if(RAD_GameShoot(state->game, state->selected_tile.entity, x, y, &command))
-    {
-        state->send_command(&command);
-        return RAD_IO_USERINPUT_STATE_WAIT_FOR_ACK; 
-    }
+    //
+    // Shoot is not sent yet: the protocol targets an Entity, the Client selects
+    // a Tile (net_codec.h).
+    //
+    printf("Shoot noch nicht unterstuetzt\n");
     return RAD_IO_USERINPUT_STATE_IDLE;
 }
 

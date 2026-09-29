@@ -22,6 +22,9 @@ void RAD_SerializeTile(RAD_JsonWriter_t *writer, const RAD_Tile_t *tile)
     RAD_JsonWriteKey(writer, "y");
     RAD_JsonWriteInt(writer, tile->y);
 
+    RAD_JsonWriteKey(writer, "z");
+    RAD_JsonWriteInt(writer, tile->z);
+
     RAD_JsonWriteKey(writer, "type");
     RAD_JsonWriteString(writer, RAD_TileTypeToString(tile->type));
 
@@ -47,9 +50,12 @@ RAD_SerializeResult_t RAD_DeserializeTile(RAD_JsonReader_t *reader, RAD_Tile_t *
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
 
+    // z = 0 ist nicht nur ein Anfangswert, sondern die Lesart eines Stands, der
+    // kein z traegt: Version 1 kannte keine Hoehen, und dort stand alles auf 0.
     *tile = (RAD_Tile_t){
         .x = 0,
         .y = 0,
+        .z = 0,
         .type = RAD_TILE_TYPE_VOID,
         .entity = RAD_ENTITY_NONE
     };
@@ -72,6 +78,13 @@ RAD_SerializeResult_t RAD_DeserializeTile(RAD_JsonReader_t *reader, RAD_Tile_t *
         else if(strcmp(key, "y") == 0)
         {
             if(!RAD_JsonReadInt(reader, &tile->y))
+            {
+                return RAD_SERIALIZE_ERROR_SCHEMA;
+            }
+        }
+        else if(strcmp(key, "z") == 0)
+        {
+            if(!RAD_JsonReadInt(reader, &tile->z))
             {
                 return RAD_SERIALIZE_ERROR_SCHEMA;
             }

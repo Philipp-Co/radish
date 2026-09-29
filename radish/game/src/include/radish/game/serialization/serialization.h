@@ -13,15 +13,15 @@
 ///
 ///     {
 ///       "format": "radish-save",
-///       "version": 1,
+///       "version": 2,
 ///       "game": {
 ///         "world": {
 ///           "width": 8,
 ///           "height": 8,
 ///           "tiles": [
 ///             [
-///               { "x": 0, "y": 0, "type": "ground", "entity": null },
-///               { "x": 1, "y": 0, "type": "water",  "entity": null }
+///               { "x": 0, "y": 0, "z": 0, "type": "ground", "entity": null },
+///               { "x": 1, "y": 0, "z": 1, "type": "water",  "entity": null }
 ///               // ... "width" Tiles je Zeile
 ///             ]
 ///             // ... "height" Zeilen
@@ -34,7 +34,9 @@
 ///     }
 ///
 ///   format   Muss RAD_SAVE_FORMAT_NAME sein, sonst RAD_SERIALIZE_ERROR_FORMAT.
-///   version  Muss RAD_SAVE_FORMAT_VERSION sein, sonst RAD_SERIALIZE_ERROR_VERSION.
+///   version  Muss in RAD_SAVE_FORMAT_VERSION_MIN..RAD_SAVE_FORMAT_VERSION liegen,
+///            sonst RAD_SERIALIZE_ERROR_VERSION. Geschrieben wird immer die
+///            neueste.
 ///   game     Der Spielzustand, siehe game_serializer.h.
 ///
 /// Beides wird geprueft, bevor "game" ueberhaupt gelesen wird -- eine fremde
@@ -48,10 +50,25 @@
 /// Feld aeltere Staende nicht entwertet.
 ///
 #define RAD_SAVE_FORMAT_NAME "radish-save"
-#define RAD_SAVE_FORMAT_VERSION 1
 
 ///
-/// Obergrenze fuer den Schreibpuffer. Ein Tile-Objekt braucht rund 46 Zeichen,
+/// Die Versionen des Spielstands:
+///
+///   1  Ohne Hoehen: ein Tile traegt kein "z", und die Welt ist immer genau
+///      RAD_WORLD_WIDTH x RAD_WORLD_HEIGHT gross.
+///   2  Ein Tile traegt sein "z", und die Welt darf kleiner sein.
+///
+/// Version 1 wird weiter gelesen, weil sie sich ohne Umdeutung als Teil von 2
+/// lesen laesst: ein fehlendes z ist 0, und die Groesse steht ohnehin in der
+/// Datei. Die Nummer steigt trotzdem, damit ein aelteres Programm einen neuen
+/// Stand ablehnt, statt seine Hoehen stillschweigend zu verlieren -- es
+/// uebergeht unbekannte Schluessel.
+///
+#define RAD_SAVE_FORMAT_VERSION_MIN 1
+#define RAD_SAVE_FORMAT_VERSION 2
+
+///
+/// Obergrenze fuer den Schreibpuffer. Ein Tile-Objekt braucht rund 52 Zeichen,
 /// ein Entitaets-Objekt rund 65 -- davon 29 die Uuid des Besitzers, die als
 /// String dasteht; bei 8x8 Tiles und vollem Pool sind das knapp 8 KB kompakt.
 /// Mit Einrueckung wird es etwa dreimal so viel, 32 KB decken beide Faelle mit
@@ -83,6 +100,10 @@ typedef enum
     /// Die Datei widerspricht sich selbst -- etwa wenn ein Tile auf eine andere
     /// Entitaet zeigt als die, die dort laut ihrer eigenen Position steht.
     RAD_SERIALIZE_ERROR_INCONSISTENT,
+
+    /// Eine Weltdefinition soll eine Welt ersetzen, auf der schon Figuren stehen
+    /// (world_definition.h).
+    RAD_SERIALIZE_ERROR_WORLD_OCCUPIED,
 
     RAD_SERIALIZE_ERROR_OUT_OF_MEMORY
 } RAD_SerializeResult_t;

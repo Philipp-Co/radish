@@ -58,7 +58,7 @@ typedef enum
 } RAD_TurnResult_t;
 
 ///
-/// Macht daraus einen Text zum Loggen, wie RAD_CommandCodecResultText. Immer ein
+/// Macht daraus einen Text zum Loggen, wie RAD_ControlResultText. Immer ein
 /// gueltiger Zeiger, auch bei einem Wert ausserhalb der Aufzaehlung.
 ///
 const char* RAD_TurnResultText(RAD_TurnResult_t result);

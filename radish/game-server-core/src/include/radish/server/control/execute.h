@@ -5,6 +5,7 @@
 #include <radish/game/game.h>
 #include <radish/game/user.h>
 #include <radish/game/control/command/command.h>
+#include <radish/game/model/tile/tile.h>
 
 ///
 /// control/ -- was mit einem Kommando geschieht. Es entscheidet, ob das Kommando
@@ -108,8 +109,9 @@ typedef enum
 } RAD_ControlResult_t;
 
 ///
-/// Macht daraus einen Text zum Loggen, wie RAD_CommandCodecResultText. Immer ein
-/// gueltiger Zeiger, auch bei einem Wert ausserhalb der Aufzaehlung.
+/// Macht daraus einen Text zum Loggen, wie RAD_NetCodecResultText
+/// (interface/message.h). Immer ein gueltiger Zeiger, auch bei einem Wert
+/// ausserhalb der Aufzaehlung.
 ///
 const char* RAD_ControlResultText(RAD_ControlResult_t result);
 
@@ -193,6 +195,30 @@ RAD_UserId_t RAD_ControlEntityOwner(RAD_Control_t control, RAD_EntityId_t entity
 
 /// Wie viele mitspielen -- fuers Log.
 int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control);
+
+///
+/// Was ein Client nach einer Discover-Anfrage erfaehrt: wer dran ist, wer in
+/// welcher Reihenfolge mitspielt und wie gross die Welt ist. Nur gelesen, und
+/// alles aus dem Spiel -- RAD_GameCurrentUser, RAD_GamePlayerAt,
+/// RAD_GameWorldWidth und RAD_GameWorldHeight.
+///
+RAD_UserId_t RAD_ControlCurrentUser(RAD_Control_t control);
+RAD_UserId_t RAD_ControlPlayerAt(RAD_Control_t control, int32_t index);
+int32_t RAD_ControlWorldWidth(RAD_Control_t control);
+int32_t RAD_ControlWorldHeight(RAD_Control_t control);
+
+///
+/// Ein Feld der Welt mit seinen Attributen, als Kopie nach "output" --
+/// RAD_GameTileAt.
+///
+/// **Anders als dort ist eine Stelle ausserhalb kein Rechenfehler, sondern ein
+/// false.** RAD_GameTileAt prueft per assert, weil eine falsche Stelle dort aus
+/// dem eigenen Code kommt. Hier kommt sie von aussen: der Ausschnitt einer
+/// Discover-Anfrage ist, was ein Client geschickt hat, und der darf den Server
+/// nicht anhalten. Deshalb wird vorher gegen die Groesse der Welt geprueft;
+/// "output" bleibt bei false unberuehrt.
+///
+bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *output);
 
 ///
 /// Fuehrt ein Kommando aus und beantwortet es.

@@ -5,7 +5,7 @@
 
 #include <stdio.h>
 
-static RAD_EntityPath_t path;
+static RAD_NetPath_t path;
 
 void RAD_RenderingOnMoveActionStarted(const RAD_IoUserinputOnMoveActionStartedData_t *data)
 {
@@ -14,8 +14,8 @@ void RAD_RenderingOnMoveActionStarted(const RAD_IoUserinputOnMoveActionStartedDa
     //
     RAD_IsoMap_t *map = (RAD_IsoMap_t*)data->user_data;
     
-    const int16_t x = data->entity->x;
-    const int16_t y = data->entity->y;
+    const int16_t x = data->x;
+    const int16_t y = data->y;
     const int16_t z = 0;
 
     RAD_IsoEntity_t *iso_entity = map->data[z][y][x].entity;
@@ -24,12 +24,12 @@ void RAD_RenderingOnMoveActionStarted(const RAD_IoUserinputOnMoveActionStartedDa
         printf("Move started on a Tile with no Entity!\n");
         return;
     }
-    if(iso_entity->id != data->entity->id)
+    if(iso_entity->id != data->entity_id)
     {
         printf("Error, given Entity-Id does not fit...\n");
         return;
     }
-    printf("Start Move-Action for Entity: %i\n", data->entity->id);
+    printf("Start Move-Action for Entity: %i\n", (int)data->entity_id);
 
     path.number_of_steps = 1;
     path.steps_to[0].x = x;

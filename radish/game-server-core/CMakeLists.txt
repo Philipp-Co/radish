@@ -6,7 +6,7 @@ find_package(Threads REQUIRED)
 
 add_executable(server
     src/main.c
-    src/interface/command.c
+    src/interface/message.c
     src/control/events/tiles.c
     src/control/execute.c
     src/control/loader.c
@@ -15,7 +15,7 @@ add_executable(server
 # Fuer die eigenen Module des Servers, damit sie sich beim Namen ihres Moduls
 # einbinden lassen und nicht ueber relative Pfade:
 #
-#     #include <radish/server/interface/command.h>
+#     #include <radish/server/interface/message.h>
 #
 # Dieselbe Form wie bei den Bibliotheken und beim Client: die oeffentlichen
 # Header liegen unter include/radish/<projekt>/ und werden ueberall gleich
@@ -30,9 +30,10 @@ target_include_directories(server PRIVATE
     src/include
 )
 
-# radish_game ist der Spielzustand, zucchini_api die Verbindung nach draussen.
-# Beide tragen ihre Include-Verzeichnisse PUBLIC, es braucht hier also keine
-# weiteren Suchpfade.
+# radish_game ist der Spielzustand, radish_protobuf das Ein-/Auspacken der
+# Nachrichten, zucchini_api die Verbindung nach draussen. Alle drei tragen
+# ihre Include-Verzeichnisse PUBLIC, es braucht hier also keine weiteren
+# Suchpfade.
 #
 # Die Serialisierung steckt in radish_game und ist deshalb keine eigene Zeile mehr.
 # Der Server sieht von ihr nur noch RAD_LoadGameFromFile aus game.h: kein Format,
@@ -41,6 +42,7 @@ target_include_directories(server PRIVATE
 # aufmachte, ist damit weggefallen.
 target_link_libraries(server PRIVATE
     radish_game
+    radish_protobuf
     zucchini_api
     Threads::Threads
 )

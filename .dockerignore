@@ -1,7 +1,7 @@
 # Der Build-Kontext des Backends ist die Wurzel des Repositorys (es braucht
 # radish/, jsmn/ und zucchini/ zusammen). Ohne diese Liste ginge emsdk/ mit --
-# einige Gigabyte, die kein Image je anfasst. Auch die Kontexte von web/ und
-# relay/ sind die Wurzel und profitieren mit.
+# einige Gigabyte, die kein Image je anfasst. Auch der Kontext von web/ ist
+# die Wurzel und profitiert mit.
 
 .git/
 .gitignore
@@ -19,9 +19,8 @@ radish/build/
 radish/.cache/
 radish/compile_commands.json
 
-# Nicht das virtuelle Environment mitschleppen -- Relay- und Backend-Image
-# installieren ihre Abhaengigkeiten selbst aus der jeweiligen requirements.txt.
-relay/.venv/
+# Nicht das virtuelle Environment mitschleppen -- die Images installieren
+# ihre Abhaengigkeiten selbst aus der jeweiligen requirements.txt.
 radish/backend/.venv/
 radish/game-server/.venv/
 __pycache__/

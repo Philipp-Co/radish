@@ -7,7 +7,6 @@
 #include <radish/rendering/entity.h>
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
-#include <radish/rendering/entity.h>
 
 
 typedef struct
@@ -22,6 +21,13 @@ typedef struct
 
     bool focus;
     int32_t layer;
+
+    ///
+    /// Ob das Objekt schon in RAD_IsoMap_t.iso_objects steht. Ein Feld, das der
+    /// Server ein zweites Mal schickt, wird dann aktualisiert und nicht noch
+    /// einmal eingetragen.
+    ///
+    bool present;
 
     RAD_IsoEntity_t *entity;
 

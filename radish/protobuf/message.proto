@@ -2,12 +2,14 @@ syntax = "proto3";
 
 import "event.proto";
 import "command.proto";
+import "discover.proto";
 
 message NetUserRequest
 {
     oneof data
     {
         NetCommandRequest command_request = 1;
+        NetDiscoverRequest discover_request = 2;
     }
 }
 

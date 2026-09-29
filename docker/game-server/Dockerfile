@@ -14,12 +14,23 @@
 # radish/game-server/ allein.
 FROM alpine:3.20 AS build
 
-RUN apk add --no-cache build-base cmake
+# protobuf/protobuf-c-compiler fuer den Protobuf-Schritt (siehe
+# radish/cmake/protobuf-c.cmake und radish/protobuf/CMakeLists.txt): protobuf
+# liefert protoc, protobuf-c-compiler liefert protoc-gen-c -- beide sucht
+# protobuf-c.cmake als Host-Werkzeuge (find_program) und bricht beim
+# Konfigurieren sonst mit einer klaren Fehlermeldung ab. Das Alpine-Paket
+# "protobuf-c" allein enthaelt nur die Laufzeitbibliothek, nicht das Plugin
+# (und die Laufzeit wird ohnehin aus dem protobuf-c-Klon gebaut).
+RUN apk add --no-cache build-base cmake protobuf protobuf-c-compiler
 
 WORKDIR /src
 
 COPY zucchini/ zucchini/
 COPY jsmn/ jsmn/
+# Wie jsmn ein blosser Klon und kein Paket: radish/cmake/protobuf-c.cmake
+# uebersetzt die protobuf-c-Laufzeit (protobuf-c/protobuf-c.c) selbst aus ihm,
+# statt sie zu verlinken -- siehe dort fuer die Begruendung.
+COPY protobuf-c/ protobuf-c/
 COPY radish/ radish/
 
 # Erst Zucchini als eigenes Dachprojekt (zucchini_server + Admin-Client),
@@ -48,6 +59,14 @@ FROM python:3.12-alpine
 COPY --from=build /src/build/zucchini/server/zucchini_server             /usr/local/bin/zucchini_server
 COPY --from=build /src/build/zucchini/admin_client/zucchini_admin_client /usr/local/bin/zucchini_admin_client
 COPY --from=build /src/build/radish/game-server-core/server              /usr/local/bin/radish_server
+
+# Die Welten, mit denen ein Spiel beginnen kann, und die, die radish_server ohne
+# weitere Angabe laedt (RADISH_WORLD_PATH, siehe radish/game-server-core/src/
+# main.c). Aus dem Quellbaum und nicht aus der Build-Stufe: es sind Daten, keine
+# Build-Ergebnisse. Eine andere Welt laesst sich per Volume unter demselben Pfad
+# oder ueber die Variable in docker-compose.yaml waehlen.
+COPY radish/assets/worlds/ /usr/local/share/radish/worlds/
+ENV RADISH_WORLD_PATH=/usr/local/share/radish/worlds/default.json
 
 WORKDIR /app
 COPY radish/game-server/requirements.txt /app/requirements.txt

@@ -1,10 +1,15 @@
 syntax = "proto3";
 
+// VOID kam als letzter dazu und steht deshalb hinten: bestehende Nummern
+// werden nicht umgedeutet. Ein Feld ohne Gelaende ist ein Feld und kein
+// fehlendes -- es gehoert zur Welt (RAD_TILE_TYPE_VOID) und wird genauso
+// uebertragen wie eines mit.
 enum NetTileType
 {
     TILE_TYPE_UNKNOWN = 0;
     TILE_TYPE_GROUND = 1;
     TILE_TYPE_WATER = 2;
+    TILE_TYPE_VOID = 3;
 }
 
 message NetTile
@@ -12,12 +17,24 @@ message NetTile
     uint32 x = 2;
     uint32 y = 3;
     NetTileType type = 4;
-    uint32 entity_id = 5;
+
+    // Die Figur auf dem Feld, als Id des Spiels (RAD_EntityId_t) und
+    // unveraendert: -1 heisst keine (RAD_ENTITY_NONE), jede andere Zahl ist eine
+    // Figur, die 0 eingeschlossen.
+    //
+    // sint32 und nicht int32: ein negativer int32 kostet auf der Strecke immer
+    // zehn Bytes, und -1 steht auf fast jedem Feld. sint32 kodiert ihn in einem.
+    // Kein "optional": protoc-gen-c (protobuf-c 1.5) erzeugt dafuer in proto3
+    // keinen Code.
+    sint32 entity_id = 5;
+
+    // Hoehe des Feldes (RAD_Tile_t.z). Auf einem Feld ohne Gelaende 0.
+    uint32 z = 6;
 }
 
 message NetTileCreatedEvent 
 {
-    NetTile base = 1;
+    NetTile tile = 1;
 }
 
 message NetTileRemovedEvent
@@ -28,7 +45,7 @@ message NetTileRemovedEvent
 
 message NetTileChangedEvent
 {
-    NetTile base = 1;
+    NetTile tile = 1;
 }
 
 message NetTileEvent

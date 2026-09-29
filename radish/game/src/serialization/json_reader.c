@@ -166,6 +166,18 @@ bool RAD_JsonPeekIsNull(const RAD_JsonReader_t *reader)
         && memcmp(reader->json + token->start, "null", 4) == 0;
 }
 
+bool RAD_JsonPeekStringLength(const RAD_JsonReader_t *reader, int32_t *length)
+{
+    const jsmntok_t *token = RAD_JsonCurrent(reader);
+    if(token == NULL || token->type != JSMN_STRING || token->size != 0)
+    {
+        return false;
+    }
+
+    *length = (int32_t)(token->end - token->start);
+    return true;
+}
+
 void RAD_JsonSkipValue(RAD_JsonReader_t *reader)
 {
     if(reader->error)

@@ -39,12 +39,21 @@ declare global {
  * gameName ist weiterhin rein informativ (fuer eine optionale Anzeige durch
  * die einbettende Seite).
  */
+/**
+ * Die Werte von ZucConnectionState in client/src/main.c -- zuc_on_connection_state()
+ * nimmt sie als int entgegen. Bei einer Aenderung dort auch hier nachziehen.
+ */
+const ZUC_STATE_OPEN = 1;
+const ZUC_STATE_CLOSED = 2;
+
 @Component({
   selector: 'app-game-canvas',
   standalone: true,
   template: `
     <div class="game-canvas">
-      <canvas id="canvas" #canvas width="640" height="420" tabindex="0"></canvas>
+      <!-- Die rechte Maustaste verschiebt die Kamera (client/src/io/camera_control.c):
+           das Kontextmenue des Browsers darf dabei nicht aufgehen. -->
+      <canvas id="canvas" #canvas width="640" height="420" tabindex="0" (contextmenu)="$event.preventDefault()"></canvas>
     </div>
   `,
   styles: [
@@ -119,6 +128,9 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
       // WASM-Client ein Kommando ans Backend schicken will.
       this.wasmModule.sendToChannel = (bytes: Uint8Array | ArrayBuffer) => this.sendToBackend(bytes);
       this.gameSocket.setWasmEventHandler((bytes) => this.forwardToWasm(bytes));
+      // Nach sendToChannel: sobald der Client "offen" hoert, schickt er seine
+      // erste Nachricht (Discover, client/src/main.c).
+      this.gameSocket.setConnectionStateHandler((open) => this.forwardConnectionState(open));
     } catch (err) {
       console.error('[game-canvas] WASM-Client konnte nicht geladen werden:', err);
     }
@@ -126,6 +138,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.gameSocket.setWasmEventHandler(null);
+    this.gameSocket.setConnectionStateHandler(null);
     this.scriptEl?.remove();
     this.releaseGlobalKeyListeners();
   }
@@ -145,6 +158,19 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     module.HEAPU8.set(bytes, ptr);
     module.ccall('zuc_on_response', null, ['number', 'number'], [ptr, bytes.length]);
     module._free(ptr);
+  }
+
+  /**
+   * Meldet dem WASM-Client, ob die Verbindung zum Backend offen ist
+   * (zuc_on_connection_state() in client/src/main.c). Ohne diese Meldung bleibt
+   * er im Zustand "verbinde..." und schickt nach dem Beitritt nichts von sich aus.
+   */
+  private forwardConnectionState(open: boolean): void {
+    const module = this.wasmModule;
+    if (!module) {
+      return;
+    }
+    module.ccall('zuc_on_connection_state', null, ['number'], [open ? ZUC_STATE_OPEN : ZUC_STATE_CLOSED]);
   }
 
   /**

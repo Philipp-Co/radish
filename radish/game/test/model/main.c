@@ -18,6 +18,11 @@ void test_world_tile_entfernen_scheitert_unter_einer_figur(void);
 void test_world_tile_ausserhalb_der_welt_ist_kein_tile(void);
 void test_world_tile_ereignis_folgt_dem_uebergang(void);
 void test_world_tile_entfernen_ist_idempotent(void);
+void test_world_init_meldet_jedes_feld_einmal(void);
+void test_world_aenderungen_gegen_alten_stand(void);
+void test_world_groesse_laesst_sich_setzen(void);
+void test_world_ungueltige_groesse_aendert_nichts(void);
+void test_world_aenderungen_ueber_eine_neue_groesse(void);
 
 
 void setUp(void) {}
@@ -35,6 +40,11 @@ int main(void)
     RUN_TEST(test_world_tile_ausserhalb_der_welt_ist_kein_tile);
     RUN_TEST(test_world_tile_ereignis_folgt_dem_uebergang);
     RUN_TEST(test_world_tile_entfernen_ist_idempotent);
+    RUN_TEST(test_world_init_meldet_jedes_feld_einmal);
+    RUN_TEST(test_world_aenderungen_gegen_alten_stand);
+    RUN_TEST(test_world_groesse_laesst_sich_setzen);
+    RUN_TEST(test_world_ungueltige_groesse_aendert_nichts);
+    RUN_TEST(test_world_aenderungen_ueber_eine_neue_groesse);
 
     return UNITY_END();
 }

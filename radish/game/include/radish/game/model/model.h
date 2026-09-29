@@ -12,9 +12,11 @@
 /// dafuer trotzdem oeffentlich sein muss, und sie zerfaellt in zwei Haelften:
 ///
 /// **Das Vokabular.** Ids und Aufzaehlungen, die ein Kommando ueber die Strecke
-/// traegt und deren Wire-Nummern der Codec kennt (control/command/codec.h). Sie
-/// sind Protokoll und nicht Zustand: wer ein Kommando baut, muss sie hinschreiben
-/// koennen, ohne eine Welt zu haben.
+/// traegt (control/command/command.h) und die auf dem Wire wiederkehren --
+/// client/src/io/net_codec.c und game-server-core/src/interface/message.c
+/// uebersetzen sie in beide Richtungen. Sie sind Protokoll und nicht Zustand:
+/// wer ein Kommando baut, muss sie hinschreiben koennen, ohne eine Welt zu
+/// haben.
 ///
 /// **Die Namen ohne Inhalt.** Drei unvollstaendige Typen -- RAD_World_t,
 /// RAD_Turn_t und RAD_Game_t. Ein Zeiger darauf ist in C vollkommen zulaessig,

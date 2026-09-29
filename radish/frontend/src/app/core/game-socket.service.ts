@@ -10,6 +10,13 @@ import { AuthService } from './auth.service';
 export type WasmEventHandler = (data: Uint8Array) => void;
 
 /**
+ * Callback, an den GameSocketService meldet, ob die Verbindung gerade offen
+ * ist -- von GameCanvasComponent registriert und dort an
+ * zuc_on_connection_state() (client/src/main.c) weitergereicht.
+ */
+export type ConnectionStateHandler = (open: boolean) => void;
+
+/**
  * Wie oft der Client dem Backend ein Lebenszeichen schickt, waehrend die
  * Verbindung offen ist (siehe startHeartbeat() unten) -- derselbe Wert wie
  * PING_INTERVAL_SECONDS in radish/backend/api/consumers.py, EchoConsumer,
@@ -56,6 +63,7 @@ export class GameSocketService {
   private socket: WebSocket | null = null;
   private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
   private wasmEventHandler: WasmEventHandler | null = null;
+  private connectionStateHandler: ConnectionStateHandler | null = null;
 
   /**
    * Von GameCanvasComponent aufgerufen, sobald das WASM-Modul geladen ist,
@@ -66,6 +74,18 @@ export class GameSocketService {
    */
   setWasmEventHandler(handler: WasmEventHandler | null): void {
     this.wasmEventHandler = handler;
+  }
+
+  /**
+   * Wie setWasmEventHandler(), nur fuer den Verbindungszustand. Meldet den
+   * aktuellen Zustand sofort: connect() wird von CurrentGameComponent
+   * unabhaengig vom Laden des WASM-Moduls aufgerufen, und die Verbindung kann
+   * schon offen sein, wenn sich der Client anmeldet -- ohne diesen ersten
+   * Aufruf erfuehre er davon nie.
+   */
+  setConnectionStateHandler(handler: ConnectionStateHandler | null): void {
+    this.connectionStateHandler = handler;
+    handler?.(this.socket?.readyState === WebSocket.OPEN);
   }
 
   connect(): void {
@@ -89,6 +109,7 @@ export class GameSocketService {
     socket.onopen = () => {
       console.log('GameSocketService: Verbindung geoeffnet.');
       this.startHeartbeat();
+      this.connectionStateHandler?.(true);
     };
     socket.onmessage = (event) => this.handleMessage(event.data);
     socket.onerror = (event) => console.error('GameSocketService: Fehler:', event);
@@ -96,6 +117,7 @@ export class GameSocketService {
       console.log(`GameSocketService: Verbindung geschlossen (Code ${event.code}).`);
       this.stopHeartbeat();
       this.socket = null;
+      this.connectionStateHandler?.(false);
     };
 
     this.socket = socket;
