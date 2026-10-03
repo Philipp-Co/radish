@@ -82,11 +82,20 @@ def register():
     address = _env("RADISH_GAME_SERVER_ADDRESS")
     port = _env("RADISH_GAME_SERVER_PORT")
     backend_url = _env("RADISH_BACKEND_URL")
+    # HTTP-Adresse der Instanz-API dieses Containers (radish/game-server/
+    # instances/views.py), ueber die das Backend Spiele startet/abbricht --
+    # siehe GameServer.control_url in radish/backend/api/models.py.
+    control_url = _env("RADISH_GAME_SERVER_CONTROL_URL")
 
     token = _fetch_access_token()
     response = requests.post(
         f"{backend_url}/api/servers/",
-        json={"name": name, "address": address, "port": int(port)},
+        json={
+            "name": name,
+            "address": address,
+            "port": int(port),
+            "control_url": control_url,
+        },
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )

@@ -84,7 +84,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * Ergebnis von loadWasmModule() (Module.ccall/._malloc/.HEAPU8/... aus der
    * Emscripten-Laufzeit, siehe Kommentar bei Window.createZucchiniModule
    * oben) -- wird in forwardToWasm() gebraucht, um eingehende "event"-Bytes
-   * von GameSocketService an zuc_on_response() (client/src/main.c)
+   * von GameSocketService an RAD_OnMessageReceived() (client/src/main.c)
    * weiterzureichen. Deshalb bewusst als `any` belassen statt einer selbst
    * ausgedachten Typdefinition.
    */
@@ -128,6 +128,9 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
       // WASM-Client ein Kommando ans Backend schicken will.
       this.wasmModule.sendToChannel = (bytes: Uint8Array | ArrayBuffer) => this.sendToBackend(bytes);
       this.gameSocket.setWasmEventHandler((bytes) => this.forwardToWasm(bytes));
+      // Die eigene, oeffentliche Spieler-Id -- damit der Client erkennt, was
+      // ihm gehoert (RAD_ClientSetPlayerId, client/src/main.c).
+      this.gameSocket.setPlayerIdHandler((playerId) => this.forwardPlayerId(playerId));
       // Nach sendToChannel: sobald der Client "offen" hoert, schickt er seine
       // erste Nachricht (Discover, client/src/main.c).
       this.gameSocket.setConnectionStateHandler((open) => this.forwardConnectionState(open));
@@ -138,6 +141,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.gameSocket.setWasmEventHandler(null);
+    this.gameSocket.setPlayerIdHandler(null);
     this.gameSocket.setConnectionStateHandler(null);
     this.scriptEl?.remove();
     this.releaseGlobalKeyListeners();
@@ -145,7 +149,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
 
   /**
    * Kopiert die von GameSocketService dekodierten "event"-Bytes ins
-   * WASM-Heap und ruft zuc_on_response() (siehe client/src/main.c) --
+   * WASM-Heap und ruft RAD_OnMessageReceived() (siehe client/src/main.c) --
    * gleiches Muster wie zuvor in web/index.html (forwardResponseToWasm)
    * fuer die inzwischen entfernte WebRTC/Relay-Verbindung.
    */
@@ -156,7 +160,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     }
     const ptr = module._malloc(bytes.length);
     module.HEAPU8.set(bytes, ptr);
-    module.ccall('zuc_on_response', null, ['number', 'number'], [ptr, bytes.length]);
+    module.ccall('RAD_OnMessageReceived', null, ['number', 'number'], [ptr, bytes.length]);
     module._free(ptr);
   }
 
@@ -165,6 +169,14 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * (zuc_on_connection_state() in client/src/main.c). Ohne diese Meldung bleibt
    * er im Zustand "verbinde..." und schickt nach dem Beitritt nichts von sich aus.
    */
+  private forwardPlayerId(playerId: string): void {
+    const module = this.wasmModule;
+    if (!module) {
+      return;
+    }
+    module.ccall('RAD_ClientSetPlayerId', null, ['string'], [playerId]);
+  }
+
   private forwardConnectionState(open: boolean): void {
     const module = this.wasmModule;
     if (!module) {

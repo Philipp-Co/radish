@@ -10,6 +10,7 @@ add_executable(server
     src/control/events/tiles.c
     src/control/execute.c
     src/control/loader.c
+    src/control/game_start.c
 )
 
 # Fuer die eigenen Module des Servers, damit sie sich beim Namen ihres Moduls
@@ -35,15 +36,21 @@ target_include_directories(server PRIVATE
 # ihre Include-Verzeichnisse PUBLIC, es braucht hier also keine weiteren
 # Suchpfade.
 #
-# Die Serialisierung steckt in radish_game und ist deshalb keine eigene Zeile mehr.
-# Der Server sieht von ihr nur noch RAD_LoadGameFromFile aus game.h: kein Format,
-# kein Puffer, kein jsmn -- das liegt alles hinter dem privaten Suchpfad des
-# Spielmoduls. Sein eigenes control/loader/save_file.c, das die Datei bisher selbst
-# aufmachte, ist damit weggefallen.
+# Das Einlesen der Weltdefinition steckt in radish_game und ist deshalb keine
+# eigene Zeile. Der Server sieht davon nur RAD_LoadWorldFromFile aus game.h: kein
+# Format, kein Puffer, kein jsmn -- das liegt alles hinter dem privaten Suchpfad
+# des Spielmoduls.
+#
+# jsmn dagegen doch, fuer eine Datei, die nicht dem Spiel gehoert: die
+# Spielstart-Datei (control/game_start.c), in der das Backend ablegt, wer mit welcher
+# Armee antritt. Woher die Spieler kommen, ist Sache des Servers -- er liest sie und
+# richtet sein Spiel danach ueber dessen Setter ein. Eine eigene, statische Kopie des
+# Parsers (JSMN_STATIC), damit sie nicht mit der in radish_game zusammenstoesst.
 target_link_libraries(server PRIVATE
     radish_game
     radish_protobuf
     zucchini_api
+    jsmn::jsmn
     Threads::Threads
 )
 

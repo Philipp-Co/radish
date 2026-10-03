@@ -1,3 +1,4 @@
+#include <string.h>
 #include <unity.h>
 #include <radish/game/game.h>
 
@@ -91,64 +92,75 @@ void test_view_laesst_output_bei_ablehnung_unberuehrt(void)
     // Die Zusage aus game.h: ein abgelehnter Aufruf schreibt nichts halb hinein.
     // Abgelehnt wird ueber das NULL-Spiel -- der einzige Weg, den es dafuer noch
     // gibt, seit die Stelle selbst per assert geprueft wird.
-    RAD_Tile_t tile = { .x = -42, .y = -42, .z = -42, .type = RAD_TILE_TYPE_WATER, .entity = 7 };
+    RAD_Tile_t tile = { .x = -42, .y = -42, .z = -42, .type = RAD_TILE_TYPE_WATER, .unit = 7 };
     TEST_ASSERT_FALSE(RAD_GameTileAt(NULL, 0, 0, &tile));
     TEST_ASSERT_EQUAL_INT(-42, tile.x);
     TEST_ASSERT_EQUAL_INT(-42, tile.y);
-    TEST_ASSERT_EQUAL_INT(7, tile.entity);
+    TEST_ASSERT_EQUAL_INT(7, tile.unit);
 
-    RAD_Entity_t entity = { .id = -42, .health = 99 };
-    TEST_ASSERT_FALSE(RAD_GameEntityAt(game, 0, &entity));
-    TEST_ASSERT_EQUAL_INT(-42, entity.id);
-    TEST_ASSERT_EQUAL_INT(99, entity.health);
+    RAD_Unit_t unit = { .id = -42, .movement = 99 };
+    TEST_ASSERT_FALSE(RAD_GameUnitAt(game, 0, &unit));
+    TEST_ASSERT_EQUAL_INT(-42, unit.id);
+    TEST_ASSERT_EQUAL_INT(99, unit.movement);
 
     abbauen();
 }
 
-void test_view_zaehlt_nur_vorhandene_entitaeten(void)
+void test_view_zaehlt_nur_vorhandene_einheiten(void)
 {
     aufbauen();
 
     // Ein frisches Spiel hat keine Figuren -- der Pool ist leer, nicht luecklenhaft.
-    TEST_ASSERT_EQUAL_INT(0, RAD_GameNumberOfEntities(game));
+    TEST_ASSERT_EQUAL_INT(0, RAD_GameNumberOfUnits(game));
 
-    RAD_Entity_t entity;
-    TEST_ASSERT_FALSE(RAD_GameEntityAt(game, 0, &entity));
+    RAD_Unit_t unit;
+    TEST_ASSERT_FALSE(RAD_GameUnitAt(game, 0, &unit));
 
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_NPC, 1, 1));
-    TEST_ASSERT_EQUAL_INT(1, RAD_GameNumberOfEntities(game));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 1, 1));
+    TEST_ASSERT_EQUAL_INT(1, RAD_GameNumberOfUnits(game));
 
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 2, 3));
-    TEST_ASSERT_EQUAL_INT(2, RAD_GameNumberOfEntities(game));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3));
+    TEST_ASSERT_EQUAL_INT(2, RAD_GameNumberOfUnits(game));
 
     abbauen();
 }
 
-void test_view_index_ist_dicht_auch_bei_luecken_im_pool(void)
+void test_view_zaehlt_einheiten_in_jedem_zustand(void)
 {
     aufbauen();
 
-    // Drei Figuren setzen, die mittlere entfernen: der Pool hat danach eine Luecke,
-    // der Index der Fassade darf keine haben.
-    const RAD_EntityId_t first  = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_NPC, 0, 0);
-    const RAD_EntityId_t middle = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_NPC, 1, 0);
-    const RAD_EntityId_t last   = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_NPC, 2, 0);
-    TEST_ASSERT_EQUAL_INT(3, RAD_GameNumberOfEntities(game));
+    // Drei Einheiten, eine in jedem Zustand: auf dem Feld, in der Reserve und
+    // zerstoert. Gezaehlt werden alle drei -- die Fassade gibt die Einheitenliste
+    // heraus und nicht nur das Feld.
+    RAD_Unit_t values = { .number_of_members = 1 };
+    strcpy(values.name, "Trupp");
+    strcpy(values.members[0].profile, "Soldat");
 
-    RAD_WorldRemoveEntity(&game->world, middle);
-    TEST_ASSERT_EQUAL_INT(2, RAD_GameNumberOfEntities(game));
+    const RAD_UnitId_t deployed  = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 0, 0);
+    const RAD_UnitId_t reserve   = RAD_WorldAddReserveUnit(&game->world, &values, RAD_USER_NONE);
+    const RAD_UnitId_t destroyed = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 2, 0);
+    RAD_WorldRemoveUnit(&game->world, destroyed);
 
-    // Index 0 und 1 treffen die zwei uebrigen, aufsteigend nach Id -- die
-    // entfernte kommt nicht mehr vor, und hinter Index 1 ist Schluss.
-    RAD_Entity_t at_zero;
-    RAD_Entity_t at_one;
-    TEST_ASSERT_TRUE(RAD_GameEntityAt(game, 0, &at_zero));
-    TEST_ASSERT_TRUE(RAD_GameEntityAt(game, 1, &at_one));
-    TEST_ASSERT_EQUAL_INT(first, at_zero.id);
-    TEST_ASSERT_EQUAL_INT(last, at_one.id);
+    TEST_ASSERT_EQUAL_INT(3, RAD_GameNumberOfUnits(game));
 
-    RAD_Entity_t beyond;
-    TEST_ASSERT_FALSE(RAD_GameEntityAt(game, 2, &beyond));
+    // Aufsteigend nach Id, und die zerstoerte behaelt ihren Platz -- ihre Id wird
+    // nicht neu vergeben, also faellt sie auch aus dem Index nicht heraus.
+    RAD_Unit_t at[3];
+    for(int32_t i=0;i < 3; ++i)
+    {
+        TEST_ASSERT_TRUE(RAD_GameUnitAt(game, i, &at[i]));
+    }
+    TEST_ASSERT_EQUAL_INT(deployed, at[0].id);
+    TEST_ASSERT_EQUAL_INT(reserve, at[1].id);
+    TEST_ASSERT_EQUAL_INT(destroyed, at[2].id);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, at[0].state);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, at[1].state);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DESTROYED, at[2].state);
+
+    RAD_Unit_t beyond;
+    TEST_ASSERT_FALSE(RAD_GameUnitAt(game, 3, &beyond));
+
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
 
     abbauen();
 }
@@ -157,22 +169,22 @@ void test_view_gibt_eine_kopie_heraus(void)
 {
     aufbauen();
 
-    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_NPC, 4, 5);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, id);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 4, 5);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     // Die eigentliche Zusage: was der Aufrufer bekommt, haengt nicht an der Welt.
     // In seinen Stand geschrieben zu haben, aendert dort nichts.
-    RAD_Entity_t mine;
-    TEST_ASSERT_TRUE(RAD_GameEntityAt(game, 0, &mine));
+    RAD_Unit_t mine;
+    TEST_ASSERT_TRUE(RAD_GameUnitAt(game, 0, &mine));
     TEST_ASSERT_EQUAL_INT(id, mine.id);
 
-    mine.id = RAD_ENTITY_NONE;
-    mine.health = 12345;
+    mine.id = RAD_UNIT_NONE;
+    mine.movement = 12345;
 
-    RAD_Entity_t again;
-    TEST_ASSERT_TRUE(RAD_GameEntityAt(game, 0, &again));
+    RAD_Unit_t again;
+    TEST_ASSERT_TRUE(RAD_GameUnitAt(game, 0, &again));
     TEST_ASSERT_EQUAL_INT(id, again.id);
-    TEST_ASSERT_NOT_EQUAL(12345, again.health);
+    TEST_ASSERT_NOT_EQUAL(12345, again.movement);
 
     // Dasselbe fuer ein Tile, ueber seine Position gegengeprueft.
     RAD_Tile_t tile;
@@ -195,17 +207,17 @@ void test_view_findet_die_gesetzte_figur_auf_ihrem_tile(void)
 
     // Die zwei Seiten gegeneinander: die Figur kennt ihr Feld, das Feld die Figur.
     // Beides muss durch die Fassade gleich herauskommen.
-    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 3, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, id);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
-    RAD_Entity_t entity;
-    TEST_ASSERT_TRUE(RAD_GameEntityAt(game, 0, &entity));
-    TEST_ASSERT_EQUAL_INT(3, entity.x);
-    TEST_ASSERT_EQUAL_INT(2, entity.y);
+    RAD_Unit_t unit;
+    TEST_ASSERT_TRUE(RAD_GameUnitAt(game, 0, &unit));
+    TEST_ASSERT_EQUAL_INT(3, unit.x);
+    TEST_ASSERT_EQUAL_INT(2, unit.y);
 
     RAD_Tile_t tile;
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, entity.x, entity.y, &tile));
-    TEST_ASSERT_EQUAL_INT(id, tile.entity);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, unit.x, unit.y, &tile));
+    TEST_ASSERT_EQUAL_INT(id, tile.unit);
 
     abbauen();
 }

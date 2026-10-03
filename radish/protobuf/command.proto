@@ -6,19 +6,40 @@ message NetMoveCommandStep
     uint32 y = 2;
 }
 
+// user_id ist die oeffentliche Id eines Spielers, die gepackte Spieler-Kennung
+// (RAD_ControlUserIdFromIdentifier, game_start.h) -- sie braucht alle 64 Bit.
+//
+// Nur auf dem Rueckweg hat sie Gewicht: in der Antwort traegt sie, wer das
+// Kommando geschickt hat, so dass jeder Client es zuordnen kann. Was ein Client
+// beim Senden hineinschreibt, liest der Server nicht -- den Absender setzt das
+// Backend vor die Nachricht (RAD_ParseSenderFromMessage, game-server-core/src/
+// include/radish/server/interface/message.h). Ein Client darf das Feld leer
+// lassen.
 message NetMoveCommand
 {
-    uint32 user_id = 1;
-    uint32 entity_id = 2;
+    uint64 user_id = 1;
+    uint32 unit_id = 2;
     repeated NetMoveCommandStep steps = 3;
 }
 
 message NetShootCommand
 {
-    uint32 user_id = 1;
-    uint32 source_entity_id = 2;
-    uint32 target_entity_id = 3;
+    uint64 user_id = 1;
+    uint32 source_unit_id = 2;
+    uint32 target_unit_id = 3;
     repeated uint32 weapon = 4;
+}
+
+// Stellt eine Einheit aus der Reserve des Absenders auf das Feld (x, y)
+// (RAD_COMMAND_TYPE_DEPLOY_UNIT). Die Einheit nennt ihre Id im Spiel; x und y sind
+// Weltkoordinaten und passen in int16 -- was groesser ist, lehnt der Server ab.
+// user_id wie bei NetMoveCommand: nur in der Antwort gesetzt.
+message NetDeployCommand
+{
+    uint64 user_id = 1;
+    uint32 unit_id = 2;
+    uint32 x = 3;
+    uint32 y = 4;
 }
 
 message NetCommandRequest
@@ -28,6 +49,7 @@ message NetCommandRequest
     {
         NetMoveCommand move = 2;
         NetShootCommand shoot = 3;
+        NetDeployCommand deploy = 4;
     }
 }
 

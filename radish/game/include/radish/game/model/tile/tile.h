@@ -8,7 +8,7 @@
 ///
 /// Ein Feld des Rasters.
 ///
-/// Oeffentlich wie die Entitaet, und aus demselben Grund: ein Tile ist etwas, das
+/// Oeffentlich wie die Einheit, und aus demselben Grund: ein Tile ist etwas, das
 /// aus dem Spiel herauskommt. RAD_OnTileAddedToGame_t und seine beiden Nachbarn
 /// (event_manager.h) reichen ein const RAD_Tile_t* an ihre Abonnenten, und wer
 /// darauf hin zeichnen soll, muss x, y und z lesen koennen. Die Welt, in der das
@@ -16,8 +16,8 @@
 /// Raster.
 ///
 /// Lesen heisst hier nicht schreiben: die Zeiger nach draussen sind const, und
-/// wer ein Tile aendern will, geht ueber die Welt, die RAD_Tile_t.entity und
-/// RAD_Entity_t.x/y synchron haelt (world.h).
+/// wer ein Tile aendern will, geht ueber die Welt, die RAD_Tile_t.unit und
+/// RAD_Unit_t.x/y synchron haelt (world.h).
 ///
 /// **Der Name steht hier und nicht in model.h.** Dort stehen nur die drei
 /// Strukturen, die unvollstaendig bleiben -- ein Name ohne Inhalt braucht eine
@@ -46,16 +46,16 @@ struct RAD_Tile
     RAD_TileType_t type;
 
     ///
-    /// Entitaet auf diesem Tile, RAD_ENTITY_NONE wenn frei. Pro Tile kann es zu
+    /// Einheit auf diesem Tile, RAD_UNIT_NONE wenn frei. Pro Tile kann es zu
     /// jedem Zeitpunkt hoechstens eine geben.
     ///
-    RAD_EntityId_t entity;
+    RAD_UnitId_t unit;
 };
 
 ///
 /// Die Tiles eines Spiels zum Nachlesen: erst zaehlen, dann einzeln holen. Wer
 /// alle sehen will, laeuft von 0 bis unter die Anzahl. Dasselbe Muster wie bei den
-/// Figuren (entity.h) und in turn.h.
+/// Figuren (unit.h) und in turn.h.
 ///
 /// **Warum das die einzige Lesart von aussen ist.** RAD_World_t ist nach aussen
 /// nur ein Name (model.h), ein Aufrufer kommt also nicht an das Raster selbst.
@@ -76,7 +76,7 @@ struct RAD_Tile
 /// Wie viele Tiles es gibt. Das Raster ist vollstaendig besetzt -- ein Feld ohne
 /// Inhalt ist RAD_TILE_TYPE_VOID und zaehlt mit --, die Anzahl ist also Breite
 /// mal Hoehe der Welt. Sie aendert sich nur, wenn eine Welt geladen wird
-/// (RAD_LoadWorldFromFile, RAD_LoadGameFromFile). 0 fuer ein NULL-Spiel.
+/// (RAD_LoadWorldFromFile). 0 fuer ein NULL-Spiel.
 ///
 int32_t RAD_GameNumberOfTiles(const RAD_Game_t *game);
 

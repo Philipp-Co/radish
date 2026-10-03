@@ -6,7 +6,7 @@
 #include <radish/game/game_definitions.h>
 #include <radish/game/model/model.h>
 #include <radish/game/model/tile/tile.h>
-#include <radish/game/model/entity/entity.h>
+#include <radish/game/model/unit/unit.h>
 #include <radish/game/control/events/event_manager.h>
 
 struct RAD_World
@@ -23,33 +23,45 @@ struct RAD_World
     int32_t height;
 
     ///
-    /// Pool mit Luecken: freie Slots tragen id == RAD_ENTITY_NONE. Der
-    /// Array-Index ist die RAD_EntityId_t, weshalb Slots beim Entfernen nicht
-    /// zusammengeschoben werden duerfen.
+    /// Jede Einheit des Spiels, in jedem Zustand (RAD_UnitState_t): freie Slots
+    /// tragen id == RAD_UNIT_NONE. Der Array-Index ist die RAD_UnitId_t. Ein Slot
+    /// wird einmal belegt und danach nicht mehr frei -- auch eine zerstoerte
+    /// Einheit behaelt ihn, damit ihre Id keine andere trifft.
     ///
-    RAD_Entity_t entities[RAD_MAX_ENTITIES];
+    /// Die Reserve steht hier und nicht in einer Liste daneben: platzieren heisst,
+    /// den Zustand einer Einheit zu wechseln, nicht sie von einer Liste in eine
+    /// andere zu tragen. So gibt es nichts, was zwischen zwei Listen auseinander
+    /// laufen koennte.
+    ///
+    RAD_Unit_t units[RAD_MAX_UNITS];
 
     /// Anzahl belegter Slots, nicht der hoechste vergebene Index.
-    int32_t number_of_entities;
+    int32_t number_of_units;
 
     RAD_EventManager_t *event_manager;
 };
 
 ///
-/// Eine Welt in der groessten Form (RAD_WORLD_WIDTH x RAD_WORLD_HEIGHT). Solange
-/// keine Weltdefinition geladen ist, ist das die Welt des Spiels.
+/// Legt die Welt in "world" an, in der groessten Form (RAD_WORLD_WIDTH x
+/// RAD_WORLD_HEIGHT). Solange keine Weltdefinition geladen ist, ist das die Welt
+/// des Spiels. Gefuellt wird sie erst mit RAD_InitWorld.
 ///
-RAD_World_t RAD_CreateWorld(RAD_EventManager_t *event_manager);
+/// In den Speicher des Aufrufers und nicht als Rueckgabewert: der Einheitenpool
+/// macht die Welt gross genug, dass eine Kopie bei jeder Erzeugung ein Aufrufrahmen
+/// waere, den niemand will.
+///
+void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager);
 
 ///
-/// Bringt die Welt in den Grundzustand: jedes Feld Boden auf Hoehe 0, keine Figur.
+/// Bringt die Welt in den Grundzustand: jedes Feld Boden auf Hoehe 0, keine
+/// Einheit -- auch keine in der Reserve.
 ///
 /// RAD_InitWorld meldet danach jedes Feld als added -- der Aufbau einer Welt,
 /// die es vorher nicht gab. RAD_ResetWorld tut dasselbe still. Es ist fuer den
-/// Fall, in dem der Grundzustand nur ein Zwischenschritt ist, wie beim Laden
-/// (world_serializer.c): dort wuerde sonst jedes Feld als Boden gemeldet, der
-/// gleich darauf ueberschrieben wird. Wer still zuruecksetzt, meldet danach
-/// selbst, was sich geaendert hat (RAD_WorldPublishTileChanges).
+/// Fall, in dem der Grundzustand nur ein Zwischenschritt ist, wie beim Laden einer
+/// Weltdefinition (world_definition.c): dort wuerde sonst jedes Feld als Boden
+/// gemeldet, der gleich darauf ueberschrieben wird. Wer still zuruecksetzt, meldet
+/// danach selbst, was sich geaendert hat (RAD_WorldPublishTileChanges).
 ///
 /// Beide behalten die Groesse der Welt. RAD_ResetWorldToSize setzt genauso still
 /// zurueck und gibt der Welt dabei eine neue; sie liefert false und schreibt
@@ -63,8 +75,8 @@ bool RAD_ResetWorldToSize(RAD_World_t *world, int32_t width, int32_t height);
 
 bool RAD_WorldInBounds(const RAD_World_t *world, int32_t x, int32_t y);
 RAD_Tile_t* RAD_WorldTileAt(RAD_World_t *world, int32_t x, int32_t y);
-RAD_Entity_t* RAD_WorldEntityById(RAD_World_t *world, RAD_EntityId_t id);
-RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y);
+RAD_Unit_t* RAD_WorldUnitById(RAD_World_t *world, RAD_UnitId_t id);
+RAD_Unit_t* RAD_WorldUnitAt(RAD_World_t *world, int32_t x, int32_t y);
 
 ///
 /// Die zwei Funktionen, die den Typ eines Tiles schreiben duerfen.
@@ -90,17 +102,17 @@ RAD_Entity_t* RAD_WorldEntityAt(RAD_World_t *world, int32_t x, int32_t y);
 /// RAD_TILE_TYPE_VOID kein Fehler, sondern ein Entfernen -- beide Wege fuehren zum
 /// selben Zustand, und heraus geht der Zustand.
 ///
-/// **Entfernen laesst die Stelle stehen:** x, y, z und die Entitaet bleiben, nur
+/// **Entfernen laesst die Stelle stehen:** x, y, z und die Einheit bleiben, nur
 /// der Typ wird VOID. Weggenommen wird das Gelaende und nicht das Feld -- und wer
 /// es wieder hinstellt, bringt seine Hoehe selbst mit.
 ///
 /// **Eine Figur haelt ihr Gelaende.** RAD_WorldRemoveTile liefert false, solange
-/// eine Entitaet auf dem Feld steht, und schreibt nichts. Es ist der einzige Fall,
+/// eine Einheit auf dem Feld steht, und schreibt nichts. Es ist der einzige Fall,
 /// in dem eine Aenderung abgelehnt wird, obwohl sie sich hinschreiben liesse:
 /// was mit einer Figur ueber dem Nichts geschieht -- fallen, stehenbleiben,
 /// sterben --, ist eine Regel, die es noch nicht gibt, und die Welt erfindet sie
 /// nicht still. Wer es trotzdem will, nimmt zuerst die Figur
-/// (RAD_WorldRemoveEntity).
+/// (RAD_WorldRemoveUnit).
 ///
 /// Sonst gibt es false nur fuer ein (x,y) ausserhalb der Welt. Ein Feld ohne
 /// Gelaende zu entfernen ist true und tut nichts, und ein Feld auf denselben Typ
@@ -113,7 +125,7 @@ bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y);
 ///
 /// Meldet fuer jedes Feld den Uebergang von "previous" zum jetzigen Stand, nach
 /// derselben Tabelle wie oben. Fuer eine Welt, die als Ganzes ersetzt wurde
-/// (RAD_DeserializeGameFromJson): ein Abonnent kennt den alten Stand und erfaehrt
+/// (RAD_DeserializeWorldDefinitionFromJson): ein Abonnent kennt den alten Stand und erfaehrt
 /// so genau die Felder, die anders sind -- und die Zeiger in den Ereignissen
 /// zeigen in diese Welt und nicht in einen Zwischenpuffer.
 ///
@@ -133,49 +145,74 @@ void RAD_WorldPublishTileChanges(
 );
 
 ///
-/// Die einzigen drei Funktionen, die eine Entitaetsposition schreiben duerfen.
-/// Sie halten RAD_Entity_t.x/y und RAD_Tile_t.entity synchron und sichern damit
-/// die Invariante "hoechstens eine Entitaet pro Tile".
+/// Legt eine Einheit in der Reserve an: sie ist dem Spiel bekannt, steht aber auf
+/// keinem Feld. So kommt eine Einheit aus der Armee ins Spiel.
 ///
-RAD_EntityId_t RAD_WorldSpawnEntity(RAD_World_t *world, RAD_EntityType_t type, int32_t x, int32_t y);
-bool RAD_WorldMoveEntity(RAD_World_t *world, RAD_EntityId_t id, int32_t x, int32_t y);
-void RAD_WorldRemoveEntity(RAD_World_t *world, RAD_EntityId_t id);
+/// Uebernommen werden aus "values" die Werte der Einheit -- type, name, movement,
+/// transport_capacity, can_capture, attributes und die Mitglieder. Id, Zustand,
+/// Besitzer und Position vergibt die Welt: die Id ist der naechste freie Slot, der
+/// Zustand RAD_UNIT_STATE_RESERVE, der Besitzer "owner", die Position (-1,-1). Ein
+/// Ereignis gibt es nicht -- auf dem Feld hat sich nichts geaendert.
+///
+/// RAD_UNIT_NONE, wenn der Pool voll ist oder "values" sich nicht halten laesst:
+/// NULL, keine oder zu viele Mitglieder, zu viele Waffen bei einem davon, oder ein
+/// Name ohne abschliessende Null in seinem Feld. Die Welt aendert sich dann nicht.
+///
+RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *values, RAD_UserId_t owner);
 
 ///
-/// Wie RAD_WorldSpawnEntity, aber mit vorgegebener Id statt dem naechsten freien
-/// Slot. Wird beim Laden gebraucht, damit gespeicherte Ids erhalten bleiben --
-/// nach Loeschungen ist der Pool luecklenhaft und ein Neuvergeben wuerde alle
-/// Ids verschieben. Liefert RAD_ENTITY_NONE, wenn die Id ausserhalb des Pools
-/// liegt, ihr Slot schon belegt ist oder das Ziel-Tile nicht frei ist.
+/// Die einzigen vier Funktionen, die eine Einheitenposition schreiben duerfen.
+/// Sie halten RAD_Unit_t.x/y und RAD_Tile_t.unit synchron und sichern damit
+/// die Invariante "hoechstens eine Einheit pro Tile".
 ///
-RAD_EntityId_t RAD_WorldSpawnEntityWithId(RAD_World_t *world, RAD_EntityId_t id, RAD_EntityType_t type, int32_t x, int32_t y);
+/// RAD_WorldSpawnUnit legt eine Einheit direkt auf dem Feld an, ohne Werte aus
+/// einer Armee -- fuer Figuren, die keiner Armee angehoeren.
+///
+/// RAD_WorldDeployUnit holt eine Einheit aus der Reserve auf das Feld (x, y) und
+/// meldet sie wie ein Spawn (RAD_OnUnitSpawned_t). false und keine Aenderung, wenn
+/// es die Einheit nicht gibt, sie nicht in der Reserve steht oder das Feld nicht
+/// taugt: ausserhalb der Welt, ohne Gelaende (RAD_TILE_TYPE_VOID) oder besetzt.
+///
+/// RAD_WorldMoveUnit bewegt nur eine Einheit auf dem Feld.
+///
+/// RAD_WorldRemoveUnit zerstoert eine Einheit: vom Feld genommen, mit
+/// RAD_OnUnitDestroyed_t; aus der Reserve gestrichen, ohne Ereignis -- auf dem
+/// Feld hat sie nie gestanden. Ihr Slot bleibt belegt (RAD_UNIT_STATE_DESTROYED),
+/// und eine schon zerstoerte Einheit noch einmal zu entfernen tut nichts.
+///
+RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y);
+bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y);
+bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y);
+void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id);
 
 ///
-/// Besitz einer Entitaet lesen und setzen (RAD_Entity_t.owner).
+/// Besitz einer Einheit lesen und setzen (RAD_Unit_t.owner).
 ///
 /// Getrennt vom Setzen, statt als Parameter beim Setzen einer Figur: eine Figur
 /// entsteht in der Welt, ein Benutzer steht aber nicht in ihr -- wer wem etwas
-/// zuordnen darf, entscheidet das Spiel (RAD_GameBindEntity). Die Welt fuehrt das
+/// zuordnen darf, entscheidet das Spiel (RAD_GameBindUnit). Die Welt fuehrt das
 /// Feld nur.
 ///
 /// Ein Besitzerwechsel haelt keine zweite Angabe synchron und ist deshalb, anders
-/// als eine Positionsaenderung, an keine der drei Funktionen oben gebunden.
+/// als eine Positionsaenderung, an keine der vier Funktionen oben gebunden.
 /// Gesetzt wird ohne Pruefung, ob der Benutzer mitspielt oder die Figur schon
 /// jemandem gehoert -- das sind Fragen des Spiels.
 ///
-/// RAD_WorldEntityOwner liefert RAD_USER_NONE fuer eine Entitaet, die es nicht
-/// gibt: sie gehoert niemandem, so wie eine herrenlose. RAD_WorldSetEntityOwner
+/// RAD_WorldUnitOwner liefert RAD_USER_NONE fuer eine Einheit, die es nicht
+/// gibt: sie gehoert niemandem, so wie eine herrenlose. RAD_WorldSetUnitOwner
 /// liefert false, wenn es sie nicht gibt -- hier ist der Unterschied wichtig,
 /// weil sonst ein Zuordnen ins Leere unbemerkt bliebe.
 ///
-RAD_UserId_t RAD_WorldEntityOwner(const RAD_World_t *world, RAD_EntityId_t id);
-bool RAD_WorldSetEntityOwner(RAD_World_t *world, RAD_EntityId_t id, RAD_UserId_t owner);
+RAD_UserId_t RAD_WorldUnitOwner(const RAD_World_t *world, RAD_UnitId_t id);
+bool RAD_WorldSetUnitOwner(RAD_World_t *world, RAD_UnitId_t id, RAD_UserId_t owner);
 
 ///
-/// Prueft die Doppelbuchfuehrung zwischen Tiles und Entitaeten vollstaendig
-/// gegeneinander, dazu die eine Zusage ueber den Besitz: ein freier Slot traegt
-/// keinen Besitzer. Beim regulaeren Spielverlauf immer true -- interessant nach
-/// dem Laden und als Zusicherung im Test.
+/// Prueft die Doppelbuchfuehrung zwischen Tiles und Einheiten vollstaendig
+/// gegeneinander: eine Einheit auf dem Feld steht auf einem Tile, das auf sie
+/// zurueckzeigt; eine in der Reserve oder zerstoerte steht auf keinem und traegt
+/// (-1,-1). Dazu die Zusagen ueber den Pool: ein freier Slot traegt keinen
+/// Besitzer, und keine Einheit hat mehr Mitglieder oder Waffen, als Platz ist.
+/// Beim regulaeren Spielverlauf immer true -- eine Zusicherung im Test.
 ///
 bool RAD_WorldIsConsistent(const RAD_World_t *world);
 

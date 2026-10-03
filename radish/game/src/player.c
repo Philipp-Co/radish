@@ -6,7 +6,7 @@
 /// Die Mitspieler-Seite des Spiels: wer mitspielt, wer dran ist, wem was gehoert.
 ///
 /// Sie fuehrt nichts selbst. Wer mitspielt und dran ist, steht im Zug (turn.h),
-/// wem eine Figur gehoert, in ihr (RAD_Entity_t.owner) -- diese Datei legt die
+/// wem eine Figur gehoert, in ihr (RAD_Unit_t.owner) -- diese Datei legt die
 /// beiden zusammen und fuegt die Fragen hinzu, die keines von beiden allein
 /// beantworten kann, weil sie einander nicht kennen: ob der Benutzer ueberhaupt
 /// mitspielt und ob die Figur nicht schon einem anderen gehoert.
@@ -24,11 +24,17 @@ const char* RAD_GameResultText(RAD_GameResult_t result)
     {
         case RAD_GAME_OK:                   return "in Ordnung";
         case RAD_GAME_ERROR_NO_USER:        return "kein gueltiger Benutzer";
-        case RAD_GAME_ERROR_NO_ENTITY:      return "keine gueltige Figur";
+        case RAD_GAME_ERROR_NO_UNIT:        return "keine gueltige Figur";
         case RAD_GAME_ERROR_FULL:           return "kein Platz mehr frei";
         case RAD_GAME_ERROR_NOT_PLAYING:    return "spielt nicht mit";
         case RAD_GAME_ERROR_NOT_OWNED:      return "Figur gehoert einem anderen";
         case RAD_GAME_ERROR_NOT_YOUR_TURN:  return "ein anderer ist dran";
+        case RAD_GAME_ERROR_INVALID_UNIT:   return "Einheit passt nicht in ihre Felder";
+        case RAD_GAME_ERROR_STARTED:        return "das Spiel laeuft schon";
+        case RAD_GAME_ERROR_NOT_IN_RESERVE: return "Einheit steht nicht in der Reserve";
+        case RAD_GAME_ERROR_OUT_OF_BOUNDS:  return "Feld liegt ausserhalb der Welt";
+        case RAD_GAME_ERROR_NO_GROUND:      return "Feld hat kein Gelaende";
+        case RAD_GAME_ERROR_OCCUPIED:       return "Feld ist besetzt";
         default:                            return "unbekanntes Ergebnis";
     }
 }
@@ -93,6 +99,7 @@ RAD_GameResult_t RAD_GameEndTurn(RAD_Game_t *game, RAD_UserId_t user)
     switch(RAD_TurnEnd(&game->turn, user))
     {
         case RAD_TURN_OK:
+            game->started = true;
             return RAD_GAME_OK;
 
         case RAD_TURN_ERROR_NO_USER:
@@ -107,12 +114,17 @@ RAD_GameResult_t RAD_GameEndTurn(RAD_Game_t *game, RAD_UserId_t user)
     }
 }
 
-RAD_UserId_t RAD_GameEntityOwner(const RAD_Game_t *game, RAD_EntityId_t entity)
+bool RAD_GameHasStarted(const RAD_Game_t *game)
 {
-    return RAD_WorldEntityOwner(&game->world, entity);
+    return (game != NULL) && game->started;
 }
 
-RAD_GameResult_t RAD_GameBindEntity(RAD_Game_t *game, RAD_UserId_t user, RAD_EntityId_t entity)
+RAD_UserId_t RAD_GameUnitOwner(const RAD_Game_t *game, RAD_UnitId_t unit)
+{
+    return RAD_WorldUnitOwner(&game->world, unit);
+}
+
+RAD_GameResult_t RAD_GameBindUnit(RAD_Game_t *game, RAD_UserId_t user, RAD_UnitId_t unit)
 {
     if(user == RAD_USER_NONE)
     {
@@ -124,7 +136,7 @@ RAD_GameResult_t RAD_GameBindEntity(RAD_Game_t *game, RAD_UserId_t user, RAD_Ent
         return RAD_GAME_ERROR_NOT_PLAYING;
     }
 
-    const RAD_UserId_t owner = RAD_WorldEntityOwner(&game->world, entity);
+    const RAD_UserId_t owner = RAD_WorldUnitOwner(&game->world, unit);
     if((owner != RAD_USER_NONE) && (owner != user))
     {
         return RAD_GAME_ERROR_NOT_OWNED;
@@ -132,31 +144,31 @@ RAD_GameResult_t RAD_GameBindEntity(RAD_Game_t *game, RAD_UserId_t user, RAD_Ent
 
     // Zugleich die Probe, ob es die Figur ueberhaupt gibt: die Welt lehnt eine
     // Id ab, hinter der kein belegter Platz steht.
-    if(!RAD_WorldSetEntityOwner(&game->world, entity, user))
+    if(!RAD_WorldSetUnitOwner(&game->world, unit, user))
     {
-        return RAD_GAME_ERROR_NO_ENTITY;
+        return RAD_GAME_ERROR_NO_UNIT;
     }
 
     return RAD_GAME_OK;
 }
 
-void RAD_GameUnbindEntity(RAD_Game_t *game, RAD_EntityId_t entity)
+void RAD_GameUnbindUnit(RAD_Game_t *game, RAD_UnitId_t unit)
 {
-    RAD_WorldSetEntityOwner(&game->world, entity, RAD_USER_NONE);
+    RAD_WorldSetUnitOwner(&game->world, unit, RAD_USER_NONE);
 }
 
-bool RAD_GameMayControlEntity(const RAD_Game_t *game, RAD_UserId_t user, RAD_EntityId_t entity)
+bool RAD_GameMayControlUnit(const RAD_Game_t *game, RAD_UserId_t user, RAD_UnitId_t unit)
 {
     if(user == RAD_USER_NONE)
     {
         return false;
     }
 
-    const RAD_UserId_t owner = RAD_WorldEntityOwner(&game->world, entity);
+    const RAD_UserId_t owner = RAD_WorldUnitOwner(&game->world, unit);
     return (owner == RAD_USER_NONE) || (owner == user);
 }
 
-int32_t RAD_GameNumberOfUserEntities(const RAD_Game_t *game, RAD_UserId_t user)
+int32_t RAD_GameNumberOfUserUnits(const RAD_Game_t *game, RAD_UserId_t user)
 {
     if(user == RAD_USER_NONE)
     {
@@ -164,10 +176,10 @@ int32_t RAD_GameNumberOfUserEntities(const RAD_Game_t *game, RAD_UserId_t user)
     }
 
     int32_t count = 0;
-    for(RAD_EntityId_t i=0;i < RAD_MAX_ENTITIES; ++i)
+    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
     {
-        const RAD_Entity_t *entity = &game->world.entities[i];
-        if((entity->id != RAD_ENTITY_NONE) && (entity->owner == user))
+        const RAD_Unit_t *unit = &game->world.units[i];
+        if((unit->id != RAD_UNIT_NONE) && (unit->owner == user))
         {
             count++;
         }
@@ -176,28 +188,114 @@ int32_t RAD_GameNumberOfUserEntities(const RAD_Game_t *game, RAD_UserId_t user)
     return count;
 }
 
-RAD_EntityId_t RAD_GameUserEntityAt(const RAD_Game_t *game, RAD_UserId_t user, int32_t index)
+RAD_UnitId_t RAD_GameUserUnitAt(const RAD_Game_t *game, RAD_UserId_t user, int32_t index)
 {
     if((user == RAD_USER_NONE) || (index < 0))
     {
-        return RAD_ENTITY_NONE;
+        return RAD_UNIT_NONE;
     }
 
     int32_t seen = 0;
-    for(RAD_EntityId_t i=0;i < RAD_MAX_ENTITIES; ++i)
+    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
     {
-        const RAD_Entity_t *entity = &game->world.entities[i];
-        if((entity->id == RAD_ENTITY_NONE) || (entity->owner != user))
+        const RAD_Unit_t *unit = &game->world.units[i];
+        if((unit->id == RAD_UNIT_NONE) || (unit->owner != user))
         {
             continue;
         }
 
         if(seen == index)
         {
-            return entity->id;
+            return unit->id;
         }
         seen++;
     }
 
-    return RAD_ENTITY_NONE;
+    return RAD_UNIT_NONE;
+}
+
+RAD_GameResult_t RAD_GameAddUnit(RAD_Game_t *game, RAD_UserId_t owner, const RAD_Unit_t *values, RAD_UnitId_t *id)
+{
+    if(id != NULL)
+    {
+        *id = RAD_UNIT_NONE;
+    }
+
+    // Die Reihenfolge der Pruefungen ist die der Fragen: wer, wann, was. Erst
+    // danach entscheidet die Welt, ob noch Platz ist -- sie kennt nur den Pool,
+    // nicht die Regeln.
+    if(owner == RAD_USER_NONE)
+    {
+        return RAD_GAME_ERROR_NO_USER;
+    }
+    if(!RAD_GameIsPlaying(game, owner))
+    {
+        return RAD_GAME_ERROR_NOT_PLAYING;
+    }
+    if(game->started)
+    {
+        return RAD_GAME_ERROR_STARTED;
+    }
+    if(values == NULL)
+    {
+        return RAD_GAME_ERROR_INVALID_UNIT;
+    }
+
+    // Die Welt lehnt aus zwei Gruenden ab, und nur einer davon ist eine Frage an
+    // den Pool. Welcher es war, sagt der Pool selbst: ist kein Slot mehr frei,
+    // ist er voll, sonst lag es an den Werten.
+    const RAD_UnitId_t added = RAD_WorldAddReserveUnit(&game->world, values, owner);
+    if(added == RAD_UNIT_NONE)
+    {
+        return (game->world.number_of_units >= RAD_MAX_UNITS) ? RAD_GAME_ERROR_FULL : RAD_GAME_ERROR_INVALID_UNIT;
+    }
+
+    if(id != NULL)
+    {
+        *id = added;
+    }
+    return RAD_GAME_OK;
+}
+
+RAD_GameResult_t RAD_GameCheckDeployUnit(const RAD_Game_t *game, RAD_UserId_t user, RAD_UnitId_t unit, int32_t x, int32_t y)
+{
+    // In der Reihenfolge der Fragen: wer, was, wohin.
+    if(user == RAD_USER_NONE)
+    {
+        return RAD_GAME_ERROR_NO_USER;
+    }
+    if(!RAD_GameIsPlaying(game, user))
+    {
+        return RAD_GAME_ERROR_NOT_PLAYING;
+    }
+
+    if((unit < 0) || (unit >= RAD_MAX_UNITS) || (game->world.units[unit].id == RAD_UNIT_NONE))
+    {
+        return RAD_GAME_ERROR_NO_UNIT;
+    }
+    const RAD_Unit_t *candidate = &game->world.units[unit];
+    if(candidate->owner != user)
+    {
+        return RAD_GAME_ERROR_NOT_OWNED;
+    }
+    if(candidate->state != RAD_UNIT_STATE_RESERVE)
+    {
+        return RAD_GAME_ERROR_NOT_IN_RESERVE;
+    }
+
+    if(!RAD_WorldInBounds(&game->world, x, y))
+    {
+        return RAD_GAME_ERROR_OUT_OF_BOUNDS;
+    }
+    const RAD_Tile_t *tile = &game->world.tiles[y][x];
+    if(tile->type == RAD_TILE_TYPE_VOID)
+    {
+        return RAD_GAME_ERROR_NO_GROUND;
+    }
+    if(tile->unit != RAD_UNIT_NONE)
+    {
+        return RAD_GAME_ERROR_OCCUPIED;
+    }
+
+    return RAD_GAME_OK;
 }

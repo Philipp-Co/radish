@@ -27,6 +27,7 @@ import { ApiService, GameListEntry } from '../../../core/api.service';
           @for (game of games(); track game.name) {
             <li>
               <span>{{ game.name }}</span>
+              <span class="muted">{{ game.points_limit }} P</span>
               <span class="muted">{{ game.player_count }}/2</span>
               <button class="secondary" type="button" (click)="joinGame(game.name)">
                 Beitreten

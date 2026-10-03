@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radish.local/schema/spielstart.schema.json",
+  "title": "radish Spielstart",
+  "description": "Was das Backend der Spielinstanz beim Start eines Spiels uebergibt (POST /api/instances/<name>/game/start/, siehe radish/backend/api/instance_client.py): die beiden Spieler mit ihren Armeen. Die Armeen sind vollstaendig aufgeloest -- jede Einheit, Entitaet, Waffe und Ausruestung traegt ihre Werte aus dem Katalog selbst, die Instanz braucht keinen Zugriff auf das Backend. Kosten und Slotgrenzen fehlen bewusst: die hat das Backend beim Zusammenstellen der Armee schon geprueft, im Spiel spielen sie keine Rolle.",
+  "type": "object",
+  "required": ["spieldaten"],
+  "additionalProperties": false,
+  "properties": {
+    "spieldaten": {
+      "description": "Die beiden Spieler, zuerst der Host, dann der zweite Spieler.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/spieler" }
+    }
+  },
+  "$defs": {
+    "spieler": {
+      "type": "object",
+      "required": ["name", "kennung", "armee"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Keycloak-Benutzername des Spielers (preferred_username).",
+          "type": "string",
+          "minLength": 1
+        },
+        "kennung": {
+          "description": "Oeffentliche Spieler-Kennung aus dem Backend (Player.identifier), 8 Zeichen aus Buchstaben und Ziffern.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{8}$"
+        },
+        "armee": { "$ref": "#/$defs/armee" }
+      }
+    },
+    "armee": {
+      "type": "object",
+      "required": ["name", "spezies", "einheiten"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "spezies": { "type": "string", "minLength": 1 },
+        "einheiten": {
+          "description": "Die Einheiten in der Reihenfolge der Armee. Ein Spiel verlangt mindestens eine.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/einheit" }
+        }
+      }
+    },
+    "einheit": {
+      "description": "Eine Einheit: die Werte ihres Einheitentyps und ihre Entitaeten.",
+      "type": "object",
+      "required": ["typ", "bewegung", "transportkapazitaet", "kann_ziele_einnehmen", "entitaeten"],
+      "additionalProperties": false,
+      "properties": {
+        "typ": {
+          "description": "Name des Einheitentyps.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bewegung": {
+          "description": "Bewegungsradius in Feldern.",
+          "$ref": "#/$defs/wert"
+        },
+        "transportkapazitaet": {
+          "description": "Wie viele andere Einheiten sie transportieren kann (0 = kein Transporter).",
+          "$ref": "#/$defs/wert"
+        },
+        "kann_ziele_einnehmen": { "type": "boolean" },
+        "entitaeten": {
+          "description": "Die Entitaeten der Einheit, hoechstens 10 (MAX_UNIT_ENTITIES im Backend).",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/entitaet" }
+        }
+      }
+    },
+    "entitaet": {
+      "description": "Eine Entitaet mit den Werten ihres Profils und allem, was sie traegt.",
+      "type": "object",
+      "required": ["profil", "leben", "ruestung", "staerke", "genauigkeit", "waffen", "ausruestung"],
+      "additionalProperties": false,
+      "properties": {
+        "profil": {
+          "description": "Name des Entitaetsprofils, z.B. 'Soldat' oder 'Anfuehrer'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "leben": { "$ref": "#/$defs/wert" },
+        "ruestung": { "$ref": "#/$defs/wert" },
+        "staerke": { "$ref": "#/$defs/wert" },
+        "genauigkeit": { "$ref": "#/$defs/wert" },
+        "waffen": {
+          "description": "Alle Waffen der Entitaet, gleich welcher Klasse.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/waffe" }
+        },
+        "ausruestung": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ausruestung" }
+        }
+      }
+    },
+    "waffe": {
+      "type": "object",
+      "required": ["name", "klasse", "schuesse", "staerke", "min_reichweite", "max_reichweite", "durchschlag"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "klasse": {
+          "description": "Waffenklasse (WeaponClass im Backend).",
+          "enum": ["standard", "heavy", "super_heavy"]
+        },
+        "schuesse": { "$ref": "#/$defs/wert" },
+        "staerke": { "$ref": "#/$defs/wert" },
+        "min_reichweite": {
+          "description": "Unterhalb davon kann die Waffe nicht feuern (0 = keine Mindestreichweite). Nicht groesser als max_reichweite -- das prueft schon das Backend.",
+          "$ref": "#/$defs/wert"
+        },
+        "max_reichweite": { "$ref": "#/$defs/wert" },
+        "durchschlag": {
+          "description": "Panzerungsdurchschlag.",
+          "$ref": "#/$defs/wert"
+        }
+      }
+    },
+    "ausruestung": {
+      "description": "Ein Ausruestungsgegenstand. Traegt bislang nur seinen Namen -- Modifikatoren kommen im Backend erst noch dazu.",
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "wert": {
+      "description": "Ein Spielwert aus dem Katalog (PositiveSmallIntegerField im Backend).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 32767
+    }
+  }
+}

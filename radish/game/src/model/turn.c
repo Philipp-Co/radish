@@ -92,7 +92,7 @@ void RAD_TurnRemoveUser(RAD_Turn_t *turn, RAD_UserId_t user)
     const bool was_current = (index == turn->number);
 
     // Die Reihe bleibt dicht: alles hinter ihm rueckt eine Stelle vor. Anders als
-    // im Entitaetenpool darf hier eine Luecke nicht stehen bleiben -- der Index
+    // im Einheitenpool darf hier eine Luecke nicht stehen bleiben -- der Index
     // laeuft ueber die Reihe.
     for(int32_t i=index;i < turn->number_of_users - 1; ++i)
     {

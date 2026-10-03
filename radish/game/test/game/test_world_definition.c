@@ -244,13 +244,13 @@ void test_weltdefinition_mit_figur_im_spiel_wird_abgelehnt(void)
 {
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 0, 0));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 0, 0));
 
     TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_ERROR_WORLD_OCCUPIED, lade(game, "{\"version\":1,\"rows\":[\"~~\"]}"));
 
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, game->world.tiles[0][0].type);
-    TEST_ASSERT_EQUAL_INT(1, RAD_GameNumberOfEntities(game));
+    TEST_ASSERT_EQUAL_INT(1, RAD_GameNumberOfUnits(game));
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -312,7 +312,7 @@ void test_weltdefinition_aus_datei(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
 
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_SAVE_OK, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/default.json"));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_OK, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/default.json"));
 
     TEST_ASSERT_EQUAL_INT(8, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(8, RAD_GameWorldHeight(game));
@@ -325,9 +325,9 @@ void test_weltdefinition_aus_datei(void)
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 7, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, tile.type);
 
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_SAVE_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/gibt-es-nicht.json"));
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_SAVE_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, NULL));
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_SAVE_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(NULL, RAD_ASSETS_DIR "/worlds/default.json"));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/gibt-es-nicht.json"));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, NULL));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(NULL, RAD_ASSETS_DIR "/worlds/default.json"));
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

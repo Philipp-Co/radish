@@ -2,14 +2,19 @@ syntax = "proto3";
 
 import "tile.proto";
 
+// Beide Ereignisse sagen nur, dass etwas geschehen ist. "reserved" traegt keine
+// Bedeutung und wird nie gelesen -- wie bei NetDiscoverReserveRequest
+// (discover.proto) steht es nur da, damit der Typ ein Feld hat: protobuf-c rechnet
+// beim Auspacken mit dem Feld-Array des Typs, und das ist bei einem Typ ohne
+// Felder NULL (undefiniertes Verhalten, NULL + 0). Der Server laesst es leer.
 message NetGameCreatedEvent
 {
-        
+    uint32 reserved = 1;
 }
 
 message NetGameFinishedEvent
 {
-
+    uint32 reserved = 1;
 }
 
 // Wer gerade am Zug ist (RAD_GameCurrentUser). 0 heisst: niemand -- es spielt
@@ -41,6 +46,24 @@ message NetTilesEvent
     repeated NetTile tiles = 1;
 }
 
+// Eine Einheit, wie der Client sie fuer die Reserve braucht: wer sie ist, wem sie
+// gehoert und was sie ist. Ihre Werte (Bewegung, Mitglieder mit Waffen) kommen
+// spaeter dazu, wenn der Client sie anzeigt.
+message NetUnit
+{
+    uint32 unit_id = 1;
+    uint64 owner_id = 2;
+    string name = 3;
+    uint32 number_of_members = 4;
+}
+
+// Eine Einheit in der Reserve, als Antwort auf NetDiscoverReserveRequest
+// (discover.proto) -- eine Nachricht je Einheit.
+message NetReserveUnitEvent
+{
+    NetUnit unit = 1;
+}
+
 message NetGameEvent
 {
     oneof event
@@ -51,5 +74,6 @@ message NetGameEvent
         NetPlayersEvent players = 4;
         NetWorldSizeEvent world_size = 5;
         NetTilesEvent tiles = 6;
+        NetReserveUnitEvent reserve_unit = 7;
     }
 }

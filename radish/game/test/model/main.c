@@ -24,6 +24,15 @@ void test_world_groesse_laesst_sich_setzen(void);
 void test_world_ungueltige_groesse_aendert_nichts(void);
 void test_world_aenderungen_ueber_eine_neue_groesse(void);
 
+void test_world_reserve_einheit_steht_auf_keinem_feld(void);
+void test_world_reserve_lehnt_unhaltbare_werte_ab(void);
+void test_world_reserve_lehnt_ab_wenn_der_pool_voll_ist(void);
+void test_world_einheit_aus_der_reserve_aufstellen(void);
+void test_world_aufstellen_wird_abgelehnt(void);
+void test_world_nur_einheiten_auf_dem_feld_ziehen(void);
+void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void);
+void test_world_konsistenz_kennt_die_zustaende(void);
+
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -45,6 +54,15 @@ int main(void)
     RUN_TEST(test_world_groesse_laesst_sich_setzen);
     RUN_TEST(test_world_ungueltige_groesse_aendert_nichts);
     RUN_TEST(test_world_aenderungen_ueber_eine_neue_groesse);
+
+    RUN_TEST(test_world_reserve_einheit_steht_auf_keinem_feld);
+    RUN_TEST(test_world_reserve_lehnt_unhaltbare_werte_ab);
+    RUN_TEST(test_world_reserve_lehnt_ab_wenn_der_pool_voll_ist);
+    RUN_TEST(test_world_einheit_aus_der_reserve_aufstellen);
+    RUN_TEST(test_world_aufstellen_wird_abgelehnt);
+    RUN_TEST(test_world_nur_einheiten_auf_dem_feld_ziehen);
+    RUN_TEST(test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu);
+    RUN_TEST(test_world_konsistenz_kennt_die_zustaende);
 
     return UNITY_END();
 }

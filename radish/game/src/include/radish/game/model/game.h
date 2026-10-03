@@ -49,6 +49,16 @@ struct RAD_Game
     ///
     RAD_Turn_t turn;
 
+    ///
+    /// Ob schon ein Zug beendet wurde. Bis dahin ist das Spiel in der Aufstellung:
+    /// die Armeen kommen in die Reserve (RAD_GameAddUnit). Danach ist die Liste
+    /// zu -- wer mit welchen Einheiten spielt, steht ab dem ersten Zug fest.
+    ///
+    /// Ein eigenes Feld und nicht aus dem Zug abgeleitet: RAD_Turn_t.number ist,
+    /// wer dran ist, und kein Zaehler der Runden.
+    ///
+    bool started;
+
     RAD_EventManager_t *event_manager;
     RAD_CommandList_t executed_commands;
 

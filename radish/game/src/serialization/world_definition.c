@@ -26,10 +26,9 @@ RAD_SerializeResult_t RAD_DeserializeWorldDefinition(RAD_JsonReader_t *reader, R
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
 
-    // Die Raster werden zunaechst nur vermerkt und uebersprungen, wie der Rumpf in
-    // RAD_DeserializeRoot: erst wenn die Version stimmt, wird gelesen. Sonst meldet
-    // eine Datei aus einer spaeteren Version einen Fehler in ihren Zeilen statt
-    // schlicht "andere Version".
+    // Die Raster werden zunaechst nur vermerkt und uebersprungen: erst wenn die
+    // Version stimmt, wird gelesen. Sonst meldet eine Datei aus einer spaeteren
+    // Version einen Fehler in ihren Zeilen statt schlicht "andere Version".
     int32_t version = -1;
     int32_t rows_token = -1;
     int32_t heights_token = -1;
@@ -78,7 +77,7 @@ RAD_SerializeResult_t RAD_DeserializeWorldDefinition(RAD_JsonReader_t *reader, R
         }
         else
         {
-            // Strenger als der Spielstand (world_definition.h).
+            // Unbekannte Schluessel sind ein Fehler (world_definition.h).
             return RAD_SERIALIZE_ERROR_SCHEMA;
         }
     }
@@ -196,7 +195,7 @@ RAD_SerializeResult_t RAD_DeserializeWorldDefinitionFromJson(RAD_Game_t *game, c
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
 
-    if(game->world.number_of_entities != 0)
+    if(game->world.number_of_units != 0)
     {
         return RAD_SERIALIZE_ERROR_WORLD_OCCUPIED;
     }
@@ -209,9 +208,9 @@ RAD_SerializeResult_t RAD_DeserializeWorldDefinitionFromJson(RAD_Game_t *game, c
         return result;
     }
 
-    // Anders als beim Spielstand ohne Zwischenstand: RAD_DeserializeWorldDefinition
-    // schreibt erst, wenn alles geprueft ist, und aus dem Spiel ausser der Welt
-    // kommt nichts vor. Festgehalten wird nur, was die Meldung danach braucht.
+    // Ohne Zwischenstand: RAD_DeserializeWorldDefinition schreibt erst, wenn alles
+    // geprueft ist, und aus dem Spiel ausser der Welt kommt nichts vor.
+    // Festgehalten wird nur, was die Meldung danach braucht.
     RAD_Tile_t previous[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];
     memcpy(previous, game->world.tiles, sizeof(previous));
     const int32_t previous_width = game->world.width;

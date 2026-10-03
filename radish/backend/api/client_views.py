@@ -2,10 +2,15 @@
 Endpunkte fuer den Spielclient unter api/client/.
 
 Ein Client kann hierueber ein Spiel erstellen, einem Spiel beitreten, es
-wieder verlassen, die offenen Spiele auflisten, sein eigenes laufendes
-Spiel abfragen und seinen eigenen Zustand abfragen. Erstellen, Beitreten,
-Verlassen, Auflisten und das eigene laufende Spiel sind bereits echt
-umgesetzt; Zustand ist noch Platzhalter (siehe dessen Docstring).
+als Host starten, es wieder verlassen, die offenen Spiele auflisten, sein
+eigenes Spiel abfragen und seinen eigenen Zustand abfragen. Alles ausser
+Zustand ist echt umgesetzt; Zustand ist noch Platzhalter (siehe dessen
+Docstring).
+
+Ein Spiel beginnt in der Lobby (siehe models.GameStatus): erst wenn der
+Host startet (GameStartView) und die Instanz das Spiel im selben Aufruf
+aufgesetzt hat, laeuft es. Das Frontend fragt den Zustand per Polling ueber
+CurrentGameView ab -- so erfaehrt auch der zweite Spieler vom Start.
 
 Kommandos an den Spielserver und ein laufender Event-Stream dazu laufen
 nicht mehr ueber eigene REST-Endpunkte (ehemals CommandView unter
@@ -20,7 +25,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Game, GameServer, Player
+from . import access, instance_client
+from .models import Game, GameServer, GameStatus, Player, armies_with_costs
 from .permissions import HasPlayerRole
 from .serializers import (
     GameCreateSerializer,
@@ -30,7 +36,20 @@ from .serializers import (
 )
 
 
-def _get_or_create_player(user):
+def _sync_player_name(player, request):
+    """
+    Uebernimmt den Keycloak-Benutzernamen ("preferred_username" im
+    validierten Access-Token, siehe permissions._realm_roles fuer
+    request.auth) in Player.name, falls er sich geaendert hat.
+    """
+    token = request.auth
+    name = (token.get("preferred_username") if token is not None else None) or ""
+    if name and name != player.name:
+        player.name = name
+        player.save(update_fields=["name"])
+
+
+def _get_or_create_player(request):
     """
     Loest den durch Keycloak authentifizierten Django-User (request.user,
     siehe KeycloakJWTAuthentication in api/authentication.py) zu seinem
@@ -43,8 +62,37 @@ def _get_or_create_player(user):
     dem validierten Access-Token -- ein player_identifier im Request-Body
     entfaellt komplett (siehe serializers.py).
     """
-    player, _ = Player.objects.get_or_create(user=user)
+    player, _ = Player.objects.get_or_create(user=request.user)
+    _sync_player_name(player, request)
     return player
+
+
+def _army_for_game(player, army_id, points_limit):
+    """
+    Die Armee, mit der ein Spieler antreten will: sie muss ihm gehoeren,
+    mindestens eine Einheit haben und darf hoechstens points_limit kosten.
+    Liefert (army, None) oder (None, Fehler-Response).
+    """
+    army = armies_with_costs().filter(pk=army_id, player=player).first()
+    if army is None:
+        return None, Response(
+            {"detail": "Armee nicht gefunden."}, status=status.HTTP_400_BAD_REQUEST
+        )
+    if not army.units.all():
+        return None, Response(
+            {"detail": f"Die Armee „{army.name}“ hat noch keine Einheiten."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    cost = army.total_cost()
+    if cost > points_limit:
+        return None, Response(
+            {
+                "detail": f"Die Armee „{army.name}“ kostet {cost} Punkte, "
+                f"erlaubt sind hoechstens {points_limit}."
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return army, None
 
 
 class GameCreateView(APIView):
@@ -56,6 +104,8 @@ class GameCreateView(APIView):
       noch in keinem anderen Spiel Host oder Mitspieler.
     - Es gibt mindestens einen freien GameServer (is_occupied=False); der
       wird dem neuen Spiel fest zugewiesen und sofort als belegt markiert.
+    - Die gewaehlte Armee passt zum Punktelimit des Spiels (siehe
+      _army_for_game).
 
     select_for_update() beim Serversuchen + transaction.atomic(), damit
     zwei gleichzeitige Anfragen sich nicht denselben freien Server
@@ -69,8 +119,9 @@ class GameCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         name = serializer.validated_data["name"]
         password = serializer.validated_data["password"]
+        points_limit = serializer.validated_data["points_limit"]
 
-        player = _get_or_create_player(request.user)
+        player = _get_or_create_player(request)
 
         already_in_game = Game.objects.filter(
             Q(host=player) | Q(second_player=player)
@@ -80,6 +131,10 @@ class GameCreateView(APIView):
                 {"detail": "Spieler ist bereits in einem Spiel."},
                 status=status.HTTP_409_CONFLICT,
             )
+
+        army, error = _army_for_game(player, serializer.validated_data["army_id"], points_limit)
+        if error is not None:
+            return error
 
         with transaction.atomic():
             server = (
@@ -95,11 +150,17 @@ class GameCreateView(APIView):
             server.is_occupied = True
             server.save(update_fields=["is_occupied"])
             game = Game.objects.create(
-                name=name, password=password, server=server, host=player
+                name=name,
+                password=password,
+                server=server,
+                host=player,
+                points_limit=points_limit,
+                host_army=army,
             )
 
         return Response(
-            GameDetailSerializer(game).data, status=status.HTTP_201_CREATED
+            GameDetailSerializer(game, context={"player": player}).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -113,7 +174,10 @@ class GameJoinView(APIView):
       Host oder Mitspieler -- dieselbe Regel wie beim Erstellen.
     - Das Spiel (identifiziert ueber seinen Namen) muss existieren.
     - Das mitgeschickte Passwort muss zum Spiel passen.
-    - Das Spiel darf noch keinen zweiten Spieler haben.
+    - Das Spiel darf noch keinen zweiten Spieler haben und muss in der
+      Lobby sein.
+    - Die gewaehlte Armee passt zum Punktelimit des Spiels (siehe
+      _army_for_game).
 
     select_for_update() auf das gefundene Game + transaction.atomic(),
     damit nicht zwei Spieler gleichzeitig denselben freien zweiten Platz
@@ -129,7 +193,7 @@ class GameJoinView(APIView):
         name = serializer.validated_data["name"]
         password = serializer.validated_data["password"]
 
-        player = _get_or_create_player(request.user)
+        player = _get_or_create_player(request)
 
         already_in_game = Game.objects.filter(
             Q(host=player) | Q(second_player=player)
@@ -155,40 +219,130 @@ class GameJoinView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            if game.second_player_id:
+            if game.second_player_id or game.status != GameStatus.LOBBY:
                 return Response(
                     {"detail": "Spiel ist bereits voll."},
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            game.second_player = player
-            game.save(update_fields=["second_player"])
+            army, error = _army_for_game(
+                player, serializer.validated_data["army_id"], game.points_limit
+            )
+            if error is not None:
+                return error
 
-        return Response(GameDetailSerializer(game).data, status=status.HTTP_200_OK)
+            game.second_player = player
+            game.second_player_army = army
+            game.save(update_fields=["second_player", "second_player_army"])
+
+        return Response(
+            GameDetailSerializer(game, context={"player": player}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class GameStartView(APIView):
+    """
+    Laesst den Host sein Spiel aus der Lobby heraus starten.
+
+    Voraussetzungen:
+    - Der anfragende Spieler ist Host seines Spiels.
+    - Das Spiel ist in der Lobby und hat einen zweiten Spieler.
+
+    Synchron: die Instanz setzt das Spiel noch in diesem Aufruf auf (siehe
+    instance_client.start_game). Klappt das, laeuft das Spiel (RUNNING);
+    sonst bleibt es unveraendert in der Lobby (502).
+
+    Die Zeile des Spiels bleibt dabei gesperrt (select_for_update), auch
+    waehrend des Aufrufs an die Instanz: ein gleichzeitiges Verlassen oder
+    ein zweiter Start wartet, bis der Start entschieden ist. Das Aufsetzen
+    ist kurz (siehe instance_client.TIMEOUT_SECONDS), die Sperre also auch.
+    """
+
+    permission_classes = [IsAuthenticated, HasPlayerRole]
+
+    def post(self, request):
+        player = Player.objects.filter(user=request.user).first()
+        if player is None:
+            return Response(
+                {"detail": "Spieler ist in keinem Spiel."}, status=status.HTTP_409_CONFLICT
+            )
+        _sync_player_name(player, request)
+
+        with transaction.atomic():
+            # of=("self",): nur die Zeile des Spiels sperren -- second_player
+            # ist nullable, und durch einen Outer Join sperrt Postgres nicht.
+            game = (
+                Game.objects.select_for_update(of=("self",))
+                .select_related("server", "host", "second_player")
+                .filter(Q(host=player) | Q(second_player=player))
+                .first()
+            )
+            if game is None:
+                return Response(
+                    {"detail": "Spieler ist in keinem Spiel."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if game.host_id != player.id:
+                return Response(
+                    {"detail": "Nur der Host kann das Spiel starten."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if game.status != GameStatus.LOBBY:
+                return Response(
+                    {"detail": "Das Spiel wurde bereits gestartet."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if not game.second_player_id:
+                return Response(
+                    {"detail": "Es fehlt noch ein zweiter Spieler."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            # Neue Codes fuer jeden Start: die Instanz nimmt sie in ihre
+            # Whitelist, der Consumer setzt sie vor die Nachrichten (access.py).
+            # Gespeichert wird erst, wenn die Instanz das Spiel aufgesetzt hat.
+            game.host_zucchini_code = access.new_zucchini_code()
+            game.second_player_zucchini_code = access.new_zucchini_code()
+
+            try:
+                instance_client.start_game(game)
+            except instance_client.InstanceError as exc:
+                return Response(
+                    {"detail": f"Spielinstanz konnte nicht gestartet werden: {exc}"},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            game.status = GameStatus.RUNNING
+            game.save(update_fields=["status", "host_zucchini_code", "second_player_zucchini_code"])
+
+        return Response(
+            GameDetailSerializer(game, context={"player": player}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class GameListView(APIView):
     """
-    Liefert alle Spiele mit Name und Anzahl der bereits angemeldeten
-    Spieler (1, solange nur der Ersteller da ist, sonst 2).
-
-    Noch ohne Filter (z.B. nur Spiele mit freiem zweiten Platz) --
-    zeigt aktuell wirklich alle Spiele, auch bereits volle.
+    Liefert alle Spiele in der Lobby mit Name und Anzahl der bereits
+    angemeldeten Spieler (1, solange nur der Ersteller da ist, sonst 2).
+    Gestartete Spiele fehlen: denen kann ohnehin niemand mehr beitreten.
     """
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
     def get(self, request):
-        games = Game.objects.all()
+        games = Game.objects.filter(status=GameStatus.LOBBY)
         serializer = GameListSerializer(games, many=True)
         return Response({"games": serializer.data})
 
 
 class CurrentGameView(APIView):
     """
-    Liefert das laufende Spiel des anfragenden Spielers, falls vorhanden --
-    fuer die "Aktuelles Spiel"-Seite im Frontend (siehe radish/frontend/src/
-    app/pages/games/current/).
+    Liefert das Spiel des anfragenden Spielers, falls vorhanden, samt
+    Status -- fuer die Lobby und die "Aktuelles Spiel"-Seite im Frontend
+    (siehe radish/frontend/src/app/pages/games/lobby/ bzw. current/). Die
+    Lobby pollt diesen Endpunkt.
 
     {"game": null}, wenn der Spieler gerade kein Spiel hat -- das ist der
     normale, haeufigste Fall (nicht jeder eingeloggte Spieler ist gerade in
@@ -210,7 +364,7 @@ class CurrentGameView(APIView):
         if game is None:
             return Response({"game": None})
 
-        return Response({"game": GameDetailSerializer(game).data})
+        return Response({"game": GameDetailSerializer(game, context={"player": player}).data})
 
 
 class LeaveGameView(APIView):
@@ -219,7 +373,12 @@ class LeaveGameView(APIView):
     "Verlassen"-Button auf der "Aktuelles Spiel"-Seite im Frontend,
     radish/frontend/src/app/pages/games/current/).
 
-    Zwei Faelle, je nachdem, wer verlaesst:
+    Ist das Spiel schon gestartet (RUNNING), wird es fuer
+    beide Spieler beendet -- so, als haetten beide es verlassen: das Spiel
+    wird geloescht, sein GameServer freigegeben und die Instanz angewiesen,
+    abzubrechen (instance_client.cancel_game, nach dem Commit).
+
+    In der Lobby zwei Faelle, je nachdem, wer verlaesst:
     - Der zweite Spieler verlaesst: second_player wird nur geleert, das
       Spiel selbst bleibt bestehen -- der Host spielt weiter, der Platz
       wird wieder frei (GameJoinView laesst dann wieder jemanden beitreten,
@@ -241,10 +400,8 @@ class LeaveGameView(APIView):
     wie bei CurrentGameView oben): ohne Player-Objekt kann er ohnehin in keinem
     Spiel sein.
 
-    Schickt bewusst (noch) keine Nachricht an den eigentlichen Spielserver
-    (radish/game-server-core/) -- das Ingame-Protokoll dafuer laeuft ueber
-    den WebSocket (siehe api/consumers.py, EchoConsumer) und ist von dieser
-    Matchmaking-API unabhaengig, siehe ApiService-Docstring im Frontend.
+    In der Lobby hat die Instanz noch nichts vom Spiel erfahren -- dort
+    geht deshalb auch keine Nachricht an sie.
     """
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
@@ -271,14 +428,26 @@ class LeaveGameView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            if game.second_player_id == player.id:
+            if game.status != GameStatus.LOBBY:
+                # Gestartet -- das Spiel endet fuer beide.
+                server = game.server
+                game.delete()
+                server.is_occupied = False
+                server.save(update_fields=["is_occupied"])
+                transaction.on_commit(lambda: instance_client.cancel_game(server))
+            elif game.second_player_id == player.id:
                 game.second_player = None
-                game.save(update_fields=["second_player"])
+                game.second_player_army = None
+                game.save(update_fields=["second_player", "second_player_army"])
             elif game.second_player_id:
-                # Host verlaesst, zweiter Spieler ruecht auf.
+                # Host verlaesst, zweiter Spieler ruecht auf -- mit seiner Armee.
                 game.host = game.second_player
+                game.host_army = game.second_player_army
                 game.second_player = None
-                game.save(update_fields=["host", "second_player"])
+                game.second_player_army = None
+                game.save(
+                    update_fields=["host", "host_army", "second_player", "second_player_army"]
+                )
             else:
                 # Host verlaesst, niemand sonst da -- Spiel endet.
                 server = game.server

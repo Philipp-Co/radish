@@ -1,0 +1,99 @@
+{
+  "spieldaten": [
+    {
+      "name": "test-user",
+      "kennung": "aB3xK9pQ",
+      "armee": {
+        "name": "Erste Kompanie",
+        "spezies": "Menschen",
+        "einheiten": [
+          {
+            "typ": "Trupp",
+            "bewegung": 6,
+            "transportkapazitaet": 0,
+            "kann_ziele_einnehmen": true,
+            "entitaeten": [
+              {
+                "profil": "Anfuehrer",
+                "leben": 2,
+                "ruestung": 3,
+                "staerke": 4,
+                "genauigkeit": 3,
+                "waffen": [
+                  {
+                    "name": "Gewehr",
+                    "klasse": "standard",
+                    "schuesse": 1,
+                    "staerke": 3,
+                    "min_reichweite": 0,
+                    "max_reichweite": 24,
+                    "durchschlag": 0
+                  },
+                  {
+                    "name": "Kanone",
+                    "klasse": "heavy",
+                    "schuesse": 1,
+                    "staerke": 9,
+                    "min_reichweite": 0,
+                    "max_reichweite": 48,
+                    "durchschlag": 3
+                  }
+                ],
+                "ausruestung": [
+                  {
+                    "name": "Medipack"
+                  }
+                ]
+              },
+              {
+                "profil": "Soldat",
+                "leben": 1,
+                "ruestung": 3,
+                "staerke": 3,
+                "genauigkeit": 4,
+                "waffen": [
+                  {
+                    "name": "Gewehr",
+                    "klasse": "standard",
+                    "schuesse": 1,
+                    "staerke": 3,
+                    "min_reichweite": 0,
+                    "max_reichweite": 24,
+                    "durchschlag": 0
+                  },
+                  {
+                    "name": "Gewehr",
+                    "klasse": "standard",
+                    "schuesse": 1,
+                    "staerke": 3,
+                    "min_reichweite": 0,
+                    "max_reichweite": 24,
+                    "durchschlag": 0
+                  }
+                ],
+                "ausruestung": []
+              }
+            ]
+          },
+          {
+            "typ": "Transporter",
+            "bewegung": 12,
+            "transportkapazitaet": 2,
+            "kann_ziele_einnehmen": false,
+            "entitaeten": [
+              {
+                "profil": "Lastwagen",
+                "leben": 8,
+                "ruestung": 5,
+                "staerke": 5,
+                "genauigkeit": 5,
+                "waffen": [],
+                "ausruestung": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

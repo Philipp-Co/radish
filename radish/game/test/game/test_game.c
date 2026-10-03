@@ -43,14 +43,14 @@ typedef struct
 {
     int moved;
     bool mit_figur;
-    RAD_EntityId_t id;
+    RAD_UnitId_t id;
     int16_t x;
     int16_t y;
-    RAD_EntityPath_t pfad;
+    RAD_Path_t pfad;
     int32_t ergebnis;
 } RAD_BewegungMitschrift_t;
 
-static void notiere_moved(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
+static void notiere_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
     // Ohne Pfad waere das Ereignis keine Bewegung.
     TEST_ASSERT_NOT_NULL(path);
@@ -59,20 +59,20 @@ static void notiere_moved(void *user_argument, const RAD_Entity_t *entity, const
     mitschrift->moved += 1;
     mitschrift->pfad = *path;
     mitschrift->ergebnis = result;
-    mitschrift->mit_figur = (entity != NULL);
+    mitschrift->mit_figur = (unit != NULL);
 
-    if(entity != NULL)
+    if(unit != NULL)
     {
-        mitschrift->id = entity->id;
-        mitschrift->x = entity->x;
-        mitschrift->y = entity->y;
+        mitschrift->id = unit->id;
+        mitschrift->x = unit->x;
+        mitschrift->y = unit->y;
     }
 }
 
-static void notiere_nichts(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+static void notiere_nichts(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
     (void)user_argument;
-    (void)entity;
+    (void)unit;
     (void)x;
     (void)y;
 }
@@ -86,7 +86,7 @@ static void abonniere_bewegung(RAD_EventManager_t *events, RAD_BewegungMitschrif
 {
     *mitschrift = (RAD_BewegungMitschrift_t){ .moved = 0, .mit_figur = false };
 
-    RAD_EventManagerSubscribeToEntityEvents(events, (RAD_EventsEntityChangedCallback_t){
+    RAD_EventManagerSubscribeToUnitEvents(events, (RAD_EventsUnitChangedCallback_t){
         .user_argument = mitschrift,
         .spawned = notiere_nichts,
         .destroyed = notiere_nichts,
@@ -115,20 +115,20 @@ void test_game_move_kommando_veroeffentlicht_ein_ereignis(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 2, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, id);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     RAD_BewegungMitschrift_t mitschrift;
     abonniere_bewegung(events, &mitschrift);
 
     // Erstes Feld der Standort, zweites das Ziel (path.h).
-    const RAD_EntityPath_t weg = {
+    const RAD_Path_t weg = {
         .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 } },
         .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};
-    TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, id, &weg, &command));
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, id, &weg, &command));
 
     // Bis hierher ist nichts geschehen: die Fabrik fuellt ein Kommando aus und
     // fuehrt es nicht aus.
@@ -183,13 +183,13 @@ void test_game_move_kommando_ohne_figur_meldet_ein_ergebnis(void)
     abonniere_bewegung(events, &mitschrift);
 
     // Auf 7 steht keine Figur -- es steht ueberhaupt keine in dieser Welt.
-    const RAD_EntityPath_t weg = {
+    const RAD_Path_t weg = {
         .steps_to = { { .x = 1, .y = 1 }, { .x = 2, .y = 1 } },
         .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};
-    TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, 7, &weg, &command));
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, 7, &weg, &command));
 
     RAD_GameExecuteCommand(game, &command);
 

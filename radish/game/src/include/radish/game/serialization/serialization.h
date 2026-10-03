@@ -7,98 +7,36 @@
 #include <radish/game/game.h>
 
 ///
-/// Speicherformat -- jedes Objekt des Spiels wird auf ein JSON-Objekt abgebildet.
-/// Zu jedem Typ gehoert ein eigener Serializer, der genau seinen Ausschnitt
-/// beschreibt; das Wurzeldokument sieht so aus:
+/// Was die Leser unter serialization/ gemeinsam haben: ihr Ergebnis und die Grenze,
+/// bis zu der eine Datei gelesen wird. Den einzigen Leser, den es gibt, beschreibt
+/// world_definition.h; den Token-Lauf, auf dem er steht, json_reader.h.
 ///
-///     {
-///       "format": "radish-save",
-///       "version": 2,
-///       "game": {
-///         "world": {
-///           "width": 8,
-///           "height": 8,
-///           "tiles": [
-///             [
-///               { "x": 0, "y": 0, "z": 0, "type": "ground", "entity": null },
-///               { "x": 1, "y": 0, "z": 1, "type": "water",  "entity": null }
-///               // ... "width" Tiles je Zeile
-///             ]
-///             // ... "height" Zeilen
-///           ],
-///           "entities": [
-///             { "id": 0, "type": "player", "owner": null, "x": 3, "y": 4 }
-///           ]
-///         }
-///       }
-///     }
-///
-///   format   Muss RAD_SAVE_FORMAT_NAME sein, sonst RAD_SERIALIZE_ERROR_FORMAT.
-///   version  Muss in RAD_SAVE_FORMAT_VERSION_MIN..RAD_SAVE_FORMAT_VERSION liegen,
-///            sonst RAD_SERIALIZE_ERROR_VERSION. Geschrieben wird immer die
-///            neueste.
-///   game     Der Spielzustand, siehe game_serializer.h.
-///
-/// Beides wird geprueft, bevor "game" ueberhaupt gelesen wird -- eine fremde
-/// Datei meldet so "fremdes Format" statt eines Strukturfehlers tief in der Welt.
-///
-/// Die einzelnen Ebenen sind dokumentiert in game_serializer.h,
-/// world_serializer.h, tile_serializer.h und entity_serializer.h. Durchgaengig
-/// gilt: Aufzaehlungen stehen als Name statt als Zahl, damit ein spaeter
-/// eingefuegter enum-Wert gespeicherte Staende nicht umdeutet, und unbekannte
-/// Schluessel werden beim Lesen uebergangen, damit ein spaeter hinzugefuegtes
-/// Feld aeltere Staende nicht entwertet.
-///
-#define RAD_SAVE_FORMAT_NAME "radish-save"
 
 ///
-/// Die Versionen des Spielstands:
+/// Obergrenze fuer eine Datei, die ganz in den Speicher gelesen wird. Eine
+/// Weltdefinition braucht bei 8x8 Feldern zwei Raster aus je acht Zeilen, dazu
+/// Schluessel und Einrueckung -- weit unter einem Kilobyte. 32 KB lassen Platz
+/// fuer eine groessere Welt, ohne dass eine fremde Datei beliebig viel Speicher
+/// verlangen kann.
 ///
-///   1  Ohne Hoehen: ein Tile traegt kein "z", und die Welt ist immer genau
-///      RAD_WORLD_WIDTH x RAD_WORLD_HEIGHT gross.
-///   2  Ein Tile traegt sein "z", und die Welt darf kleiner sein.
-///
-/// Version 1 wird weiter gelesen, weil sie sich ohne Umdeutung als Teil von 2
-/// lesen laesst: ein fehlendes z ist 0, und die Groesse steht ohnehin in der
-/// Datei. Die Nummer steigt trotzdem, damit ein aelteres Programm einen neuen
-/// Stand ablehnt, statt seine Hoehen stillschweigend zu verlieren -- es
-/// uebergeht unbekannte Schluessel.
-///
-#define RAD_SAVE_FORMAT_VERSION_MIN 1
-#define RAD_SAVE_FORMAT_VERSION 2
-
-///
-/// Obergrenze fuer den Schreibpuffer. Ein Tile-Objekt braucht rund 52 Zeichen,
-/// ein Entitaets-Objekt rund 65 -- davon 29 die Uuid des Besitzers, die als
-/// String dasteht; bei 8x8 Tiles und vollem Pool sind das knapp 8 KB kompakt.
-/// Mit Einrueckung wird es etwa dreimal so viel, 32 KB decken beide Faelle mit
-/// Reserve ab.
-///
-#define RAD_SAVE_JSON_MAX (32 * 1024)
+#define RAD_JSON_FILE_MAX (32 * 1024)
 
 typedef enum
 {
     RAD_SERIALIZE_OK = 0,
 
-    /// Der Schreibpuffer war zu klein.
-    RAD_SERIALIZE_ERROR_BUFFER_TOO_SMALL,
     /// Kein gueltiges JSON.
     RAD_SERIALIZE_ERROR_SYNTAX,
     /// Gueltiges JSON, aber nicht die erwartete Struktur.
     RAD_SERIALIZE_ERROR_SCHEMA,
 
-    RAD_SERIALIZE_ERROR_FORMAT,
     RAD_SERIALIZE_ERROR_VERSION,
     RAD_SERIALIZE_ERROR_SIZE_MISMATCH,
 
     RAD_SERIALIZE_ERROR_TILE_TYPE,
-    RAD_SERIALIZE_ERROR_ENTITY_TYPE,
-    RAD_SERIALIZE_ERROR_ENTITY_ID,
-    RAD_SERIALIZE_ERROR_ENTITY_POSITION,
-    RAD_SERIALIZE_ERROR_TILE_OCCUPIED,
 
-    /// Die Datei widerspricht sich selbst -- etwa wenn ein Tile auf eine andere
-    /// Entitaet zeigt als die, die dort laut ihrer eigenen Position steht.
+    /// Die Datei widerspricht sich selbst -- eine Hoehe auf einem Feld ohne
+    /// Gelaende (world_definition.h).
     RAD_SERIALIZE_ERROR_INCONSISTENT,
 
     /// Eine Weltdefinition soll eine Welt ersetzen, auf der schon Figuren stehen
@@ -109,18 +47,5 @@ typedef enum
 } RAD_SerializeResult_t;
 
 const char* RAD_SerializeResultText(RAD_SerializeResult_t result);
-
-///
-/// Schreibt das Spiel als JSON nach "buffer". "written" nimmt die Laenge ohne
-/// die abschliessende Null auf und darf NULL sein.
-///
-RAD_SerializeResult_t RAD_SerializeGameToJson(const RAD_Game_t *game, char *buffer, size_t capacity, bool pretty, size_t *written);
-
-///
-/// Liest das Spiel aus JSON. Das Ziel wird erst ueberschrieben, wenn alles
-/// gelesen und geprueft ist -- ein fehlgeschlagener Ladevorgang laesst ein
-/// laufendes Spiel unangetastet.
-///
-RAD_SerializeResult_t RAD_DeserializeGameFromJson(RAD_Game_t *game, const char *json, size_t length);
 
 #endif

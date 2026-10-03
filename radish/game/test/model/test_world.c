@@ -11,10 +11,11 @@ void test_world_faengt_leer_und_stimmig_an(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
-    TEST_ASSERT_EQUAL_INT(0, world.number_of_entities);
+    TEST_ASSERT_EQUAL_INT(0, world.number_of_units);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
 
     RAD_DestroyEventManager(&events);
@@ -73,7 +74,8 @@ void test_world_tile_hinzufuegen_setzt_typ_und_hoehe(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     RAD_TileEreignisse_t gezaehlt;
@@ -103,7 +105,8 @@ void test_world_tile_entfernen_macht_void_und_laesst_die_stelle_stehen(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 1, 1, 4, RAD_TILE_TYPE_GROUND));
@@ -121,7 +124,7 @@ void test_world_tile_entfernen_macht_void_und_laesst_die_stelle_stehen(void)
     TEST_ASSERT_EQUAL_INT(1, tile->x);
     TEST_ASSERT_EQUAL_INT(1, tile->y);
     TEST_ASSERT_EQUAL_INT(4, tile->z);
-    TEST_ASSERT_EQUAL_INT(RAD_ENTITY_NONE, tile->entity);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, tile->unit);
 
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
     TEST_ASSERT_EQUAL_INT(0, gezaehlt.added);
@@ -136,11 +139,12 @@ void test_world_tile_entfernen_scheitert_unter_einer_figur(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
-    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&world, RAD_ENTITY_TYPE_PLAYER, 2, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, id);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     RAD_TileEreignisse_t gezaehlt;
     abonniere_tile_ereignisse(events, &gezaehlt);
@@ -157,7 +161,7 @@ void test_world_tile_entfernen_scheitert_unter_einer_figur(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, RAD_WorldTileAt(&world, 2, 2)->type);
 
     // Ohne Figur geht es: die Pruefung haengt an ihr und nicht am Feld.
-    RAD_WorldRemoveEntity(&world, id);
+    RAD_WorldRemoveUnit(&world, id);
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 2, 2));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
@@ -170,7 +174,8 @@ void test_world_tile_ausserhalb_der_welt_ist_kein_tile(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     RAD_TileEreignisse_t gezaehlt;
@@ -193,7 +198,8 @@ void test_world_tile_ereignis_folgt_dem_uebergang(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     RAD_TileEreignisse_t gezaehlt;
@@ -230,7 +236,8 @@ void test_world_tile_entfernen_ist_idempotent(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     RAD_TileEreignisse_t gezaehlt;
@@ -261,7 +268,8 @@ void test_world_init_meldet_jedes_feld_einmal(void)
     RAD_TileEreignisse_t gezaehlt;
     abonniere_tile_ereignisse(events, &gezaehlt);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
 
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH * RAD_WORLD_HEIGHT, gezaehlt.added);
@@ -283,7 +291,8 @@ void test_world_aenderungen_gegen_alten_stand(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 1, 0));
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 3, 0));
@@ -332,7 +341,8 @@ void test_world_groesse_laesst_sich_setzen(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, world.width);
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_HEIGHT, world.height);
@@ -350,7 +360,7 @@ void test_world_groesse_laesst_sich_setzen(void)
     // nicht hin.
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, world.tiles[1][2].type);
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, world.tiles[1][3].type);
-    TEST_ASSERT_EQUAL_INT(RAD_ENTITY_NONE, RAD_WorldSpawnEntity(&world, RAD_ENTITY_TYPE_PLAYER, 3, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 3, 0));
     TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, 2, 0, RAD_TILE_TYPE_WATER));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
 
@@ -362,7 +372,8 @@ void test_world_ungueltige_groesse_aendert_nichts(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     RAD_InitWorld(&world);
     TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 1, RAD_TILE_TYPE_WATER));
 
@@ -388,7 +399,8 @@ void test_world_aenderungen_ueber_eine_neue_groesse(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(events);
 
-    RAD_World_t world = RAD_CreateWorld(events);
+    RAD_World_t world;
+    RAD_CreateWorld(&world, events);
     TEST_ASSERT_TRUE(RAD_ResetWorldToSize(&world, 4, 4));
 
     RAD_Tile_t vorher[RAD_WORLD_HEIGHT][RAD_WORLD_WIDTH];

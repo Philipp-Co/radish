@@ -35,8 +35,9 @@ typedef struct
 
 ///
 /// Spielereignisse (event.proto NetGameEvent -> game.proto). created und
-/// finished sind auf der Strecke leer (NetGameCreatedEvent/NetGameFinishedEvent
-/// haben keine Felder), ihre Callbacks bekommen also nur den Abonnenten selbst.
+/// finished tragen nichts (NetGameCreatedEvent/NetGameFinishedEvent haben nur ein
+/// bedeutungsloses "reserved"), ihre Callbacks bekommen also nur den Abonnenten
+/// selbst.
 ///
 /// Die vier uebrigen schickt der Server auf eine Discover-Anfrage:
 ///
@@ -62,6 +63,11 @@ typedef void (*RAD_OnNetWorldSize_t)(void *user_argument, uint32_t width, uint32
 // RAD_NetTile_t steht in io/net_types.h.
 typedef void (*RAD_OnNetTiles_t)(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 
+// Eine Einheit der Reserve, als Antwort auf eine Reserve-Anfrage -- je Einheit ein
+// Aufruf, ein Ende der Liste wird nicht gemeldet (protobuf/discover.proto). Weil
+// zucchini an alle schickt, kommen auch die Antworten auf fremde Anfragen hier an.
+typedef void (*RAD_OnNetReserveUnit_t)(void *user_argument, const RAD_NetReserveUnit_t *unit);
+
 typedef struct
 {
     void *user_argument;
@@ -71,6 +77,7 @@ typedef struct
     RAD_OnNetPlayers_t players;
     RAD_OnNetWorldSize_t world_size;
     RAD_OnNetTiles_t tiles;
+    RAD_OnNetReserveUnit_t reserve_unit;
 } RAD_NetEventsGameCallback_t;
 
 
@@ -114,6 +121,7 @@ void RAD_NetEventManagerPublishCurrentPlayer(RAD_NetEventManager_t *manager, uin
 void RAD_NetEventManagerPublishPlayers(RAD_NetEventManager_t *manager, const uint64_t *user_ids, size_t number_of_users);
 void RAD_NetEventManagerPublishWorldSize(RAD_NetEventManager_t *manager, uint32_t width, uint32_t height);
 void RAD_NetEventManagerPublishTiles(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tiles, size_t number_of_tiles);
+void RAD_NetEventManagerPublishReserveUnit(RAD_NetEventManager_t *manager, const RAD_NetReserveUnit_t *unit);
 
 void RAD_NetEventManagerSubscribeToTileEvents(RAD_NetEventManager_t *manager, RAD_NetEventsTileCallback_t callbacks);
 void RAD_NetEventManagerPublishTileCreated(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tile);

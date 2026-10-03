@@ -77,7 +77,7 @@ struct RAD_Turn
     ///
     /// Die Mitspieler in der Reihenfolge, in der sie an die Reihe kommen: dicht
     /// ab 0, "number_of_users" Eintraege lang, dahinter RAD_USER_NONE. Anders als
-    /// im Entitaetenpool ist eine Luecke hier nicht zu gebrauchen -- der Index
+    /// im Einheitenpool ist eine Luecke hier nicht zu gebrauchen -- der Index
     /// laeuft ueber die Reihe, und ein freier Platz waere ein Zug, der niemandem
     /// gehoert.
     ///

@@ -1,5 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { Subscription, catchError, interval, of, switchMap } from 'rxjs';
 
 import { ApiService, GameDetail } from '../../../core/api.service';
 import { GameSocketService } from '../../../core/game-socket.service';
@@ -14,6 +16,10 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
  * direkt hier ein, bewusst ohne Umleitung auf "/game/:name" -- anders als
  * z.B. GameCreateComponent/GameJoinComponent, die nach dem Erstellen/
  * Beitreten dorthin navigieren.
+ *
+ * Nur fuer laufende Spiele: steht das eigene Spiel noch in der Lobby oder
+ * wird es gerade vorbereitet (siehe GameDetail.status), leitet die Seite auf
+ * die Lobby um (LobbyComponent).
  */
 @Component({
   selector: 'app-current-game',
@@ -38,6 +44,11 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
             Du spielst gerade <strong>{{ current.name }}</strong> --
             <span class="muted">{{ current.second_player_identifier ? '2' : '1' }}/2 Spieler</span>
           </p>
+          <p class="muted armies">
+            {{ current.points_limit }} Punkte ·
+            {{ current.host_army_name ?? '–' }} gegen
+            {{ current.second_player_army_name ?? 'noch offen' }}
+          </p>
           <app-game-canvas [gameName]="current.name" />
           <div class="actions">
             <button type="button" class="secondary" [disabled]="leaving()" (click)="leaveGame()">
@@ -45,7 +56,9 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
             </button>
           </div>
         } @else {
-          <p class="muted">Aktuell kein laufendes Spiel.</p>
+          <p class="muted">
+            {{ ended() ? 'Das Spiel wurde beendet.' : 'Aktuell kein laufendes Spiel.' }}
+          </p>
         }
       }
     </section>
@@ -69,34 +82,45 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
 export class CurrentGameComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly gameSocket = inject(GameSocketService);
+  private readonly router = inject(Router);
 
   readonly game = signal<GameDetail | null>(null);
   readonly loading = signal(true);
   readonly leaving = signal(false);
   readonly errorMessage = signal<string | null>(null);
+  /** Das Spiel ist verschwunden, waehrend diese Ansicht offen war -- vom Gegner beendet. */
+  readonly ended = signal(false);
+
+  private endPollSubscription: Subscription | null = null;
 
   ngOnInit(): void {
     this.loadCurrentGame();
   }
 
   ngOnDestroy(): void {
+    this.stopEndPolling();
     this.gameSocket.disconnect();
   }
 
   /**
-   * Kein Polling mehr: der Zustand aendert sich nicht, waehrend man auf
-   * dieser Ansicht bleibt, deshalb reicht eine einzelne Abfrage beim
-   * Oeffnen der Ansicht (bzw. per "Aktualisieren"-Button, siehe refresh()).
-   * Liefert getCurrentGame() ein Spiel, wird zusaetzlich die
-   * WebSocket-Verbindung geoeffnet (siehe GameSocketService).
+   * Eine Abfrage beim Oeffnen der Ansicht (bzw. per "Aktualisieren"-Button,
+   * siehe refresh()). Liefert getCurrentGame() ein laufendes Spiel, wird
+   * zusaetzlich die WebSocket-Verbindung geoeffnet (siehe GameSocketService)
+   * und per Polling beobachtet, ob der Gegner das Spiel beendet (siehe
+   * startEndPolling()).
    */
   private loadCurrentGame(): void {
     this.api.getCurrentGame().subscribe({
       next: (response) => {
+        if (response.game && response.game.status !== 'running') {
+          void this.router.navigate(['/games/lobby']);
+          return;
+        }
         this.game.set(response.game);
         this.loading.set(false);
         if (response.game) {
           this.gameSocket.connect();
+          this.startEndPolling();
         }
       },
       error: () => {
@@ -112,7 +136,7 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
   }
 
   leaveGame(): void {
-    if (!window.confirm('Aktuelles Spiel wirklich verlassen?')) {
+    if (!window.confirm('Das Spiel wird damit für beide Spieler beendet. Wirklich verlassen?')) {
       return;
     }
     this.leaving.set(true);
@@ -120,6 +144,7 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
     this.api.leaveGame().subscribe({
       next: () => {
         this.leaving.set(false);
+        this.stopEndPolling();
         this.game.set(null);
         this.gameSocket.disconnect();
       },
@@ -130,5 +155,30 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
         );
       },
     });
+  }
+
+  /**
+   * Verlaesst der Gegner ein laufendes Spiel, beendet das Backend es fuer
+   * beide (siehe radish/backend/api/client_views.py, LeaveGameView) -- davon
+   * erfaehrt diese Ansicht nur durch Nachfragen. Fehlgeschlagene Abrufe
+   * werden beim naechsten Intervall einfach wiederholt.
+   */
+  private startEndPolling(): void {
+    this.stopEndPolling();
+    this.endPollSubscription = interval(5000)
+      .pipe(switchMap(() => this.api.getCurrentGame().pipe(catchError(() => of(null)))))
+      .subscribe((response) => {
+        if (response && response.game === null) {
+          this.stopEndPolling();
+          this.game.set(null);
+          this.ended.set(true);
+          this.gameSocket.disconnect();
+        }
+      });
+  }
+
+  private stopEndPolling(): void {
+    this.endPollSubscription?.unsubscribe();
+    this.endPollSubscription = null;
   }
 }

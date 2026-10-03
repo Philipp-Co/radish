@@ -23,6 +23,7 @@ static void RAD_DefaultOnNetCurrentPlayer(void *user_argument, uint64_t user_id)
 static void RAD_DefaultOnNetPlayers(void *user_argument, const uint64_t *user_ids, size_t number_of_users);
 static void RAD_DefaultOnNetWorldSize(void *user_argument, uint32_t width, uint32_t height);
 static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
+static void RAD_DefaultOnNetReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit);
 
 static void RAD_DefaultOnNetTileCreated(void *user_argument, const RAD_NetTile_t *tile);
 static void RAD_DefaultOnNetTileRemoved(void *user_argument, uint32_t x, uint32_t y);
@@ -49,7 +50,8 @@ RAD_NetEventManager_t* RAD_CreateNetEventManager(void)
             .current_player = RAD_DefaultOnNetCurrentPlayer,
             .players = RAD_DefaultOnNetPlayers,
             .world_size = RAD_DefaultOnNetWorldSize,
-            .tiles = RAD_DefaultOnNetTiles
+            .tiles = RAD_DefaultOnNetTiles,
+            .reserve_unit = RAD_DefaultOnNetReserveUnit
         },
         .tile_events = {
             .user_argument = NULL,
@@ -121,6 +123,11 @@ void RAD_NetEventManagerPublishTiles(RAD_NetEventManager_t *manager, const RAD_N
     manager->game_events.tiles(manager->game_events.user_argument, tiles, number_of_tiles);
 }
 
+void RAD_NetEventManagerPublishReserveUnit(RAD_NetEventManager_t *manager, const RAD_NetReserveUnit_t *unit)
+{
+    manager->game_events.reserve_unit(manager->game_events.user_argument, unit);
+}
+
 static void RAD_DefaultOnNetGameCreated(void *user_argument)
 {
     (void)user_argument;
@@ -156,6 +163,12 @@ static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tile
     (void)user_argument;
     (void)tiles;
     (void)number_of_tiles;
+}
+
+static void RAD_DefaultOnNetReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit)
+{
+    (void)user_argument;
+    (void)unit;
 }
 
 const char* RAD_NetTileTypeText(RAD_NetTileType_t type)

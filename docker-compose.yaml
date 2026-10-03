@@ -67,9 +67,9 @@ services:
   # das beide bei Absturz neu startet -- der alte Einzel-Instanz-Container
   # ist deshalb entfallen.
   #
-  # Django selbst ist noch eine leere Huelle (siehe Kommentar in
-  # config/settings.py): kein Modell, keine View, keine Instanzverwaltung
-  # *durch* Django. Und noch eine einzelne statt vier Instanzen: der
+  # Django nimmt die Start-/Abbruch-Auftraege des Backends entgegen und setzt
+  # Spiele synchron auf (siehe radish/game-server/instances/views.py), hat
+  # aber noch kein Modell und keine Instanzverwaltung *durch* Django. Und noch eine einzelne statt vier Instanzen: der
   # UDP-Port unten ist deshalb schon auf 9999 gemappt, aber
   # zucchini_server hat Instanzname/Port fest einkompiliert und kann noch
   # nicht mehrfach im selben Container laufen (siehe supervisord.conf).
@@ -124,6 +124,15 @@ services:
       # dieser Instanz angepasst werden.
       RADISH_GAME_SERVER_ADDRESS: "game-server"
       RADISH_GAME_SERVER_PORT: "9999"
+      # Instanz-API dieses Containers (Django unter supervisord, Port 8000
+      # im Container), ueber die das Backend ein Spiel aus der Lobby heraus
+      # startet bzw. abbricht (siehe radish/backend/api/instance_client.py).
+      RADISH_GAME_SERVER_CONTROL_URL: "http://game-server:8000"
+      # Verzeichnis, ueber das Django (instances/views.py) und radish_server
+      # die Spielstart-Datei austauschen -- je Instanz ein Unterverzeichnis
+      # <RADISH_GAME_DATA_DIR>/<RADISH_GAME_SERVER_NAME>/ (siehe
+      # docker/game-server/game-instance-entrypoint.sh).
+      RADISH_GAME_DATA_DIR: "/run/radish"
     ports:
       - "8090:8000"
       - "9999:9999/udp"

@@ -51,10 +51,9 @@ RAD_NetCodecResult_t RAD_NetEncodeMoveRequest(const RAD_NetMoveRequest_t *reques
     }
 
     NetMoveCommand move_command = NET_MOVE_COMMAND__INIT;
-    // uint64 -> uint32: siehe die Anmerkung in net_codec.h zu Sequenznummer
-    // und Absender.
-    move_command.user_id = (uint32_t)request->user;
-    move_command.entity_id = (uint32_t)request->entity;
+    // Ungekuerzt: der Absender ist die gepackte Kennung (net_codec.h).
+    move_command.user_id = (uint64_t)request->user;
+    move_command.unit_id = (uint32_t)request->entity;
     move_command.n_steps = (size_t)number_of_steps;
     move_command.steps = step_pointers;
 
@@ -105,6 +104,27 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscover(uint32_t x,
     return RAD_NET_CODEC_OK;
 }
 
+RAD_NetCodecResult_t RAD_NetEncodeDiscoverReserve(uint8_t *buffer,
+                                                   size_t buffer_size,
+                                                   size_t *out_length)
+{
+    // "reserved" bleibt 0 und wird damit gar nicht geschrieben (discover.proto).
+    NetDiscoverReserveRequest reserve = NET_DISCOVER_RESERVE_REQUEST__INIT;
+
+    NetUserRequest user_request = NET_USER_REQUEST__INIT;
+    user_request.data_case = NET_USER_REQUEST__DATA_DISCOVER_RESERVE_REQUEST;
+    user_request.discover_reserve_request = &reserve;
+
+    const size_t packed_size = net_user_request__get_packed_size(&user_request);
+    if(packed_size > buffer_size)
+    {
+        return RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    *out_length = net_user_request__pack(&user_request, buffer);
+    return RAD_NET_CODEC_OK;
+}
+
 static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile);
 static RAD_NetCodecResult_t RAD_NetDispatchTiles(RAD_NetEventManager_t *events, const NetTilesEvent *tiles_event);
 
@@ -140,13 +160,14 @@ static RAD_NetCodecResult_t RAD_NetDispatchCommandResponse(RAD_NetEventManager_t
     RAD_NetCommandResponse_t response;
     memset(&response, 0, sizeof(response));
 
-    // uint32 -> uint64: erweitert, nicht abgeschnitten -- die Umkehrung der
-    // Anmerkung beim Encodieren.
+    // Die Sequenznummer uint32 -> uint64: erweitert, nicht abgeschnitten -- die
+    // Umkehrung der Anmerkung beim Encodieren. Der Absender ist auf beiden Seiten
+    // uint64.
     response.sequence = (RAD_NetSequence_t)request->id;
     response.user = (RAD_NetUserId_t)move->user_id;
     response.success = command_response->success;
 
-    response.entity = (RAD_NetEntityId_t)move->entity_id;
+    response.entity = (RAD_NetEntityId_t)move->unit_id;
     response.path.number_of_steps = (int8_t)number_of_steps;
     for(size_t i = 0; i < number_of_steps; ++i)
     {
@@ -205,6 +226,30 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
         case NET_GAME_EVENT__EVENT_TILES:
             return RAD_NetDispatchTiles(events, game_event->tiles);
 
+        case NET_GAME_EVENT__EVENT_RESERVE_UNIT:
+        {
+            if((game_event->reserve_unit == NULL) || (game_event->reserve_unit->unit == NULL))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+            const NetUnit *unit = game_event->reserve_unit->unit;
+
+            RAD_NetReserveUnit_t reserve_unit;
+            memset(&reserve_unit, 0, sizeof(reserve_unit));
+            reserve_unit.unit = (RAD_NetEntityId_t)unit->unit_id;
+            reserve_unit.owner = (RAD_NetUserId_t)unit->owner_id;
+            reserve_unit.number_of_members = unit->number_of_members;
+            // Gekuerzt, wenn er laenger ist: angezeigt wird er nur (net_types.h).
+            // protobuf-c laesst ein leeres string-Feld nie NULL, sondern "".
+            if(unit->name != NULL)
+            {
+                strncpy(reserve_unit.name, unit->name, sizeof(reserve_unit.name) - 1);
+            }
+
+            RAD_NetEventManagerPublishReserveUnit(events, &reserve_unit);
+            return RAD_NET_CODEC_OK;
+        }
+
         case NET_GAME_EVENT__EVENT__NOT_SET:
         default:
             return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
@@ -225,7 +270,7 @@ static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile)
     out->x = tile->x;
     out->y = tile->y;
     out->z = tile->z;
-    out->entity_id = (RAD_NetEntityId_t)tile->entity_id;
+    out->entity_id = (RAD_NetEntityId_t)tile->unit_id;
 
     switch(tile->type)
     {

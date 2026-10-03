@@ -15,6 +15,7 @@ export type WasmEventHandler = (data: Uint8Array) => void;
  * zuc_on_connection_state() (client/src/main.c) weitergereicht.
  */
 export type ConnectionStateHandler = (open: boolean) => void;
+export type PlayerIdHandler = (playerId: string) => void;
 
 /**
  * Wie oft der Client dem Backend ein Lebenszeichen schickt, waehrend die
@@ -64,6 +65,9 @@ export class GameSocketService {
   private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
   private wasmEventHandler: WasmEventHandler | null = null;
   private connectionStateHandler: ConnectionStateHandler | null = null;
+  private playerIdHandler: PlayerIdHandler | null = null;
+  /** Die eigene Spieler-Id dieser Verbindung, sobald das Backend sie geschickt hat. */
+  private playerId: string | null = null;
 
   /**
    * Von GameCanvasComponent aufgerufen, sobald das WASM-Modul geladen ist,
@@ -83,6 +87,22 @@ export class GameSocketService {
    * schon offen sein, wenn sich der Client anmeldet -- ohne diesen ersten
    * Aufruf erfuehre er davon nie.
    */
+  /**
+   * Wie setConnectionStateHandler(), nur fuer die eigene, oeffentliche
+   * Spieler-Id: das Backend schickt sie gleich nach dem Verbindungsaufbau
+   * ({"type":"identity"}, radish/backend/api/consumers.py), oft bevor das
+   * WASM-Modul geladen ist. Ist sie schon da, wird sie deshalb sofort gemeldet.
+   *
+   * Nur die oeffentliche Id -- den geheimen Zucchini-Code vor jeder Nachricht
+   * setzt das Backend selbst und schickt ihn nie heraus.
+   */
+  setPlayerIdHandler(handler: PlayerIdHandler | null): void {
+    this.playerIdHandler = handler;
+    if (handler && this.playerId !== null) {
+      handler(this.playerId);
+    }
+  }
+
   setConnectionStateHandler(handler: ConnectionStateHandler | null): void {
     this.connectionStateHandler = handler;
     handler?.(this.socket?.readyState === WebSocket.OPEN);
@@ -117,6 +137,7 @@ export class GameSocketService {
       console.log(`GameSocketService: Verbindung geschlossen (Code ${event.code}).`);
       this.stopHeartbeat();
       this.socket = null;
+      this.playerId = null;
       this.connectionStateHandler?.(false);
     };
 
@@ -171,7 +192,8 @@ export class GameSocketService {
   /**
    * Parst eine eingehende Nachricht und reicht bei "type":"event" die
    * Base64-dekodierten Rohdaten an den registrierten WASM-Client weiter
-   * (siehe setWasmEventHandler()). Alles, was kein "event" ist oder sich
+   * (siehe setWasmEventHandler()), bei "type":"identity" die eigene
+   * Spieler-Id (siehe setPlayerIdHandler()). Alles andere, oder was sich
    * nicht sauber parsen/dekodieren laesst, wird nur geloggt bzw. als
    * Fehler gemeldet, aber nicht weitergereicht.
    */
@@ -181,6 +203,11 @@ export class GameSocketService {
       message = JSON.parse(raw);
     } catch (err) {
       console.error('GameSocketService: Nachricht ist kein gueltiges JSON:', raw, err);
+      return;
+    }
+
+    if (message.type === 'identity') {
+      this.handleIdentity(message.data);
       return;
     }
 
@@ -207,6 +234,16 @@ export class GameSocketService {
       return;
     }
     this.wasmEventHandler(bytes);
+  }
+
+  private handleIdentity(data: unknown): void {
+    const playerId = (data as { player_id?: unknown } | undefined)?.player_id;
+    if (typeof playerId !== 'string') {
+      console.error('GameSocketService: "identity"-Nachricht ohne "player_id":', data);
+      return;
+    }
+    this.playerId = playerId;
+    this.playerIdHandler?.(playerId);
   }
 }
 

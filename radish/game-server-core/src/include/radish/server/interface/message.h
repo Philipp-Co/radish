@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <radish/game/control/command/command.h>
 #include <radish/game/model/tile/tile.h>
+#include <radish/game/model/unit/unit.h>
 
 ///
 /// interface/ -- die Aussengrenze des Servers. Hier wird aus einer Nachricht ein
@@ -30,11 +31,10 @@
 /// nur RAD_Command_t/RAD_CommandResponse_t aus game/ und die eigene
 /// RAD_NetCodecResult_t.
 ///
-/// **Nur move_entity ist beim Kommando zurzeit abgebildet**, aus demselben
-/// Grund wie beim Client (net_codec.h dort): protobuf/command.proto kennt
-/// bislang NetMoveCommand und NetShootCommand, und NetShootCommand passt nicht
-/// zu RAD_CommandShoot_t -- das Kommando zielt auf ein Feld, die Nachricht auf
-/// eine Entitaet. Eine Nachricht mit einer anderen Kommandoart liest
+/// **Abgebildet sind move_unit und deploy_unit.** protobuf/command.proto kennt
+/// dazu NetShootCommand, und das passt nicht zu RAD_CommandShoot_t -- das
+/// Kommando zielt auf ein Feld, die Nachricht auf eine Einheit (wie beim Client,
+/// net_codec.h dort). Eine Nachricht mit einer anderen Kommandoart liest
 /// RAD_ParseCommandFromMessage deshalb nicht, und
 /// RAD_SerializeCommandResponseToMessage packt eine Antwort auf eine solche
 /// Nachricht ebenfalls nicht -- beide liefern
@@ -66,12 +66,12 @@ typedef enum
     /// Die Kommandoart ist im aktuellen command.proto nicht abgebildet (siehe
     /// oben): beim Lesen ein eingebettetes NetCommandRequest mit shoot-Zweig
     /// oder ganz ohne gesetzten Zweig (commands_case NOT_SET), beim Schreiben
-    /// eine Antwort auf ein anderes Kommando als move_entity.
+    /// eine Antwort auf ein anderes Kommando als move_unit oder deploy_unit.
     RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE,
 
     /// Die Anzahl der Felder eines Pfades liegt nicht in [2, RAD_PATH_MAX_STEPS]
     /// (path.h) -- symmetrisch zu RAD_COMMAND_CODEC_ERROR_INVALID_STEP_COUNT im
-    /// alten Codec (game/.../command/move_entity.h).
+    /// alten Codec (game/.../command/move_unit.h).
     RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT,
 
     /// net_server_message__pack wuerde mehr Bytes schreiben, als der uebergebene
@@ -86,7 +86,11 @@ typedef enum
     /// strukturell nicht das, was ihr data_case/commands_case behauptet -- ein
     /// als gesetzt markierter Zweig, dessen Zeiger trotzdem NULL ist, oder gar
     /// kein Zweig gesetzt (*__NOT_SET).
-    RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE
+    RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE,
+
+    /// Die Nachricht ist kuerzer als die 8 Byte Absender, die ihr das Backend
+    /// voranstellt (RAD_ParseSenderFromMessage).
+    RAD_NET_CODEC_ERROR_NO_SENDER
 } RAD_NetCodecResult_t;
 
 ///
@@ -104,15 +108,43 @@ const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result);
 /// bei jedem Ergebnis ausser RAD_NET_CODEC_OK unberuehrt.
 ///
 /// command_request.id geht in header.sequence, NetMoveCommand.user_id in
-/// header.user -- beide sind im .proto uint32, im Kommando uint64: die
-/// Umkehrung der Anmerkung beim Client zum Encodieren (net_codec.h dort), hier
-/// also eine Erweiterung und kein Abschneiden.
+/// header.user. Die Sequenznummer ist im .proto uint32, im Kommando uint64 --
+/// die Umkehrung der Anmerkung beim Client zum Encodieren (net_codec.h dort),
+/// hier also eine Erweiterung. Der Absender ist auf beiden Seiten uint64.
 ///
 /// Geprueft wird der Absender hier nicht: ob der Benutzer mitspielt und ob ihm
 /// gehoert, was das Kommando anfasst, ist keine Frage der Nachricht. Sie wird
 /// daneben beantwortet, in radish/server/control/execute.h.
 ///
 RAD_NetCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uint16_t size, RAD_Command_t *out_command);
+
+///
+/// Trennt den Absender von der Nutzlast.
+///
+/// **Den Absender setzt das Backend, nicht der Client.** Jede Nachricht, die hier
+/// ankommt, hat der WebSocket-Consumer des Backends gebaut (radish/backend/api/
+/// consumers.py):
+///
+///     [ Zucchini-Code 8 Byte ][ Spieler-Id 8 Byte ][ NetUserRequest ]
+///
+/// Den Code -- geheim, je Spieler und Spiel vom Backend vergeben -- prueft
+/// zucchini_server gegen seine Whitelist und schneidet ihn ab. Was hier ankommt,
+/// beginnt also mit der Spieler-Id: der gepackten, oeffentlichen Kennung
+/// (RAD_ControlUserIdFromIdentifier), Big-Endian. Weil nur das Backend die Codes
+/// kennt, kommt keine Nachricht durch, die es nicht gebaut hat -- die Id ist damit
+/// so vertrauenswuerdig wie die Anmeldung beim Backend.
+///
+/// "sender" bekommt die Id, "payload"/"payload_size" den Rest, die NetUserRequest
+/// fuer RAD_ParseDiscoverFromMessage, RAD_ParseDiscoverReserveFromMessage und
+/// RAD_ParseCommandFromMessage. RAD_NET_CODEC_ERROR_NO_SENDER, wenn die Nachricht
+/// keine 8 Byte lang ist; die Ausgaben bleiben dann unberuehrt.
+///
+/// Ein user_id im Kommando selbst (command.proto) zaehlt nicht: der Absender
+/// eines Kommandos ist "sender", der Aufrufer setzt ihn als header.user.
+///
+RAD_NetCodecResult_t RAD_ParseSenderFromMessage(const uint8_t *message, uint16_t size,
+                                                 RAD_UserId_t *sender,
+                                                 const uint8_t **payload, uint16_t *payload_size);
 
 ///
 /// Ein Ausschnitt der Welt, den ein Client erkunden will: die linke obere Ecke
@@ -142,6 +174,33 @@ typedef struct
 RAD_NetCodecResult_t RAD_ParseDiscoverFromMessage(const uint8_t *message, uint16_t size, RAD_DiscoverRequest_t *out_request);
 
 ///
+/// Erkennt die Anfrage nach den Reserven (NetUserRequest mit gesetztem
+/// discover_reserve_request, protobuf/discover.proto). Sie traegt nichts -- was
+/// zu tun ist, sagt allein ihr Zweig, deshalb gibt es hier kein "out_request".
+///
+/// RAD_NET_CODEC_OK fuer genau diese Anfrage, RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE
+/// fuer eine lesbare Nachricht mit einem anderen Zweig -- der Aufrufer versucht es
+/// dann anders, wie bei RAD_ParseDiscoverFromMessage.
+///
+RAD_NetCodecResult_t RAD_ParseDiscoverReserveFromMessage(const uint8_t *message, uint16_t size);
+
+///
+/// Eine Einheit der Reserve als eigene Nachricht (NetServerMessage -> NetEvent ->
+/// NetGameEvent mit reserve_unit, protobuf/game.proto): Id, Besitzer, Name des
+/// Einheitentyps und die Zahl ihrer Mitglieder. Ob sie wirklich in der Reserve
+/// steht, entscheidet der Aufrufer -- dieses Modul deutet keinen Zustand.
+///
+/// Eine Einheit passt immer: ihr Name ist hoechstens RAD_UNIT_NAME_MAX - 1 Zeichen
+/// lang, die Nachricht damit weit unter einem Ringpuffer-Platz. Wie bei den
+/// uebrigen Ereignissen RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "capacity"
+/// trotzdem nicht reicht.
+///
+RAD_NetCodecResult_t RAD_SerializeReserveUnitEventToMessage(const RAD_Unit_t *unit,
+                                                              uint8_t *out_message,
+                                                              uint16_t capacity,
+                                                              uint16_t *out_size);
+
+///
 /// Schreibt eine Antwort als ausgehende Nachricht (NetServerMessage mit
 /// gesetztem command_response, protobuf/message.proto).
 ///
@@ -150,7 +209,7 @@ RAD_NetCodecResult_t RAD_ParseDiscoverFromMessage(const uint8_t *message, uint16
 /// "out_message" nimmt die Bytes auf, "capacity" ist der Platz darin, "out_size"
 /// die geschriebene Laenge; beide werden nur bei RAD_NET_CODEC_OK beschrieben.
 ///
-/// response->command muss move_entity sein (siehe oben) -- sonst
+/// response->command muss move_unit oder deploy_unit sein (siehe oben) -- sonst
 /// RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE. RAD_NET_CODEC_ERROR_
 /// BUFFER_TOO_SMALL, wenn "capacity" nicht reicht; anders als beim alten Codec
 /// klebt ein Ueberlauf hier nicht in einem Writer, sondern wird vor dem
@@ -171,8 +230,8 @@ RAD_NetCodecResult_t RAD_ParseDiscoverFromMessage(const uint8_t *message, uint16
 ///
 /// Wie bei der Antwort: "out_message"/"out_size" werden nur bei RAD_NET_CODEC_OK
 /// beschrieben, RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "capacity" nicht
-/// reicht. Die Uuids gehen ungekuerzt als uint64 hinaus, anders als der Absender
-/// eines Kommandos.
+/// reicht. Die Ids gehen ungekuerzt als uint64 hinaus, wie der Absender eines
+/// Kommandos.
 ///
 RAD_NetCodecResult_t RAD_SerializeCurrentPlayerEventToMessage(RAD_UserId_t user,
                                                                 uint8_t *out_message,
@@ -195,7 +254,7 @@ RAD_NetCodecResult_t RAD_SerializeWorldSizeEventToMessage(uint32_t width,
 ///
 ///   x, y, z    unveraendert
 ///   type       RAD_TileType_t auf NetTileType, VOID eingeschlossen
-///   entity_id  die Id der Figur, unveraendert, RAD_ENTITY_NONE (-1)
+///   unit_id    die Id der Figur, unveraendert, RAD_UNIT_NONE (-1)
 ///              eingeschlossen -- welche Ids es gibt, bestimmt das Spiel.
 ///
 /// Wie viele Felder in eine Nachricht passen, entscheidet der Aufrufer ueber

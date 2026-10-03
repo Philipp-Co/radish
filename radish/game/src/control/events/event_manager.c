@@ -11,7 +11,7 @@
 ///
 struct RAD_EventManager
 {
-    RAD_EventsEntityChangedCallback_t entity_changed_events;
+    RAD_EventsUnitChangedCallback_t unit_changed_events;
     RAD_EventsTileChangedCallback_t tile_changed_events;
     RAD_EventsMouseCallbacks_t mouse_events;
 };
@@ -25,8 +25,8 @@ static void RAD_DefaultOnMouseMove(void *user_argument, int32_t new_x, int32_t n
 static void RAD_DefaultOnMousePressed(void *user_argument, int32_t x, int32_t y);
 static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y);
 
-static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
-static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result);
+static void RAD_DefaultUnit(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y);
+static void RAD_DefaultUnitMove(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
 
 
 RAD_EventManager_t* RAD_CreateEventManager(void)
@@ -50,11 +50,11 @@ RAD_EventManager_t* RAD_CreateEventManager(void)
             .pressed=RAD_DefaultOnMousePressed,
             .released=RAD_DefaultOnMouseReleased
         },
-        .entity_changed_events = {
+        .unit_changed_events = {
             .user_argument = NULL,
-            .spawned = RAD_DefaultEntity,
-            .destroyed = RAD_DefaultEntity,
-            .moved = RAD_DefaultEntityMove
+            .spawned = RAD_DefaultUnit,
+            .destroyed = RAD_DefaultUnit,
+            .moved = RAD_DefaultUnitMove
         }
     };
 
@@ -150,38 +150,38 @@ static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y
     (void)y;
 }
 
-void RAD_EventManagerSubscribeToEntityEvents(RAD_EventManager_t *manager, RAD_EventsEntityChangedCallback_t callbacks)
+void RAD_EventManagerSubscribeToUnitEvents(RAD_EventManager_t *manager, RAD_EventsUnitChangedCallback_t callbacks)
 {
-    manager->entity_changed_events = callbacks;
+    manager->unit_changed_events = callbacks;
 }
 
-void RAD_EventManagerPublishEntitySpawned(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y)
+void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
-    manager->entity_changed_events.spawned(manager->entity_changed_events.user_argument, entity, x, y);
+    manager->unit_changed_events.spawned(manager->unit_changed_events.user_argument, unit, x, y);
 }
 
-void RAD_EventManagerPublishEntityDestroyed(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y)
+void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
-    manager->entity_changed_events.destroyed(manager->entity_changed_events.user_argument, entity, x, y);
+    manager->unit_changed_events.destroyed(manager->unit_changed_events.user_argument, unit, x, y);
 }
 
-void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
+void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
-    manager->entity_changed_events.moved(manager->entity_changed_events.user_argument, entity, path, result);
+    manager->unit_changed_events.moved(manager->unit_changed_events.user_argument, unit, path, result);
 }
 
-static void RAD_DefaultEntity(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+static void RAD_DefaultUnit(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
     (void)user_argument;
-    (void)entity;
+    (void)unit;
     (void)x;
     (void)y;
 }
 
-static void RAD_DefaultEntityMove(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
+static void RAD_DefaultUnitMove(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
     (void)user_argument;
-    (void)entity;
+    (void)unit;
     (void)path;
     (void)result;
 }

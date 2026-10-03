@@ -19,15 +19,15 @@
 /// message.c ist das Gegenstueck: dieselben protobuf/*.proto, nur ueber
 /// NetUserRequest gelesen und NetServerMessage geschrieben statt umgekehrt. Ein
 /// hier gepacktes Kommando laesst sich damit gegen den laufenden Server
-/// verschicken -- die Abschneidung von Sequenznummer und Absender auf 32 Bit
-/// unten bei RAD_NetEncodeMoveRequest ist deshalb keine hypothetische
-/// Einschraenkung, sondern wirkt auf der echten Strecke.
+/// verschicken -- die Abschneidung der Sequenznummer auf 32 Bit unten bei
+/// RAD_NetEncodeMoveRequest ist deshalb keine hypothetische Einschraenkung,
+/// sondern wirkt auf der echten Strecke.
 ///
 /// **Nur der Zug ist beim Kommando zurzeit abgebildet.**
 /// protobuf/command.proto kennt NetMoveCommand und NetShootCommand. Shoot zielt
-/// dort auf eine Ziel-Entitaet (target_entity_id) und eine Liste von Waffen, der
+/// dort auf eine Ziel-Einheit (target_unit_id) und eine Liste von Waffen, der
 /// Client waehlt aber ein Feld -- ein Feld liesse sich nicht verlustfrei in eine
-/// Entitaets-Id uebersetzen, ohne dass jemand entscheidet, wie. Der Client
+/// Einheiten-Id uebersetzen, ohne dass jemand entscheidet, wie. Der Client
 /// schickt Shoot deshalb vorerst gar nicht, und RAD_NetDispatchServerMessage
 /// liefert fuer eine Antwort mit shoot-Zweig
 /// RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE, statt etwas zu erfinden.
@@ -80,11 +80,10 @@ const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result);
 /// beschrieben.
 ///
 /// request->sequence geht in NetCommandRequest.id, request->user in
-/// NetMoveCommand.user_id: beide sind im .proto uint32, im Client uint64 --
-/// Sequenznummer und Uuid werden also auf 32 Bit abgeschnitten. Der Server liest
-/// das genauso ab (siehe oben) und erweitert beim Empfang wieder auf 64 Bit;
-/// abgeschnitten wird trotzdem, sollte eine Sequenznummer oder eine Uuid je die
-/// oberen 32 Bit brauchen.
+/// NetMoveCommand.user_id. Die Sequenznummer ist im .proto uint32, im Client
+/// uint64 -- sie wird auf 32 Bit abgeschnitten, und der Server erweitert sie beim
+/// Empfang wieder. Der Absender geht ungekuerzt als uint64: er ist die gepackte
+/// Spieler-Kennung und braucht alle 64 Bit.
 ///
 /// Liefert RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT bei einer Schrittzahl
 /// ausserhalb von [2, RAD_NET_PATH_MAX_STEPS] und
@@ -113,10 +112,23 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscover(uint32_t x,
                                             size_t *out_length);
 
 ///
+/// Packt die Anfrage nach den Reserven als NetUserRequest (Zweig
+/// discover_reserve_request, protobuf/discover.proto). Sie traegt nichts: auf der
+/// Leitung sind es zwei Bytes, 1A 00. Der Server antwortet mit einem
+/// NetReserveUnitEvent je Einheit (RAD_NetEventManagerPublishReserveUnit).
+///
+/// "buffer"/"out_length" werden nur bei RAD_NET_CODEC_OK beschrieben;
+/// RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "buffer" zu klein ist.
+///
+RAD_NetCodecResult_t RAD_NetEncodeDiscoverReserve(uint8_t *buffer,
+                                                   size_t buffer_size,
+                                                   size_t *out_length);
+
+///
 /// Liest eine NetServerMessage aus "data"/"length" (protobuf/message.proto) und
 /// veroeffentlicht sie ueber "events" (events/event_manager.h). Das ist der
 /// einzige Weg, eine eingehende Nachricht vom Server zu lesen; main.c ruft ihn
-/// aus zuc_on_response.
+/// aus RAD_OnMessageReceived.
 ///
 /// Je nach Zweig ruft sie genau eine der RAD_NetEventManagerPublish...-
 /// Funktionen auf "events" auf:
@@ -127,6 +139,7 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscover(uint32_t x,
 ///   event.game.current_player                       -> RAD_NetEventManagerPublishCurrentPlayer
 ///   event.game.players                              -> RAD_NetEventManagerPublishPlayers
 ///   event.game.world_size                           -> RAD_NetEventManagerPublishWorldSize
+///   event.game.reserve_unit                         -> RAD_NetEventManagerPublishReserveUnit
 ///   event.tile.created                              -> RAD_NetEventManagerPublishTileCreated
 ///   event.tile.removed                              -> RAD_NetEventManagerPublishTileRemoved
 ///   event.tile.changed                              -> RAD_NetEventManagerPublishTileChanged

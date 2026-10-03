@@ -29,8 +29,9 @@ RAD_Game_t* RAD_CreateGame(RAD_EventManager_t *event_manager, RAD_UserId_t local
     // waere ein Mitspieler mit erfundener Uuid. Niemand spielt mit, also ist auch
     // niemand dran -- der erste Beitritt eroeffnet den ersten Zug.
     game->turn = RAD_CreateTurn();
+    game->started = false;
 
-    game->world = RAD_CreateWorld(event_manager);
+    RAD_CreateWorld(&game->world, event_manager);
     RAD_InitWorld(&game->world);
 
     return game;
@@ -42,7 +43,7 @@ void RAD_DestroyGame(RAD_Game_t **game)
     *game = NULL;
 }
 
-static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t *move)
+static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *move)
 {
     int32_t result = -1;
     //
@@ -51,20 +52,30 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
     // Figur schon steht, damit er dieselbe Gestalt hat wie der hereingekommene
     // (path.h): erstes Feld der Standort, letztes das Ziel.
     //
-    RAD_EntityPath_t valid_path = {
+    RAD_Path_t valid_path = {
         .number_of_steps = 0
     };
-    RAD_Entity_t *entity = RAD_WorldEntityById(&game->world, move->entity);
-    if(NULL == entity)
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, move->unit);
+    if(NULL == unit)
     {
-        printf("Entity with Id %i does not exist!\n", move->entity);
+        printf("Entity with Id %i does not exist!\n", move->unit);
+        goto end;
+    }
+    //
+    // Nur was auf dem Feld steht, kann ziehen. Eine Einheit in der Reserve oder
+    // eine zerstoerte hat keine Position -- x/y sind -1, und darunter liegt kein
+    // Tile, von dem aus sich ein Weg gehen liesse.
+    //
+    if(RAD_UNIT_STATE_DEPLOYED != unit->state)
+    {
+        printf("Unit with Id %i is not on the field!\n", move->unit);
         goto end;
     }
     //
     // Erstmal pruefen.
     //
-    int32_t x = entity->x;
-    int32_t y = entity->y;
+    int32_t x = unit->x;
+    int32_t y = unit->y;
 
     //
     // Der Standort ist das erste Feld des gelaufenen Weges. Er wird nicht geprueft:
@@ -98,7 +109,7 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
             valid_path.number_of_steps = 0;
             goto end;
         }
-        else if(RAD_ENTITY_NONE != tile->entity)
+        else if(RAD_UNIT_NONE != tile->unit)
         {
             //
             // Sobald die naechste Tile besetzt ist, hoert die Bewegung auf.
@@ -127,44 +138,51 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveEntity_t 
     //
     // Jetzt erst schreiben.
     // 
-    game->world.tiles[entity->y][entity->x].entity = RAD_ENTITY_NONE;
-    game->world.tiles[y][x].entity = entity->id;
-    entity->x = x;
-    entity->y = y;
+    game->world.tiles[unit->y][unit->x].unit = RAD_UNIT_NONE;
+    game->world.tiles[y][x].unit = unit->id;
+    unit->x = x;
+    unit->y = y;
 
 end:
     //
     // Beobachter benachrichtigen...
     //
-    RAD_EventManagerPublishEntityMoved(game->event_manager, entity, &valid_path, result);
+    RAD_EventManagerPublishUnitMoved(game->event_manager, unit, &valid_path, result);
 }
 
 
-static void RAD_GameHandleSpawnCommand(RAD_Game_t *game, RAD_CommandSpawnEntity_t *spawn)
+///
+/// Stellt eine Einheit aus der Reserve auf. Die Regel steht in
+/// RAD_GameCheckDeployUnit, und sie gilt hier noch einmal, obwohl der Server sie
+/// schon gefragt hat: das Spiel schreibt nur, was es selbst geprueft hat -- ein
+/// Kommando kann auch an der Vorpruefung vorbei hier ankommen.
+///
+/// Abgelehnt wird still, wie ein Zug, der nicht geht: die Welt bleibt, wie sie war,
+/// und es gibt kein Ereignis. Gelingt es, meldet die Welt die Einheit wie einen
+/// Spawn (RAD_WorldDeployUnit).
+///
+static void RAD_GameHandleDeployCommand(RAD_Game_t *game, RAD_UserId_t user, const RAD_CommandDeployUnit_t *deploy)
 {
-    const int16_t x = spawn->x;
-    const int16_t y = spawn->y;
-    const RAD_Entity_t *entity = RAD_WorldEntityAt(&game->world, x, y);
-    if(NULL != entity)
+    const RAD_GameResult_t allowed = RAD_GameCheckDeployUnit(game, user, deploy->unit, deploy->x, deploy->y);
+    if(allowed != RAD_GAME_OK)
     {
-        printf("Unable to spawn Entity at (%i, %i)\n", x, y);
+        printf("Unit with Id %i not deployed: %s\n", deploy->unit, RAD_GameResultText(allowed));
         return;
     }
-    const RAD_EntityId_t id = RAD_WorldSpawnEntity(&game->world, spawn->entity_type, x, y); 
-    const RAD_Entity_t *new_entity = RAD_WorldEntityById(&game->world, id);
 
-    RAD_EventManagerPublishEntitySpawned(game->event_manager, new_entity, x, y);
+    RAD_WorldDeployUnit(&game->world, deploy->unit, deploy->x, deploy->y);
 }
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
 {
     switch(command->header.type)
     {
-        case RAD_COMMAND_TYPE_MOVE_ENTITY:
-            RAD_GameHandleMoveCommand(game, &command->command.move_entity);
+        case RAD_COMMAND_TYPE_MOVE_UNIT:
+            RAD_GameHandleMoveCommand(game, &command->command.move_unit);
             break;
-        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
-            RAD_GameHandleSpawnCommand(game, &command->command.spawn_entity);
+        case RAD_COMMAND_TYPE_DEPLOY_UNIT:
+            RAD_GameHandleDeployCommand(game, command->header.user, &command->command.deploy_unit);
+            break;
         default:
             break;
     }

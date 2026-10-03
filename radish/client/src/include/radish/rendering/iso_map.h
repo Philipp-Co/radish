@@ -6,6 +6,7 @@
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
 #include <radish/io/net_types.h>
+#include <radish/model/tile.h>
 
 
 typedef struct
@@ -31,11 +32,15 @@ void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map);
 RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t layer);
 
 ///
-/// Zeichnet ein Feld, wie es der Server schickt -- neu oder geaendert. Das
-/// Iso-Objekt wird beim ersten Mal angelegt und danach nur aktualisiert; die
-/// Figur darauf folgt "entity_id". Ausserhalb des Rasters wird verworfen.
+/// Zeichnet ein Feld, wie es im Model steht (model/tile.h) -- neu oder
+/// geaendert. Das Iso-Objekt wird beim ersten Mal angelegt und danach nur
+/// aktualisiert; die Figur darauf folgt der Einheit des Feldes. Ausserhalb des
+/// Rasters wird verworfen.
 ///
-void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_NetTile_t *tile);
+/// **Alle Felder liegen auf Ebene 0.** Das Model kennt keine Hoehe, die Karte
+/// ist also flach.
+///
+void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile);
 
 void RAD_IsoMapRemoveTile(RAD_IsoMap_t *map, uint32_t x, uint32_t y);
 

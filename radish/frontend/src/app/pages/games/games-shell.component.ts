@@ -5,7 +5,8 @@ import { AuthService } from '../../core/auth.service';
 
 /**
  * Rahmen um die Unterseiten "Aktuelles Spiel" (current/), "Laufende Spiele"
- * (list/), "Spiel erstellen" (create/), "Spiel beitreten" (join/) und,
+ * (list/), "Spiel erstellen" (create/), "Spiel beitreten" (join/), "Armee"
+ * (armies/, samt armies/new und armies/:id) und,
  * nur fuer Nutzer mit der Keycloak-Realm-Rolle "Radish-Admin", "Admin"
  * (admin/) -- siehe app.routes.ts, dort als Kind-Routen von "games"
  * eingehaengt. Der authGuard sitzt an dieser Elternroute und gilt damit
@@ -27,6 +28,7 @@ import { AuthService } from '../../core/auth.service';
         <a routerLink="list" routerLinkActive="active">Laufende Spiele</a>
         <a routerLink="create" routerLinkActive="active">Spiel erstellen</a>
         <a routerLink="join" routerLinkActive="active">Spiel beitreten</a>
+        <a routerLink="armies" routerLinkActive="active">Armee</a>
         @if (auth.isAdmin()) {
           <a routerLink="admin" routerLinkActive="active">Admin</a>
         }

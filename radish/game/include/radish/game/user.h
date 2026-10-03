@@ -6,7 +6,7 @@
 ///
 /// Uuid eines Benutzers: wer vor einem Client sitzt, nicht was in der Welt steht.
 /// Beides gibt es nebeneinander -- ein Benutzer fuehrt eine Figur
-/// (RAD_EntityId_t), ist aber nicht sie: die Figur kann fallen und neu gesetzt
+/// (RAD_UnitId_t), ist aber nicht sie: die Figur kann fallen und neu gesetzt
 /// werden, der Benutzer bleibt derselbe.
 ///
 /// Vergeben wird sie nicht hier. Sie kommt von aussen, und der Server erkennt sie
@@ -19,8 +19,8 @@
 /// Benutzer 0 durchzugehen.
 ///
 /// Der Typ liegt im Spielmodul, und dort steht auch, wer mitspielt (turn.h)
-/// und wem welche Figur gehoert (RAD_Entity_t.owner). Eine Welt hat damit nicht
-/// nur Entitaeten, sondern auch Konten -- der Grund ist der Zug: wer dran ist,
+/// und wem welche Figur gehoert (RAD_Unit_t.owner). Eine Welt hat damit nicht
+/// nur Einheiten, sondern auch Konten -- der Grund ist der Zug: wer dran ist,
 /// ist eine Spielregel, und Zug und Besitz laufen ueber dieselben Benutzer.
 ///
 typedef uint64_t RAD_UserId_t;

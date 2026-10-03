@@ -14,6 +14,13 @@
 # Ringpuffer-/FIFO-Namen, die radish_server erwartet. Ohne Argument default
 # "zucchini", passend zu zucchini_servers eigenem Default.
 #
+# Legt das Verzeichnis an, ueber das Django (radish/game-server/instances/
+# views.py) und radish_server die Spielstart-Datei austauschen, und raeumt es
+# vorher aus: nach einem Absturz soll weder ein altes Spiel wieder auftauchen
+# noch eine PID liegen, hinter der kein Prozess mehr steht. Die PID-Datei
+# schreibt radish_server selbst, sobald sein Handler fuer SIGUSR1 steht
+# (siehe radish/game-server-core/src/main.c).
+#
 # Meldet sich ausserdem beim Backend an (register_instance.py, siehe dort --
 # RADISH_GAME_SERVER_NAME ist die Kennung dafuer, unabhaengig vom
 # Zucchini-Instanznamen oben) und wieder ab, wenn das Paar endet -- egal ob
@@ -22,12 +29,23 @@ set -e
 
 ZUC_INSTANCE_NAME="${1:-zucchini}"
 
+# Vor dem Anmelden: erst wenn die Instanz beim Backend steht, kann ein Spiel
+# auf ihr starten, und dann soll das Verzeichnis schon leer bereitstehen.
+# Derselbe Default wie RADISH_GAME_DATA_DIR in radish/game-server/config/
+# settings.py.
+GAME_DATA_DIR="${RADISH_GAME_DATA_DIR:-/run/radish}/${RADISH_GAME_SERVER_NAME}"
+mkdir -p "$GAME_DATA_DIR"
+rm -f "$GAME_DATA_DIR/spielstart.json" "$GAME_DATA_DIR/spielstart.json.tmp" "$GAME_DATA_DIR/zugang.json" "$GAME_DATA_DIR/radish_server.pid"
+export RADISH_GAME_START_PATH="$GAME_DATA_DIR/spielstart.json"
+export RADISH_GAME_PID_PATH="$GAME_DATA_DIR/radish_server.pid"
+
 /usr/local/bin/register_instance.py register
 
-# Der Code, den der Client jedem Paket voranstellt. Zucchini nimmt nur
-# Pakete an, deren Code in der Whitelist steht -- ohne diesen Eintrag
-# verwirft es alles. Das Argument ist hexadezimal.
-ZUC_CLIENT_CODE="1"
+# Die Whitelist bleibt hier leer. Zucchini nimmt nur Pakete an, deren Code
+# darin steht, und die Codes vergibt das Backend je Spieler beim Spielstart
+# (radish/backend/api/access.py); eingetragen werden sie erst dann, vom
+# Django dieses Containers (radish/game-server/instances/views.py). Bis
+# dahin kommt nichts durch -- es gibt ja auch noch kein Spiel.
 
 /usr/local/bin/zucchini_server &
 ZUCCHINI_PID=$!
@@ -36,7 +54,6 @@ ZUCCHINI_PID=$!
 # Signal -- der muss dafuer schon laufen.
 sleep 1
 
-/usr/local/bin/zucchini_admin_client whitelist-add "$ZUC_CLIENT_CODE"
 /usr/local/bin/zucchini_admin_client status
 
 /usr/local/bin/radish_server "$ZUC_INSTANCE_NAME" &

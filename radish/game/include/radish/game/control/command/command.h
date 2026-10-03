@@ -40,16 +40,22 @@
 typedef uint64_t RAD_CommandSequence_t;
 
 
+///
+/// Die Arten eines Kommandos, jede mit fester Nummer. Eine Nummer wird nicht
+/// wiedervergeben: 1 war RAD_COMMAND_TYPE_SPAWN_UNIT, das eine Einheit an der
+/// Reserve vorbei aus dem Nichts aufs Feld setzte. Ein Spieler bringt seine
+/// Einheiten mit der Armee mit und stellt sie mit RAD_COMMAND_TYPE_DEPLOY_UNIT
+/// auf -- ein Weg daneben waere einer an der Armee vorbei.
+///
 typedef enum
 {
     RAD_COMMAND_TYPE_NONE = 0,
-    RAD_COMMAND_TYPE_SPAWN_ENTITY,
-    RAD_COMMAND_TYPE_MOVE_ENTITY,
-    RAD_COMMAND_TYPE_REMOVE_ENTITY,
-    RAD_COMMAND_TYPE_CREATE_TILE,
-    RAD_COMMAND_TYPE_REMOVE_TILE,
-    RAD_COMMAND_TYPE_SHOOT,
-    RAD_COMMAND_TYPE_USE,
+    RAD_COMMAND_TYPE_MOVE_UNIT = 2,
+    RAD_COMMAND_TYPE_REMOVE_UNIT = 3,
+    RAD_COMMAND_TYPE_CREATE_TILE = 4,
+    RAD_COMMAND_TYPE_REMOVE_TILE = 5,
+    RAD_COMMAND_TYPE_SHOOT = 6,
+    RAD_COMMAND_TYPE_USE = 7,
 
     ///
     /// Der Absender gibt seinen Zug ab. Als einzige Art ohne Nutzlast: wer ihn
@@ -60,7 +66,13 @@ typedef enum
     /// (RAD_ControlExecuteCommand im Server). Dieses Kommando ist der andere Weg:
     /// abgeben, was man nicht mehr braucht.
     ///
-    RAD_COMMAND_TYPE_END_TURN
+    RAD_COMMAND_TYPE_END_TURN = 8,
+
+    ///
+    /// Stellt eine Einheit aus der Reserve des Absenders auf ein Feld
+    /// (RAD_CommandDeployUnit_t).
+    ///
+    RAD_COMMAND_TYPE_DEPLOY_UNIT = 9
 } RAD_CommandType_t;
 
 ///
@@ -100,24 +112,32 @@ typedef struct
 } RAD_CommandHeader_t;
 
 ///
-/// Setzt eine neue Entitaet auf ein Tile. Ohne Id: die vergibt die Welt beim
-/// Ausfuehren (RAD_WorldSpawnEntity).
+/// Stellt eine Einheit aus der Reserve auf ein Feld. Die Einheit gibt es schon --
+/// sie kam mit der Armee ins Spiel (RAD_GameAddUnit) und steht dort in der Reserve,
+/// dem Spiel bekannt, auf dem Feld noch nicht.
+///
+/// Ob das geht, entscheidet beim Ausfuehren eine Regel und nicht das Kommando
+/// (RAD_GameCheckDeployUnit): die Einheit muss dem Absender gehoeren und in der
+/// Reserve stehen, das Feld in der Welt liegen, Gelaende haben und frei sein. Ein
+/// zweimal zugestelltes Kommando aendert deshalb beim zweiten Mal nichts -- die
+/// Einheit steht dann schon.
+///
+/// Es kostet nichts und geht jederzeit im eigenen Zug.
 ///
 typedef struct
 {
-    RAD_EntityType_t entity_type;
+    RAD_UnitId_t unit;
     int16_t x;
     int16_t y;
-    int8_t z;
-} RAD_CommandSpawnEntity_t;
+} RAD_CommandDeployUnit_t;
 
 ///
-/// Bewegt eine vorhandene Entitaet -- nicht auf ein Feld, sondern ueber einen Weg
+/// Bewegt eine vorhandene Einheit -- nicht auf ein Feld, sondern ueber einen Weg
 /// aus mehreren. Eine Bewegung ist ein Pfad (model/path/path.h), und wie lang er
 /// hoechstens sein darf, ist die Laenge seines Feldes: RAD_PATH_MAX_STEPS.
 ///
 /// **Wo es losgeht, steht nicht darin.** Startfeld ist das Tile, auf dem die
-/// genannte Figur steht -- sie weiss das selbst (RAD_Entity_t.x/y), und wer das
+/// genannte Figur steht -- sie weiss das selbst (RAD_Unit_t.x/y), und wer das
 /// Kommando ausfuehrt, schlaegt es ueber die Id nach. path.steps_to[0] ist damit
 /// das erste Feld, auf das sie sich bewegt, der letzte Eintrag ihr Ziel.
 ///
@@ -139,17 +159,17 @@ typedef struct
 ///
 typedef struct
 {
-    RAD_EntityId_t entity;
-    RAD_EntityPath_t path;
-} RAD_CommandMoveEntity_t;
+    RAD_UnitId_t unit;
+    RAD_Path_t path;
+} RAD_CommandMoveUnit_t;
 
 ///
-/// Nimmt eine Entitaet aus der Welt.
+/// Nimmt eine Einheit aus der Welt.
 ///
 typedef struct
 {
-    RAD_EntityId_t entity;
-} RAD_CommandRemoveEntity_t;
+    RAD_UnitId_t unit;
+} RAD_CommandRemoveUnit_t;
 
 ///
 /// Legt Gelaende auf einem Tile an. "Anlegen" heisst hier nicht, dass ein Tile
@@ -193,7 +213,7 @@ typedef struct
 /// Das Ziel ist ein Feld und keine Figur: getroffen wird, was dort steht, und ob
 /// dort etwas steht, entscheidet sich beim Ausfuehren und nicht beim Zielen. Ein
 /// Schuss ins Leere ist damit ein moegliches Kommando und kein fehlerhaftes --
-/// dieselbe Ueberlegung wie beim absoluten Ziel von move_entity.
+/// dieselbe Ueberlegung wie beim absoluten Ziel von move_unit.
 ///
 typedef struct
 {
@@ -203,9 +223,9 @@ typedef struct
     /// die Angabe waere nicht entschieden, welche handelt.
     ///
     /// Damit ist es auch die Figur, an der die Berechtigung haengt: sie muss dem
-    /// Absender gehoeren, so wie bei move_entity.
+    /// Absender gehoeren, so wie bei move_unit.
     ///
-    RAD_EntityId_t entity;
+    RAD_UnitId_t unit;
 
     int16_t x;
     int16_t y;
@@ -235,7 +255,7 @@ typedef struct
 typedef struct
 {
     /// Wer benutzt; muss dem Absender gehoeren, wie bei shoot.
-    RAD_EntityId_t entity;
+    RAD_UnitId_t unit;
 
     int16_t x;
     int16_t y;
@@ -246,13 +266,13 @@ typedef struct
     RAD_CommandHeader_t header;
     union
     {
-        RAD_CommandSpawnEntity_t spawn_entity;
-        RAD_CommandMoveEntity_t move_entity;
-        RAD_CommandRemoveEntity_t remove_entity;
+        RAD_CommandMoveUnit_t move_unit;
+        RAD_CommandRemoveUnit_t remove_unit;
         RAD_CommandCreateTile_t create_tile;
         RAD_CommandRemoveTile_t remove_tile;
         RAD_CommandShoot_t shoot;
         RAD_CommandUse_t use;
+        RAD_CommandDeployUnit_t deploy_unit;
     } command;
 } RAD_Command_t;
 

@@ -82,6 +82,29 @@ if(RAD_CHECK_JSONSCHEMA)
             COMMAND ${RAD_CHECK_JSONSCHEMA} --schemafile ${RAD_WORLD_SCHEMA} ${world})
         set_tests_properties(schema_world_invalid_${world_name} PROPERTIES WILL_FAIL TRUE)
     endforeach()
+
+    # Dasselbe fuer die Spieldaten beim Spielstart (die beiden Spieler mit
+    # ihren Armeen, siehe radish/backend/api/instance_client.py). Gueltige
+    # und ungueltige Beispiele liegen beide unter schema/spielstart/.
+    set(RAD_SPIELSTART_SCHEMA "${CMAKE_CURRENT_SOURCE_DIR}/../schema/spielstart.schema.json")
+
+    add_test(NAME schema_spielstart
+        COMMAND ${RAD_CHECK_JSONSCHEMA} --check-metaschema ${RAD_SPIELSTART_SCHEMA})
+
+    file(GLOB RAD_VALID_SPIELSTARTS "${CMAKE_CURRENT_SOURCE_DIR}/schema/spielstart/valid/*.json")
+    foreach(example ${RAD_VALID_SPIELSTARTS})
+        get_filename_component(example_name ${example} NAME_WE)
+        add_test(NAME schema_spielstart_valid_${example_name}
+            COMMAND ${RAD_CHECK_JSONSCHEMA} --schemafile ${RAD_SPIELSTART_SCHEMA} ${example})
+    endforeach()
+
+    file(GLOB RAD_INVALID_SPIELSTARTS "${CMAKE_CURRENT_SOURCE_DIR}/schema/spielstart/invalid/*.json")
+    foreach(example ${RAD_INVALID_SPIELSTARTS})
+        get_filename_component(example_name ${example} NAME_WE)
+        add_test(NAME schema_spielstart_invalid_${example_name}
+            COMMAND ${RAD_CHECK_JSONSCHEMA} --schemafile ${RAD_SPIELSTART_SCHEMA} ${example})
+        set_tests_properties(schema_spielstart_invalid_${example_name} PROPERTIES WILL_FAIL TRUE)
+    endforeach()
 else()
-    message(STATUS "check-jsonschema nicht gefunden -- Schema-Tests der Weltdefinition entfallen")
+    message(STATUS "check-jsonschema nicht gefunden -- Schema-Tests der Weltdefinition und des Spielstarts entfallen")
 endif()

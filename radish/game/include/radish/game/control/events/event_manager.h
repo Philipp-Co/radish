@@ -3,7 +3,7 @@
 
 #include <radish/game/model/model.h>
 #include <radish/game/model/tile/tile.h>
-#include <radish/game/model/entity/entity.h>
+#include <radish/game/model/unit/unit.h>
 #include <radish/game/model/path/path.h>
 
 ///
@@ -30,8 +30,8 @@
 /// noch als Zeiger aus RAD_CreateEventManager, nicht mehr als Wert auf dem
 /// Stapel. Wer ihn haelt, gibt ihn mit RAD_DestroyEventManager wieder her.
 ///
-/// **Warum oben tile.h, entity.h und path.h stehen.** Die Signaturen hier nennen
-/// RAD_Tile_t, RAD_Entity_t und RAD_EntityPath_t, und deren Namen stehen bei
+/// **Warum oben tile.h, unit.h und path.h stehen.** Die Signaturen hier nennen
+/// RAD_Tile_t, RAD_Unit_t und RAD_Path_t, und deren Namen stehen bei
 /// ihren Strukturen und nicht in model.h (die Begruendung dort). Diese Datei
 /// zieht damit alle drei Definitionen herein, und weil game.h sie einbindet,
 /// bekommt sie jeder Konsument des Spielmoduls -- auch einer, der nie ein
@@ -39,13 +39,13 @@
 ///
 /// Das ist der bewusst gezahlte Preis dafuer, dass jeder dieser drei Namen genau
 /// eine Quelle hat. Er ist klein, weil alle drei Strukturen klein sind und keine
-/// weiteren Header nachziehen: tile.h kommt mit model.h aus, entity.h mit model.h
+/// weiteren Header nachziehen: tile.h kommt mit model.h aus, unit.h mit model.h
 /// und user.h, path.h mit stdint allein. Ein zweiter typedef an dieser Stelle
 /// waere der Ausweg gewesen -- in C99 ist er nicht erlaubt, und ein Name mit zwei
 /// Quellen laeuft irgendwann auseinander.
 ///
 /// **Der Pfad stand bis hierher in dieser Datei**, mit einem Define, das nach dem
-/// Callback hiess, dem er gehoerte (RAD_ONENTITYMOVED_MAX_STEPS). Seit ein
+/// Callback hiess, dem er gehoerte (RAD_ONUNITMOVED_MAX_STEPS). Seit ein
 /// Kommando eine Bewegung als Pfad traegt, gehoert er nicht mehr einem allein: er
 /// steht in model/path/path.h, und diese Datei nennt ihn nur noch.
 ///
@@ -62,18 +62,18 @@ typedef struct
     RAD_OnTileStateChanged_t changed;
 } RAD_EventsTileChangedCallback_t;
 
-typedef void (*RAD_OnEntitySpawned_t)(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
-typedef void (*RAD_OnEntityDestroyed_t)(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y);
+typedef void (*RAD_OnUnitSpawned_t)(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y);
+typedef void (*RAD_OnUnitDestroyed_t)(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y);
 
-typedef void (*RAD_OnEntityMoved_t)(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result);
+typedef void (*RAD_OnUnitMoved_t)(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
 
 typedef struct
 {
     int16_t x;
     int16_t y;
-} RAD_EntityShoot_t;
+} RAD_UnitShoot_t;
 
-typedef void (*RAD_OnEntityShoot_t)(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityShoot_t *shoot);
+typedef void (*RAD_OnUnitShoot_t)(void *user_argument, const RAD_Unit_t *unit, const RAD_UnitShoot_t *shoot);
 
 typedef struct
 {
@@ -84,10 +84,10 @@ typedef struct
 typedef struct
 {
     void *user_argument;
-    RAD_OnEntitySpawned_t spawned;
-    RAD_OnEntityDestroyed_t destroyed;
-    RAD_OnEntityMoved_t moved;
-} RAD_EventsEntityChangedCallback_t;
+    RAD_OnUnitSpawned_t spawned;
+    RAD_OnUnitDestroyed_t destroyed;
+    RAD_OnUnitMoved_t moved;
+} RAD_EventsUnitChangedCallback_t;
 
 ///
 /// Die Zeigereignisse: was der Benutzer mit der Maus tut, nicht was im Spiel
@@ -136,10 +136,10 @@ void RAD_EventManagerPublishTileAddedToGameEvent(RAD_EventManager_t *manager, co
 void RAD_EventManagerPublishTileRemovedFromGameEvent(RAD_EventManager_t *manager, const RAD_Tile_t *tile);
 void RAD_EventManagerPublishTileStateChangeEvent(RAD_EventManager_t *manager, const RAD_Tile_t *tile);
 
-void RAD_EventManagerSubscribeToEntityEvents(RAD_EventManager_t *manager, RAD_EventsEntityChangedCallback_t callbacks);
-void RAD_EventManagerPublishEntitySpawned(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y);
-void RAD_EventManagerPublishEntityDestroyed(RAD_EventManager_t *manager, const RAD_Entity_t *entity, int32_t x, int32_t y);
-void RAD_EventManagerPublishEntityMoved(RAD_EventManager_t *manager, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result);
+void RAD_EventManagerSubscribeToUnitEvents(RAD_EventManager_t *manager, RAD_EventsUnitChangedCallback_t callbacks);
+void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
+void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
+void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
 
 void RAD_EventManagerSubscribeToMouseEvents(RAD_EventManager_t *manager, RAD_EventsMouseCallbacks_t callbacks);
 void RAD_EventManagerPublishMouseMoved(RAD_EventManager_t *manager, int32_t new_x, int32_t new_y, int32_t old_x, int32_t old_y);

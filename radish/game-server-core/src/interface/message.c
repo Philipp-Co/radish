@@ -1,5 +1,6 @@
 #include <radish/server/interface/message.h>
 
+#include <stdint.h>
 #include <string.h>
 
 // Generierter Code aus protobuf/*.proto (protobuf/CMakeLists.txt, Ziel
@@ -8,6 +9,9 @@
 // RAD_NetCodecResult_t, keinen generierten NetXxx-Typ und kein protobuf-c-
 // Symbol.
 #include "message.pb-c.h"
+
+static RAD_NetCodecResult_t RAD_ParseMoveCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
+static RAD_NetCodecResult_t RAD_ParseDeployCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
 
 
 const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result)
@@ -20,8 +24,34 @@ const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result)
         case RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL:          return "Puffer zu klein fuer die gepackte Nachricht";
         case RAD_NET_CODEC_ERROR_DECODE_FAILED:             return "Bytes liessen sich nicht als NetUserRequest lesen";
         case RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE:        return "NetUserRequest ist strukturell nicht das, was ihr Zweig behauptet";
+        case RAD_NET_CODEC_ERROR_NO_SENDER:                 return "Nachricht ohne Absender";
         default:                                            return "unbekanntes Ergebnis";
     }
+}
+
+/// Laenge des Absenders vor der Nutzlast (message.h).
+#define RAD_SENDER_SIZE 8
+
+RAD_NetCodecResult_t RAD_ParseSenderFromMessage(const uint8_t *message, uint16_t size,
+                                                 RAD_UserId_t *sender,
+                                                 const uint8_t **payload, uint16_t *payload_size)
+{
+    if((message == NULL) || (size < RAD_SENDER_SIZE))
+    {
+        return RAD_NET_CODEC_ERROR_NO_SENDER;
+    }
+
+    // Big-Endian, wie der Zucchini-Code davor: das hoechste Byte zuerst.
+    RAD_UserId_t user = 0;
+    for(int i = 0; i < RAD_SENDER_SIZE; ++i)
+    {
+        user = (user << 8) | (RAD_UserId_t)message[i];
+    }
+
+    *sender = user;
+    *payload = message + RAD_SENDER_SIZE;
+    *payload_size = (uint16_t)(size - RAD_SENDER_SIZE);
+    return RAD_NET_CODEC_OK;
 }
 
 RAD_NetCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uint16_t size, RAD_Command_t *out_command)
@@ -42,44 +72,86 @@ RAD_NetCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uint16_
 
     const NetCommandRequest *command_request = request->command_request;
 
-    // Nur move_entity ist gegenwaertig abgebildet -- ein shoot-Zweig oder gar
-    // keiner (commands_case NOT_SET) ist damit keine Nachricht, die sich in ein
-    // RAD_Command_t uebersetzen liesse (message.h).
-    if((command_request->commands_case != NET_COMMAND_REQUEST__COMMANDS_MOVE) || (command_request->move == NULL))
+    // Abgebildet sind move und deploy -- ein shoot-Zweig oder gar keiner
+    // (commands_case NOT_SET) ist keine Nachricht, die sich in ein RAD_Command_t
+    // uebersetzen liesse (message.h). "out_command" bleibt dann unberuehrt.
+    RAD_Command_t parsed;
+    memset(&parsed, 0, sizeof(parsed));
+
+    RAD_NetCodecResult_t result = RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE;
+    if((command_request->commands_case == NET_COMMAND_REQUEST__COMMANDS_MOVE) && (command_request->move != NULL))
     {
-        net_user_request__free_unpacked(request, NULL);
-        return RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE;
+        result = RAD_ParseMoveCommand(command_request, &parsed);
+    }
+    else if((command_request->commands_case == NET_COMMAND_REQUEST__COMMANDS_DEPLOY) && (command_request->deploy != NULL))
+    {
+        result = RAD_ParseDeployCommand(command_request, &parsed);
     }
 
+    if(result == RAD_NET_CODEC_OK)
+    {
+        *out_command = parsed;
+    }
+
+    net_user_request__free_unpacked(request, NULL);
+    return result;
+}
+
+///
+/// Der move-Zweig. Die Sequenznummer uint32 -> uint64: erweitert, nicht
+/// abgeschnitten -- die Umkehrung der Anmerkung beim Client zum Encodieren
+/// (net_codec.h dort). Der Absender ist auf beiden Seiten uint64.
+///
+static RAD_NetCodecResult_t RAD_ParseMoveCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command)
+{
     const NetMoveCommand *move = command_request->move;
     const size_t number_of_steps = move->n_steps;
 
     // Dieselbe Grenze wie beim Client (net_codec.c dort) und beim alten Codec.
     if((number_of_steps < 2) || (number_of_steps > RAD_PATH_MAX_STEPS))
     {
-        net_user_request__free_unpacked(request, NULL);
         return RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT;
     }
 
-    memset(out_command, 0, sizeof(*out_command));
-
-    out_command->header.type = RAD_COMMAND_TYPE_MOVE_ENTITY;
-    // uint32 -> uint64: erweitert, nicht abgeschnitten -- die Umkehrung der
-    // Anmerkung beim Client zum Encodieren (net_codec.h dort).
+    out_command->header.type = RAD_COMMAND_TYPE_MOVE_UNIT;
     out_command->header.sequence = (RAD_CommandSequence_t)command_request->id;
     out_command->header.user = (RAD_UserId_t)move->user_id;
 
-    out_command->command.move_entity.entity = (RAD_EntityId_t)move->entity_id;
-    out_command->command.move_entity.path.number_of_steps = (int8_t)number_of_steps;
+    out_command->command.move_unit.unit = (RAD_UnitId_t)move->unit_id;
+    out_command->command.move_unit.path.number_of_steps = (int8_t)number_of_steps;
     for(size_t i = 0; i < number_of_steps; ++i)
     {
-        out_command->command.move_entity.path.steps_to[i].x = (int16_t)move->steps[i]->x;
-        out_command->command.move_entity.path.steps_to[i].y = (int16_t)move->steps[i]->y;
+        out_command->command.move_unit.path.steps_to[i].x = (int16_t)move->steps[i]->x;
+        out_command->command.move_unit.path.steps_to[i].y = (int16_t)move->steps[i]->y;
     }
-    // Die ungenutzten Plaetze bleiben genullt (memset oben) -- wie beim alten
-    // Codec, dasselbe Kommando ergibt so immer dieselbe Struktur.
+    // Die ungenutzten Plaetze bleiben genullt (memset beim Aufrufer) -- wie beim
+    // alten Codec, dasselbe Kommando ergibt so immer dieselbe Struktur.
 
-    net_user_request__free_unpacked(request, NULL);
+    return RAD_NET_CODEC_OK;
+}
+
+///
+/// Der deploy-Zweig. Ein Feld, das nicht in int16 passt, ist keines dieser Welt
+/// und wuerde beim Umwandeln ein anderes -- die Nachricht ist dann nicht, was ihr
+/// Zweig behauptet.
+///
+static RAD_NetCodecResult_t RAD_ParseDeployCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command)
+{
+    const NetDeployCommand *deploy = command_request->deploy;
+
+    if((deploy->x > (uint32_t)INT16_MAX) || (deploy->y > (uint32_t)INT16_MAX))
+    {
+        return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+    }
+
+    out_command->header.type = RAD_COMMAND_TYPE_DEPLOY_UNIT;
+    out_command->header.sequence = (RAD_CommandSequence_t)command_request->id;
+    out_command->header.user = (RAD_UserId_t)deploy->user_id;
+
+    out_command->command.deploy_unit.unit = (RAD_UnitId_t)deploy->unit_id;
+    out_command->command.deploy_unit.x = (int16_t)deploy->x;
+    out_command->command.deploy_unit.y = (int16_t)deploy->y;
+
     return RAD_NET_CODEC_OK;
 }
 
@@ -171,6 +243,44 @@ RAD_NetCodecResult_t RAD_SerializePlayersEventToMessage(const RAD_UserId_t *user
     return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
 }
 
+RAD_NetCodecResult_t RAD_ParseDiscoverReserveFromMessage(const uint8_t *message, uint16_t size)
+{
+    NetUserRequest *request = net_user_request__unpack(NULL, size, message);
+    if(request == NULL)
+    {
+        return RAD_NET_CODEC_ERROR_DECODE_FAILED;
+    }
+
+    const bool reserve = (request->data_case == NET_USER_REQUEST__DATA_DISCOVER_RESERVE_REQUEST)
+                         && (request->discover_reserve_request != NULL);
+
+    net_user_request__free_unpacked(request, NULL);
+    return reserve ? RAD_NET_CODEC_OK : RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+}
+
+RAD_NetCodecResult_t RAD_SerializeReserveUnitEventToMessage(const RAD_Unit_t *unit,
+                                                              uint8_t *out_message,
+                                                              uint16_t capacity,
+                                                              uint16_t *out_size)
+{
+    NetUnit net_unit = NET_UNIT__INIT;
+    net_unit.unit_id = (uint32_t)unit->id;
+    net_unit.owner_id = (uint64_t)unit->owner;
+    // Wie bei "description" in der Antwort: protobuf-c will einen String und nimmt
+    // ihn nur zum Lesen; der Cast nimmt die Konstanz weg, die es nicht kennt.
+    net_unit.name = (char *)unit->name;
+    net_unit.number_of_members = (uint32_t)unit->number_of_members;
+
+    NetReserveUnitEvent reserve_unit = NET_RESERVE_UNIT_EVENT__INIT;
+    reserve_unit.unit = &net_unit;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_RESERVE_UNIT;
+    game_event.reserve_unit = &reserve_unit;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
 RAD_NetCodecResult_t RAD_SerializeWorldSizeEventToMessage(uint32_t width,
                                                             uint32_t height,
                                                             uint8_t *out_message,
@@ -210,7 +320,7 @@ RAD_NetCodecResult_t RAD_SerializeTilesEventToMessage(const RAD_Tile_t *tiles,
         net_tiles[i].y = (uint32_t)tile->y;
         net_tiles[i].z = (uint32_t)tile->z;
         net_tiles[i].type = RAD_NetTileTypeFromTileType(tile->type);
-        net_tiles[i].entity_id = tile->entity;
+        net_tiles[i].unit_id = tile->unit;
 
         tile_pointers[i] = &net_tiles[i];
     }
@@ -251,45 +361,68 @@ RAD_NetCodecResult_t RAD_SerializeCommandResponseToMessage(const RAD_CommandResp
                                                              uint16_t capacity,
                                                              uint16_t *out_size)
 {
-    // Vorerst die einzige abgebildete Art -- siehe die Erklaerung in message.h.
-    if(response->command.header.type != RAD_COMMAND_TYPE_MOVE_ENTITY)
-    {
-        return RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE;
-    }
-
-    const RAD_CommandMoveEntity_t *move = &response->command.command.move_entity;
-    const int8_t number_of_steps = move->path.number_of_steps;
-
-    // Dieselbe Grenze wie beim Lesen und beim Client (net_codec.c dort).
-    if((number_of_steps < 2) || (number_of_steps > RAD_PATH_MAX_STEPS))
-    {
-        return RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT;
-    }
-
-    // Wie beim Client: nur die tatsaechlich genutzten Felder fahren mit,
-    // Protobuf traegt seine eigene Laenge (n_steps).
-    NetMoveCommandStep steps[RAD_PATH_MAX_STEPS];
-    NetMoveCommandStep *step_pointers[RAD_PATH_MAX_STEPS];
-    for(int8_t i = 0; i < number_of_steps; ++i)
-    {
-        net_move_command_step__init(&steps[i]);
-        steps[i].x = (uint32_t)move->path.steps_to[i].x;
-        steps[i].y = (uint32_t)move->path.steps_to[i].y;
-        step_pointers[i] = &steps[i];
-    }
-
-    NetMoveCommand move_command = NET_MOVE_COMMAND__INIT;
-    // uint64 -> uint32: siehe die Anmerkung beim Client zum Encodieren
-    // (net_codec.h dort).
-    move_command.user_id = (uint32_t)response->command.header.user;
-    move_command.entity_id = (uint32_t)move->entity;
-    move_command.n_steps = (size_t)number_of_steps;
-    move_command.steps = step_pointers;
-
     NetCommandRequest command_request = NET_COMMAND_REQUEST__INIT;
     command_request.id = (uint32_t)response->command.header.sequence;
-    command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_MOVE;
-    command_request.move = &move_command;
+
+    // Die Zweige stehen hier und nicht in eigenen Funktionen: protobuf-c packt ueber
+    // Zeiger, und alles, worauf sie zeigen, muss bis zum Packen unten leben.
+    NetMoveCommandStep steps[RAD_PATH_MAX_STEPS];
+    NetMoveCommandStep *step_pointers[RAD_PATH_MAX_STEPS];
+    NetMoveCommand move_command = NET_MOVE_COMMAND__INIT;
+    NetDeployCommand deploy_command = NET_DEPLOY_COMMAND__INIT;
+
+    switch(response->command.header.type)
+    {
+        case RAD_COMMAND_TYPE_MOVE_UNIT:
+        {
+            const RAD_CommandMoveUnit_t *move = &response->command.command.move_unit;
+            const int8_t number_of_steps = move->path.number_of_steps;
+
+            // Dieselbe Grenze wie beim Lesen und beim Client (net_codec.c dort).
+            if((number_of_steps < 2) || (number_of_steps > RAD_PATH_MAX_STEPS))
+            {
+                return RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT;
+            }
+
+            // Wie beim Client: nur die tatsaechlich genutzten Felder fahren mit,
+            // Protobuf traegt seine eigene Laenge (n_steps).
+            for(int8_t i = 0; i < number_of_steps; ++i)
+            {
+                net_move_command_step__init(&steps[i]);
+                steps[i].x = (uint32_t)move->path.steps_to[i].x;
+                steps[i].y = (uint32_t)move->path.steps_to[i].y;
+                step_pointers[i] = &steps[i];
+            }
+
+            // Ungekuerzt: der Absender ist die gepackte Kennung (game_start.h).
+            move_command.user_id = (uint64_t)response->command.header.user;
+            move_command.unit_id = (uint32_t)move->unit;
+            move_command.n_steps = (size_t)number_of_steps;
+            move_command.steps = step_pointers;
+
+            command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_MOVE;
+            command_request.move = &move_command;
+            break;
+        }
+
+        case RAD_COMMAND_TYPE_DEPLOY_UNIT:
+        {
+            const RAD_CommandDeployUnit_t *deploy = &response->command.command.deploy_unit;
+
+            deploy_command.user_id = (uint64_t)response->command.header.user;
+            deploy_command.unit_id = (uint32_t)deploy->unit;
+            deploy_command.x = (uint32_t)deploy->x;
+            deploy_command.y = (uint32_t)deploy->y;
+
+            command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_DEPLOY;
+            command_request.deploy = &deploy_command;
+            break;
+        }
+
+        // Die uebrigen Arten sind in command.proto nicht abgebildet (message.h).
+        default:
+            return RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE;
+    }
 
     NetCommandResponse command_response = NET_COMMAND_RESPONSE__INIT;
     command_response.command = &command_request;

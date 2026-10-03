@@ -3,12 +3,14 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
+import { apiErrorMessage } from '../../../core/api-error';
 import { ApiService } from '../../../core/api.service';
+import { ArmyPickerComponent } from '../army-picker.component';
 
 @Component({
   selector: 'app-game-create',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ArmyPickerComponent],
   template: `
     <section class="card">
       <h2>Spiel erstellen</h2>
@@ -26,7 +28,20 @@ import { ApiService } from '../../../core/api.service';
           Passwort
           <input type="password" name="password" [(ngModel)]="password" required />
         </label>
-        <button type="submit" [disabled]="creating()">Erstellen</button>
+        <label>
+          Punkte
+          <input
+            type="number"
+            name="pointsLimit"
+            min="1"
+            placeholder="z.B. 500"
+            [(ngModel)]="pointsLimit"
+            required
+          />
+          <span class="muted hint">Keine der beiden Armeen darf mehr Punkte kosten.</span>
+        </label>
+        <app-army-picker [pointsLimit]="pointsLimit" [(selectedId)]="armyId" />
+        <button type="submit" [disabled]="creating() || !canCreate()">Erstellen</button>
       </form>
     </section>
   `,
@@ -43,6 +58,9 @@ import { ApiService } from '../../../core/api.service';
         gap: 0.25rem;
         font-size: 0.9rem;
       }
+      .hint {
+        font-size: 0.8rem;
+      }
     `,
   ],
 })
@@ -55,27 +73,32 @@ export class GameCreateComponent {
 
   name = '';
   password = '';
+  pointsLimit: number | null = null;
+  armyId: number | null = null;
+
+  canCreate(): boolean {
+    return (
+      !!this.name && !!this.password && !!this.pointsLimit && this.pointsLimit > 0 && this.armyId !== null
+    );
+  }
 
   createGame(): void {
-    if (!this.name || !this.password) {
+    if (!this.canCreate() || this.pointsLimit === null || this.armyId === null) {
       return;
     }
     this.creating.set(true);
     this.errorMessage.set(null);
-    this.api.createGame(this.name, this.password).subscribe({
+    this.api.createGame(this.name, this.password, this.pointsLimit, this.armyId).subscribe({
       next: (game) => {
         this.creating.set(false);
-        // Nicht mehr direkt auf die eigenstaendige Spielseite ("/game/:name"):
-        // die Umleitung nach Erstellen/Beitreten soll zu "Aktuelles Spiel"
-        // gehen (siehe CurrentGameComponent, die das Canvas selbst einbettet),
-        // nicht direkt auf die reine Canvas-Seite.
-        void this.router.navigate(['/games/current']);
+        // Erst in die Lobby: das Spiel laeuft erst, wenn der Host es gestartet
+        // und die Spielinstanz sich bereit gemeldet hat -- dann fuehrt die
+        // Lobby selbst weiter auf "Aktuelles Spiel" (siehe LobbyComponent).
+        void this.router.navigate(['/games/lobby']);
       },
       error: (err: HttpErrorResponse) => {
         this.creating.set(false);
-        this.errorMessage.set(
-          (err.error as { detail?: string } | null)?.detail ?? 'Spiel konnte nicht erstellt werden.',
-        );
+        this.errorMessage.set(apiErrorMessage(err, 'Spiel konnte nicht erstellt werden.'));
       },
     });
   }

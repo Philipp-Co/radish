@@ -38,7 +38,8 @@ struct RAD_Control
 };
 
 static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const RAD_Command_t *command);
-static RAD_ControlResult_t RAD_ControlCheckEntityOwner(RAD_Control_t control, RAD_UserId_t user, RAD_EntityId_t entity);
+static RAD_ControlResult_t RAD_ControlCheckUnitOwner(RAD_Control_t control, RAD_UserId_t user, RAD_UnitId_t unit);
+static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandDeployUnit_t *deploy);
 static uint32_t RAD_ControlExecuteAllowedCommand(RAD_Control_t control, const RAD_Command_t *command);
 
 
@@ -51,13 +52,15 @@ const char* RAD_ControlResultText(RAD_ControlResult_t result)
         case RAD_CONTROL_ERROR_NOT_PLAYING:     return "Absender spielt nicht mit";
         case RAD_CONTROL_ERROR_NOT_OWNED:       return "Figur gehoert einem anderen";
         case RAD_CONTROL_ERROR_NOT_EXECUTED:    return "in Ordnung, aber noch nicht ausgefuehrt";
-        case RAD_CONTROL_ERROR_NO_ENTITY:       return "Aufruf ohne Figur";
-        case RAD_CONTROL_ERROR_NO_SUCH_ENTITY:  return "Figur steht nicht in der Welt";
+        case RAD_CONTROL_ERROR_NO_UNIT:         return "Aufruf ohne Figur";
+        case RAD_CONTROL_ERROR_NO_SUCH_UNIT:    return "Figur steht nicht in der Welt";
         case RAD_CONTROL_ERROR_OUT_OF_BOUNDS:   return "Ziel liegt ausserhalb der Welt";
         case RAD_CONTROL_ERROR_TARGET_OCCUPIED: return "Zielfeld ist besetzt";
         case RAD_CONTROL_ERROR_NOT_YOUR_TURN:   return "ein anderer ist dran";
         case RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS:
                                                 return "nicht genug Aktionspunkte";
+        case RAD_CONTROL_ERROR_NOT_IN_RESERVE:  return "Einheit steht nicht in der Reserve";
+        case RAD_CONTROL_ERROR_NO_GROUND:       return "Zielfeld hat kein Gelaende";
         default:                                return "unbekanntes Ergebnis";
     }
 }
@@ -100,20 +103,71 @@ RAD_ControlResult_t RAD_ControlAddUser(RAD_Control_t control, RAD_UserId_t user)
     }
 }
 
+RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_ControlGameStart_t *start)
+{
+    if(start == NULL)
+    {
+        return RAD_GAME_ERROR_INVALID_UNIT;
+    }
+
+    // Genau einmal (execute.h): ein Spiel mit Einheiten oder eines, das schon
+    // laeuft, hat seinen Start hinter sich.
+    if(RAD_GameHasStarted(control->game) || (RAD_GameNumberOfUnits(control->game) > 0))
+    {
+        return RAD_GAME_ERROR_STARTED;
+    }
+
+    // Erst alle Spieler, dann alle Einheiten: scheitert ein Spieler, steht noch
+    // keine Einheit im Spiel. Die Reihenfolge der Aufnahme ist die Zugreihenfolge.
+    RAD_UserId_t users[RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS];
+    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        users[p] = RAD_ControlUserIdFromIdentifier(start->players[p].identifier);
+        if(users[p] == RAD_USER_NONE)
+        {
+            return RAD_GAME_ERROR_NO_USER;
+        }
+    }
+
+    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        const RAD_GameResult_t joined = RAD_GameAddPlayer(control->game, users[p]);
+        if(joined != RAD_GAME_OK)
+        {
+            return joined;
+        }
+    }
+
+    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        const RAD_ControlGameStartPlayer_t *player = &start->players[p];
+        for(int32_t u=0;u < player->number_of_units; ++u)
+        {
+            const RAD_GameResult_t added = RAD_GameAddUnit(control->game, users[p], &player->units[u], NULL);
+            if(added != RAD_GAME_OK)
+            {
+                return added;
+            }
+        }
+    }
+
+    return RAD_GAME_OK;
+}
+
 void RAD_ControlRemoveUser(RAD_Control_t control, RAD_UserId_t user)
 {
     RAD_GameRemovePlayer(control->game, user);
 }
 
-RAD_ControlResult_t RAD_ControlBindUserEntity(RAD_Control_t control, RAD_UserId_t user, RAD_EntityId_t entity)
+RAD_ControlResult_t RAD_ControlBindUserUnit(RAD_Control_t control, RAD_UserId_t user, RAD_UnitId_t unit)
 {
-    switch(RAD_GameBindEntity(control->game, user, entity))
+    switch(RAD_GameBindUnit(control->game, user, unit))
     {
         case RAD_GAME_OK:
             return RAD_CONTROL_OK;
 
-        case RAD_GAME_ERROR_NO_ENTITY:
-            return RAD_CONTROL_ERROR_NO_ENTITY;
+        case RAD_GAME_ERROR_NO_UNIT:
+            return RAD_CONTROL_ERROR_NO_UNIT;
 
         case RAD_GAME_ERROR_NOT_OWNED:
             return RAD_CONTROL_ERROR_NOT_OWNED;
@@ -127,24 +181,34 @@ RAD_ControlResult_t RAD_ControlBindUserEntity(RAD_Control_t control, RAD_UserId_
     }
 }
 
-void RAD_ControlUnbindEntity(RAD_Control_t control, RAD_EntityId_t entity)
+void RAD_ControlUnbindUnit(RAD_Control_t control, RAD_UnitId_t unit)
 {
-    RAD_GameUnbindEntity(control->game, entity);
+    RAD_GameUnbindUnit(control->game, unit);
 }
 
-int32_t RAD_ControlNumberOfUserEntities(RAD_Control_t control, RAD_UserId_t user)
+int32_t RAD_ControlNumberOfUserUnits(RAD_Control_t control, RAD_UserId_t user)
 {
-    return RAD_GameNumberOfUserEntities(control->game, user);
+    return RAD_GameNumberOfUserUnits(control->game, user);
 }
 
-RAD_EntityId_t RAD_ControlUserEntityAt(RAD_Control_t control, RAD_UserId_t user, int32_t index)
+RAD_UnitId_t RAD_ControlUserUnitAt(RAD_Control_t control, RAD_UserId_t user, int32_t index)
 {
-    return RAD_GameUserEntityAt(control->game, user, index);
+    return RAD_GameUserUnitAt(control->game, user, index);
 }
 
-RAD_UserId_t RAD_ControlEntityOwner(RAD_Control_t control, RAD_EntityId_t entity)
+int32_t RAD_ControlNumberOfUnits(RAD_Control_t control)
 {
-    return RAD_GameEntityOwner(control->game, entity);
+    return RAD_GameNumberOfUnits(control->game);
+}
+
+bool RAD_ControlUnitAt(RAD_Control_t control, int32_t index, RAD_Unit_t *output)
+{
+    return RAD_GameUnitAt(control->game, index, output);
+}
+
+RAD_UserId_t RAD_ControlUnitOwner(RAD_Control_t control, RAD_UnitId_t unit)
+{
+    return RAD_GameUnitOwner(control->game, unit);
 }
 
 int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control)
@@ -241,9 +305,9 @@ RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD
 /// tat. Frueher kam die Auskunft von den Ausfuehrenden unter execute/, die in der
 /// Welt nachsahen; heute steht die Welt hinter dem Spiel.
 ///
-/// Der Weg dafuer sind die Ereignisse: RAD_OnEntityMoved_t traegt ein "result" und
+/// Der Weg dafuer sind die Ereignisse: RAD_OnUnitMoved_t traegt ein "result" und
 /// den tatsaechlich gelaufenen Pfad (control/events/event_manager.h), und
-/// RAD_EventManagerSubscribeToEntityEvents ist oeffentlich. Wer das Ergebnis in die
+/// RAD_EventManagerSubscribeToUnitEvents ist oeffentlich. Wer das Ergebnis in die
 /// Antwort holen will, abonniert dort und haelt fest, was zu dem gerade uebergebenen
 /// Kommando gemeldet wurde. Solange das nicht steht, ist "value" in der Antwort
 /// nicht mehr als "angenommen".
@@ -293,26 +357,32 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
 
     switch(command->header.type)
     {
-        case RAD_COMMAND_TYPE_MOVE_ENTITY:
-            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.move_entity.entity);
+        case RAD_COMMAND_TYPE_MOVE_UNIT:
+            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.move_unit.unit);
 
-        case RAD_COMMAND_TYPE_REMOVE_ENTITY:
-            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.remove_entity.entity);
+        case RAD_COMMAND_TYPE_REMOVE_UNIT:
+            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.remove_unit.unit);
 
         // Nicht das Ziel wird geprueft, sondern der, der handelt: geschossen und
         // benutzt wird auf ein Feld, und was dort steht, gehoert gerade nicht dem
         // Absender -- sonst haette ein Schuss wenig Sinn.
         case RAD_COMMAND_TYPE_SHOOT:
-            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.shoot.entity);
+            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.shoot.unit);
 
         case RAD_COMMAND_TYPE_USE:
-            return RAD_ControlCheckEntityOwner(control, command->header.user, command->command.use.entity);
+            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.use.unit);
+
+        // Die ganze Regel des Aufstellens und nicht nur der Besitz: der Absender
+        // soll erfahren, warum es nicht geht -- und das Spiel meldet es nicht
+        // zurueck (RAD_ControlExecuteAllowedCommand). Ein Spieler bringt seine
+        // Einheiten mit der Armee mit; einen Weg, eine Figur an ihr vorbei zu
+        // setzen, gibt es nicht.
+        case RAD_COMMAND_TYPE_DEPLOY_UNIT:
+            return RAD_ControlCheckDeploy(control, command->header.user, &command->command.deploy_unit);
 
         // Kein Besitz zu pruefen: diese Kommandos fassen keine vorhandene Figur
-        // an. Wer eine setzen und wer Gelaende legen darf, ist eine eigene Frage
-        // und noch offen -- heute darf es jeder, der dran ist. Und wer abgibt,
-        // fasst gar nichts an.
-        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
+        // an. Wer Gelaende legen darf, ist eine eigene Frage und noch offen --
+        // heute darf es jeder, der dran ist. Und wer abgibt, fasst gar nichts an.
         case RAD_COMMAND_TYPE_CREATE_TILE:
         case RAD_COMMAND_TYPE_REMOVE_TILE:
         case RAD_COMMAND_TYPE_END_TURN:
@@ -330,15 +400,38 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
 ///
 ///
 /// Darf dieser Mitspieler diese Figur anfassen? Die Regel dazu steht im Spiel
-/// (RAD_GameMayControlEntity), hier wird sie nur auf eine Antwort abgebildet, die
+/// (RAD_GameMayControlUnit), hier wird sie nur auf eine Antwort abgebildet, die
 /// ueber die Strecke geht.
 ///
-static RAD_ControlResult_t RAD_ControlCheckEntityOwner(RAD_Control_t control, RAD_UserId_t user, RAD_EntityId_t entity)
+static RAD_ControlResult_t RAD_ControlCheckUnitOwner(RAD_Control_t control, RAD_UserId_t user, RAD_UnitId_t unit)
 {
-    if(!RAD_GameMayControlEntity(control->game, user, entity))
+    if(!RAD_GameMayControlUnit(control->game, user, unit))
     {
         return RAD_CONTROL_ERROR_NOT_OWNED;
     }
 
     return RAD_CONTROL_OK;
+}
+
+///
+/// Die Regel des Aufstellens (RAD_GameCheckDeployUnit), abgebildet auf Antworten,
+/// die ueber die Strecke gehen. Mitspielen hat RAD_ControlCheckCommand schon
+/// geprueft; der Fall steht hier trotzdem, damit kein Ergebnis des Spiels ohne
+/// Antwort bleibt.
+///
+static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandDeployUnit_t *deploy)
+{
+    switch(RAD_GameCheckDeployUnit(control->game, user, deploy->unit, deploy->x, deploy->y))
+    {
+        case RAD_GAME_OK:                    return RAD_CONTROL_OK;
+        case RAD_GAME_ERROR_NO_USER:         return RAD_CONTROL_ERROR_NO_USER;
+        case RAD_GAME_ERROR_NOT_PLAYING:     return RAD_CONTROL_ERROR_NOT_PLAYING;
+        case RAD_GAME_ERROR_NO_UNIT:         return RAD_CONTROL_ERROR_NO_SUCH_UNIT;
+        case RAD_GAME_ERROR_NOT_OWNED:       return RAD_CONTROL_ERROR_NOT_OWNED;
+        case RAD_GAME_ERROR_NOT_IN_RESERVE:  return RAD_CONTROL_ERROR_NOT_IN_RESERVE;
+        case RAD_GAME_ERROR_OUT_OF_BOUNDS:   return RAD_CONTROL_ERROR_OUT_OF_BOUNDS;
+        case RAD_GAME_ERROR_NO_GROUND:       return RAD_CONTROL_ERROR_NO_GROUND;
+        case RAD_GAME_ERROR_OCCUPIED:        return RAD_CONTROL_ERROR_TARGET_OCCUPIED;
+        default:                             return RAD_CONTROL_ERROR_NOT_EXECUTED;
+    }
 }

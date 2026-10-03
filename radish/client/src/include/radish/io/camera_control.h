@@ -11,7 +11,7 @@
 /// die Pfeiltasten.
 ///
 /// **Rechts und nicht links**, weil die linke Taste dem User-Input gehoert
-/// (io/user_input.h): sein Loslassen waehlt aus, setzt Wegpunkte und schickt
+/// (view/user_input.h): sein Loslassen waehlt aus, setzt Wegpunkte und schickt
 /// Zuege. Mit der rechten Taste kommen sich Ziehen und Klicken nicht in die Quere.
 ///
 /// **Die Kamera bleibt an der Karte.** Nach jeder Bewegung wird sie begrenzt:

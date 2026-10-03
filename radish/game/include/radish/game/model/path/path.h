@@ -10,11 +10,11 @@
 ///
 /// **Er steht im Modell, weil beide Grenzen des Spiels ihn sprechen.** Ein Pfad
 /// kommt herein -- als Bewegung in einem Kommando (control/command/command.h) --
-/// und er kommt heraus, sobald sie ausgefuehrt ist (RAD_OnEntityMoved_t in
+/// und er kommt heraus, sobald sie ausgefuehrt ist (RAD_OnUnitMoved_t in
 /// control/events/event_manager.h). Waere er auf jeder Seite eigens erklaert,
 /// gaebe es zwei fast gleiche Typen, die auseinanderlaufen, sobald einer sich
 /// aendert, und dazwischen eine Kopierschleife, die nichts uebersetzt. Ein Name,
-/// eine Quelle -- dieselbe Ueberlegung wie bei RAD_Tile_t und RAD_Entity_t
+/// eine Quelle -- dieselbe Ueberlegung wie bei RAD_Tile_t und RAD_Unit_t
 /// (model.h).
 ///
 /// Damit ist ein Pfad Vokabular und kein Zustand: wer einen hinschreibt, braucht
@@ -29,8 +29,8 @@
 /// **Das war einmal umgekehrt, und der Grund fuer die Umstellung ist der Weg
 /// hinaus.** Ein Pfad ohne Startfeld ist beim Hereinkommen bequemer -- wo eine
 /// Figur steht, weiss sie selbst. Beim Herausgehen ist er es nicht: das Ereignis
-/// kommt, nachdem die Figur schon am Ziel steht (RAD_OnEntityMoved_t), also nennen
-/// entity->x/y und der letzte Schritt dasselbe Feld, und woher sie kam, steht
+/// kommt, nachdem die Figur schon am Ziel steht (RAD_OnUnitMoved_t), also nennen
+/// unit->x/y und der letzte Schritt dasselbe Feld, und woher sie kam, steht
 /// nirgends. Wer zeichnet, muss aber genau das wissen -- er hat eine Figur von
 /// einem Feld auf ein anderes umzuhaengen. Ohne Startfeld bliebe ihm nur eine
 /// eigene Buchfuehrung darueber, wo er sie zuletzt gesehen hat.
@@ -44,7 +44,7 @@
 ///
 /// **Weltkoordinaten, keine Verschiebungen.** Jeder Schritt benennt sein Feld
 /// absolut. Das ist die Festlegung, die bisher fuer das eine Ziel von
-/// move_entity galt, jetzt je Schritt: eine Folge von Verschiebungen bedeutet an
+/// move_unit galt, jetzt je Schritt: eine Folge von Verschiebungen bedeutet an
 /// jeder Position etwas anderes, eine Folge von Feldern ueberall dasselbe.
 ///
 /// **Ein festes Feld und kein Zeiger.** Ein Kommando ist Daten, die sich
@@ -57,11 +57,11 @@
 /// Programms, das sie haelt: mehr als RAD_PATH_MAX_STEPS Felder kann ein Weg
 /// nicht haben, weil kein Weg mehr tragen kann. Sechzehn sind auf einer
 /// 8x8-Welt reichlich. Wer sie aendert, aendert das Uebertragungsformat mit --
-/// die Schritte fahren alle mit, auch die ungenutzten (move_entity.h).
+/// die Schritte fahren alle mit, auch die ungenutzten (move_unit.h).
 ///
 /// **Sechzehn Felder sind fuenfzehn Schritte**, seit das Startfeld mitfaehrt. Die
 /// Zahl ist bewusst nicht auf siebzehn erhoeht worden, um die alte Reichweite zu
-/// halten: das haette die Nutzlast von move_entity um vier Byte verlaengert und
+/// halten: das haette die Nutzlast von move_unit um vier Byte verlaengert und
 /// damit das Uebertragungsformat gebrochen, an dem beide Seiten haengen. Ein Feld
 /// weniger weit zu kommen ist auf 8x8 keine Einschraenkung, die jemand merkt --
 /// ein Weg ueber fuenfzehn Felder besucht fast ein Viertel der Welt.
@@ -69,14 +69,14 @@
 #define RAD_PATH_MAX_STEPS 16
 
 ///
-/// Ein Feld im Raster. Dieselben zwei int16 wie in RAD_Tile_t und RAD_Entity_t:
+/// Ein Feld im Raster. Dieselben zwei int16 wie in RAD_Tile_t und RAD_Unit_t:
 /// ein Pfad zeigt auf Tiles und rechnet nicht in einer eigenen Einheit.
 ///
 typedef struct
 {
     int16_t x;
     int16_t y;
-} RAD_EntityPosition_t;
+} RAD_Position_t;
 
 ///
 /// Der Pfad: die Felder in ihrer Reihenfolge und wie viele es sind.
@@ -100,8 +100,8 @@ typedef struct
 ///
 typedef struct
 {
-    RAD_EntityPosition_t steps_to[RAD_PATH_MAX_STEPS];
+    RAD_Position_t steps_to[RAD_PATH_MAX_STEPS];
     int8_t number_of_steps;
-} RAD_EntityPath_t;
+} RAD_Path_t;
 
 #endif

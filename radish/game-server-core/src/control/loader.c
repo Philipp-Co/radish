@@ -7,10 +7,9 @@
 
 ///
 /// Zwei Schritte: erst entsteht ein leeres Spiel, dann wird -- wenn ein Pfad
-/// dasteht -- ein Spielstand hineingelesen. Umgekehrt geht es nicht, denn
-/// RAD_LoadGameFromFile fuellt ein vorhandenes Spiel und uebernimmt daraus alles,
-/// was nicht im Spielstand steht (die Ereignisverwaltung, den Absender, die
-/// Sequenznummer).
+/// dasteht -- eine Weltdefinition hineingelesen. Umgekehrt geht es nicht, denn
+/// RAD_LoadWorldFromFile fuellt ein vorhandenes Spiel; die Ereignisverwaltung,
+/// den Absender und die Sequenznummer bringt RAD_CreateGame mit.
 ///
 /// Der Event-Manager liegt auf dem Heap und nicht in dieser Datei: RAD_Game_t
 /// haelt nur einen Zeiger auf ihn, er muss also mindestens so lange leben wie das
@@ -31,8 +30,8 @@
 /// nicht: wie gross ein Event-Manager ist, steht nicht mehr in seinem Header.
 ///
 /// Diese Datei loggt, anders als die uebrigen Module des Servers. Sie ist die
-/// einzige, die einen Spielstand anfasst -- ob einer zustande kam, ist eine Frage
-/// des Betriebs und gehoert ins Log. Angefasst wird er inzwischen mit einem
+/// einzige, die eine Datei des Spiels anfasst -- ob die Welt zustande kam, ist eine
+/// Frage des Betriebs und gehoert ins Log. Angefasst wird sie mit einem
 /// Funktionsaufruf: die Datei selbst, ihr Format und ihr Inhalt sind Sache des
 /// Spielmoduls, und was davon schiefgegangen ist, steht in einem Wert.
 ///
@@ -40,7 +39,7 @@
 static RAD_ControlGame_t RAD_ControlCreateEmptyGame(RAD_EventCallbacks_t *callbacks);
 
 
-RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save_path, RAD_EventCallbacks_t *callbacks)
+RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, RAD_EventCallbacks_t *callbacks)
 {
     RAD_ControlGame_t created = RAD_ControlCreateEmptyGame(callbacks);
     if(created.game == NULL)
@@ -49,25 +48,7 @@ RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save
         return created;
     }
 
-    // Erst die Welt, dann der Spielstand: die Welt ist der Grundzustand, und ein
-    // Spielstand ersetzt sie ohnehin als Ganzes. Umgekehrt ginge es auch nicht --
-    // eine Weltdefinition laesst sich nur in ein Spiel ohne Figuren laden
-    // (RAD_LoadWorldFromFile), und ein Spielstand bringt seine mit.
-    if(world_path != NULL)
-    {
-        const RAD_GameSaveResult_t world_result = RAD_LoadWorldFromFile(created.game, world_path);
-        if(world_result != RAD_GAME_SAVE_OK)
-        {
-            printf("Welt '%s' nicht geladen: %s\n", world_path, RAD_GameSaveResultText(world_result));
-            RAD_ControlDestroyGame(&created);
-            return created;
-        }
-
-        printf("Welt '%s' geladen, %d x %d Felder.\n",
-            world_path, RAD_GameWorldWidth(created.game), RAD_GameWorldHeight(created.game));
-    }
-
-    if(save_path == NULL)
+    if(world_path == NULL)
     {
         return created;
     }
@@ -75,10 +56,10 @@ RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save
     // Ein Ergebnis fuer Datei und Inhalt: ob die Datei fehlte oder ihr Inhalt
     // abgelehnt wurde, steht in demselben Wert, und fuer den Betrieb ist es
     // dieselbe Nachricht -- geladen wurde nichts, und warum, sagt der Text.
-    const RAD_GameSaveResult_t result = RAD_LoadGameFromFile(created.game, save_path);
-    if(result != RAD_GAME_SAVE_OK)
+    const RAD_GameLoadResult_t result = RAD_LoadWorldFromFile(created.game, world_path);
+    if(result != RAD_GAME_LOAD_OK)
     {
-        printf("Spielstand '%s' nicht geladen: %s\n", save_path, RAD_GameSaveResultText(result));
+        printf("Welt '%s' nicht geladen: %s\n", world_path, RAD_GameLoadResultText(result));
 
         // Baut beides ab und setzt beide Zeiger auf NULL -- damit ist "created"
         // genau das, was der Aufrufer als "kein Spiel" liest, und muss nicht eigens
@@ -87,7 +68,8 @@ RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, const char *save
         return created;
     }
 
-    printf("Spielstand '%s' geladen.\n", save_path);
+    printf("Welt '%s' geladen, %d x %d Felder.\n",
+        world_path, RAD_GameWorldWidth(created.game), RAD_GameWorldHeight(created.game));
 
     return created;
 }

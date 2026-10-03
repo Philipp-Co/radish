@@ -6,6 +6,7 @@
 #include <radish/game/user.h>
 #include <radish/game/control/command/command.h>
 #include <radish/game/model/tile/tile.h>
+#include <radish/server/control/game_start.h>
 
 ///
 /// control/ -- was mit einem Kommando geschieht. Es entscheidet, ob das Kommando
@@ -53,9 +54,9 @@ typedef struct RAD_Control* RAD_Control_t;
 typedef enum
 {
     ///
-    /// Ausgefuehrt -- und bei RAD_ControlAddUser/RAD_ControlBindUserEntity:
+    /// Ausgefuehrt -- und bei RAD_ControlAddUser/RAD_ControlBindUserUnit:
     /// erledigt. Als Antwort auf ein Kommando kommt der Wert bisher nur von
-    /// move_entity; die anderen Arten liefern RAD_CONTROL_ERROR_NOT_EXECUTED.
+    /// move_unit; die anderen Arten liefern RAD_CONTROL_ERROR_NOT_EXECUTED.
     ///
     RAD_CONTROL_OK = 0,
 
@@ -74,8 +75,8 @@ typedef enum
     ///
     RAD_CONTROL_ERROR_NOT_EXECUTED,
 
-    /// Aufruf ohne Figur: RAD_ENTITY_NONE ist keine.
-    RAD_CONTROL_ERROR_NO_ENTITY,
+    /// Aufruf ohne Figur: RAD_UNIT_NONE ist keine.
+    RAD_CONTROL_ERROR_NO_UNIT,
 
     ///
     /// Ab hier: das Kommando durfte ausgefuehrt werden, aber das Spiel liess es
@@ -83,7 +84,7 @@ typedef enum
     ///
 
     /// Die Figur steht nicht in der Welt.
-    RAD_CONTROL_ERROR_NO_SUCH_ENTITY,
+    RAD_CONTROL_ERROR_NO_SUCH_UNIT,
 
     /// Das Zielfeld liegt ausserhalb der Welt.
     RAD_CONTROL_ERROR_OUT_OF_BOUNDS,
@@ -105,7 +106,19 @@ typedef enum
     /// Der Absender ist dran, aber das Kommando kostet mehr Aktionspunkte, als er
     /// noch hat.
     ///
-    RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS
+    RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS,
+
+    ///
+    /// Aus dem Aufstellen (RAD_COMMAND_TYPE_DEPLOY_UNIT), hinten angehaengt aus
+    /// demselben Grund wie die beiden davor. Die uebrigen Gruende dafuer haben
+    /// schon einen Wert: NOT_OWNED, NO_SUCH_UNIT, OUT_OF_BOUNDS, TARGET_OCCUPIED.
+    ///
+
+    /// Die Einheit steht nicht in der Reserve -- schon auf dem Feld, oder zerstoert.
+    RAD_CONTROL_ERROR_NOT_IN_RESERVE,
+
+    /// Das Zielfeld hat kein Gelaende.
+    RAD_CONTROL_ERROR_NO_GROUND
 } RAD_ControlResult_t;
 
 ///
@@ -134,12 +147,34 @@ void RAD_DestroyControl(RAD_Control_t *control);
 RAD_ControlResult_t RAD_ControlAddUser(RAD_Control_t control, RAD_UserId_t user);
 
 ///
+/// Richtet das Spiel nach dem Spielstart ein (game_start.h): beide Spieler spielen
+/// danach mit, der Host zuerst und damit auch zuerst am Zug, und ihre Armeen
+/// stehen in der Reserve -- dem Spiel bekannt, auf dem Feld noch nicht.
+///
+/// Die Id eines Spielers ist seine gepackte Kennung
+/// (RAD_ControlUserIdFromIdentifier); unter ihr gehoeren ihm seine Einheiten.
+///
+/// **Genau einmal.** Hat das Spiel schon Einheiten oder laeuft es schon, aendert
+/// sich nichts, und das Ergebnis ist RAD_GAME_ERROR_STARTED: ein Spiel bekommt
+/// seine Armeen einmal, und ein neuer Start ist eine neue Instanz. Ein zweites
+/// Signal fuer dieselbe Datei richtet damit keinen Schaden an.
+///
+/// Sonst das erste Ergebnis, das nicht RAD_GAME_OK ist -- RAD_GAME_ERROR_NO_USER
+/// fuer eine Kennung, die keine ist, RAD_GAME_ERROR_FULL, wenn ein Spieler nicht
+/// mehr hineinpasst. Beide werden geprueft, bevor eine Einheit eingetragen wird.
+/// Beim Eintragen selbst kann es danach nicht mehr scheitern: der Leser hat jede
+/// Einheit gegen die Grenzen des Spiels geprueft, und zwei Armeen zu je
+/// RAD_CONTROL_GAME_START_MAX_UNITS passen in einen leeren Pool.
+///
+RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_ControlGameStart_t *start);
+
+///
 /// Nimmt einen Benutzer wieder heraus. Ein unbekannter ist kein Fehler.
 ///
 /// Seine Figuren bleiben in der Welt stehen und bleiben seine: der Besitz haengt
 /// an der Uuid und nicht an der Verbindung, kommt er wieder, fuehrt er sie
 /// weiter. Wer sie freigeben oder aus der Welt nehmen will, liest sie vorher aus
-/// (RAD_ControlNumberOfUserEntities und RAD_ControlUserEntityAt).
+/// (RAD_ControlNumberOfUserUnits und RAD_ControlUserUnitAt).
 ///
 /// War er dran, geht der Zug an den naechsten Mitspieler -- das entscheidet das
 /// Spiel (RAD_GameRemovePlayer), nicht dieses Modul.
@@ -157,12 +192,12 @@ void RAD_ControlRemoveUser(RAD_Control_t control, RAD_UserId_t user);
 /// nichts. RAD_CONTROL_ERROR_NOT_PLAYING, wenn der Benutzer nicht mitspielt;
 /// RAD_CONTROL_ERROR_NOT_OWNED, wenn die Figur schon einem anderen gehoert --
 /// eine Figur hat hoechstens einen Besitzer, sonst waere nicht entscheidbar, wer
-/// sie bewegen darf. RAD_CONTROL_ERROR_NO_ENTITY fuer RAD_ENTITY_NONE und fuer
+/// sie bewegen darf. RAD_CONTROL_ERROR_NO_UNIT fuer RAD_UNIT_NONE und fuer
 /// jede Id, hinter der keine Figur in der Welt steht: der Besitz haengt seit
 /// neuestem an der Figur selbst, eine Zuordnung ins Leere gibt es damit nicht
 /// mehr.
 ///
-RAD_ControlResult_t RAD_ControlBindUserEntity(RAD_Control_t control, RAD_UserId_t user, RAD_EntityId_t entity);
+RAD_ControlResult_t RAD_ControlBindUserUnit(RAD_Control_t control, RAD_UserId_t user, RAD_UnitId_t unit);
 
 ///
 /// Loest die Zuordnung einer Figur; danach gehoert sie niemandem.
@@ -171,27 +206,36 @@ RAD_ControlResult_t RAD_ControlBindUserEntity(RAD_Control_t control, RAD_UserId_
 /// schon. War sie herrenlos, aendert sich nichts -- wie beim Herausnehmen eines
 /// Benutzers ist der Aufruf idempotent und meldet deshalb auch nichts zurueck.
 ///
-void RAD_ControlUnbindEntity(RAD_Control_t control, RAD_EntityId_t entity);
+void RAD_ControlUnbindUnit(RAD_Control_t control, RAD_UnitId_t unit);
 
 ///
 /// Die Figuren eines Benutzers: erst zaehlen, dann einzeln holen. Ohne die beiden
 /// waere die Zuordnung von aussen nicht nachzulesen -- etwa um beim Verlassen die
 /// Figuren aus der Welt zu nehmen.
 ///
-/// RAD_ControlUserEntityAt liefert RAD_ENTITY_NONE fuer einen Index ausserhalb
-/// [0, RAD_ControlNumberOfUserEntities). Gezaehlt wird in der Reihenfolge der
+/// RAD_ControlUserUnitAt liefert RAD_UNIT_NONE fuer einen Index ausserhalb
+/// [0, RAD_ControlNumberOfUserUnits). Gezaehlt wird in der Reihenfolge der
 /// Ids, ein Index gilt also, solange dem Benutzer keine Figur dazukommt oder
 /// wegfaellt.
 ///
-int32_t RAD_ControlNumberOfUserEntities(RAD_Control_t control, RAD_UserId_t user);
-RAD_EntityId_t RAD_ControlUserEntityAt(RAD_Control_t control, RAD_UserId_t user, int32_t index);
+int32_t RAD_ControlNumberOfUserUnits(RAD_Control_t control, RAD_UserId_t user);
+RAD_UnitId_t RAD_ControlUserUnitAt(RAD_Control_t control, RAD_UserId_t user, int32_t index);
 
 ///
 /// Die Gegenrichtung: wem gehoert diese Figur? RAD_USER_NONE, wenn niemandem --
 /// und das ist kein Fehler, sondern der Normalfall fuer alles, was nicht gesetzt
 /// wurde.
 ///
-RAD_UserId_t RAD_ControlEntityOwner(RAD_Control_t control, RAD_EntityId_t entity);
+RAD_UserId_t RAD_ControlUnitOwner(RAD_Control_t control, RAD_UnitId_t unit);
+
+///
+/// Alle Einheiten des Spiels zum Nachlesen, in jedem Zustand -- dieselbe Zaehlung
+/// wie RAD_GameNumberOfUnits und RAD_GameUnitAt (unit.h), aufsteigend nach Id.
+/// Gebraucht fuer die Antwort auf eine Reserve-Anfrage (main.c), die daraus die
+/// Einheiten in der Reserve nimmt.
+///
+int32_t RAD_ControlNumberOfUnits(RAD_Control_t control);
+bool RAD_ControlUnitAt(RAD_Control_t control, int32_t index, RAD_Unit_t *output);
 
 /// Wie viele mitspielen -- fuers Log.
 int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control);
@@ -261,7 +305,7 @@ bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *
 /// Grund heraus -- weder "zu teuer" noch "Zielfeld besetzt".
 /// RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS und
 /// RAD_CONTROL_ERROR_NOT_EXECUTED stehen deshalb ohne Absender in der Aufzaehlung.
-/// Der Weg, sie zurueckzuholen, sind die Ereignisse: RAD_OnEntityMoved_t traegt ein
+/// Der Weg, sie zurueckzuholen, sind die Ereignisse: RAD_OnUnitMoved_t traegt ein
 /// "result" und den tatsaechlich gelaufenen Pfad.
 ///
 /// Wie ein Client mitbekommt, dass er dran ist, ist eine Frage des Protokolls und

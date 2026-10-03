@@ -7,3 +7,21 @@ message NetDiscoverRequest
     uint32 w = 3;
     uint32 h = 4;
 }
+
+// Fragt nach den Reserven aller Spieler: den Einheiten, die mit den Armeen ins
+// Spiel kamen und noch auf keinem Feld stehen. Der Server antwortet mit einem
+// NetReserveUnitEvent je Einheit (game.proto), in der Reihenfolge ihrer Ids --
+// und mit nichts, wenn keine in der Reserve steht. Ein Ende der Liste wird nicht
+// gemeldet: jede Nachricht ist fuer sich vollstaendig.
+//
+// "reserved" traegt keine Bedeutung und wird nie gelesen; ein Client laesst es
+// leer, und die Anfrage bleibt auf der Leitung zwei Bytes (1A 00). Es steht nur
+// da, damit der Typ ueberhaupt ein Feld hat: protobuf-c rechnet beim Auspacken
+// mit dem Feld-Array des Typs, und das ist bei einem Typ ohne Felder NULL --
+// NULL + 0 ist undefiniertes Verhalten (protobuf-c.c, protobuf_c_message_unpack;
+// UBSan meldet es). Eine Laengenpruefung davor hilft nicht: ausgepackt wird die
+// eingebettete Nachricht beim Auspacken der aeusseren, gleich wie lang diese ist.
+message NetDiscoverReserveRequest
+{
+    uint32 reserved = 1;
+}

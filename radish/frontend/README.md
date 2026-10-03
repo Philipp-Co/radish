@@ -47,7 +47,9 @@ oeffentlichen PKCE-Client so vorgesehen und wird von Keycloak selbst per
 `webOrigins` erlaubt (siehe `docker/keycloak/realm-radish.json`, Client
 `radish-web` -- `http://localhost:4200` ist dort mit eingetragen).
 
-Login: `test-user` / `test-user` (Rolle "Player") oder `radish-admin` /
+Login: `test-user` / `test-user` bzw. `test-user-2` / `test-user-2` (beide
+Rolle "Player" -- zwei Spieler, um Lobby und Spielstart durchzuspielen) oder
+`radish-admin` /
 `radish-admin` (Rolle "Radish-Admin", schaltet zusaetzlich den
 Admin-Tab frei -- siehe realm-radish.json).
 
@@ -74,17 +76,49 @@ Ergebnis mit hinein -- siehe dort und `radish/backend/web/views.py`).
 - `src/app/pages/callback` -- Rueckweg von Keycloak, tauscht den Code gegen
   Tokens.
 - `src/app/pages/games` -- Rahmen mit Menue (`games-shell.component.ts`) und
-  fuenf Unterseiten als eigene Kind-Routen (`/games/current`, `/games/list`,
-  `/games/create`, `/games/join`, `/games/admin`):
+  sieben Unterseiten als eigene Kind-Routen (`/games/current`, `/games/lobby`,
+  `/games/list`, `/games/create`, `/games/join`, `/games/armies`,
+  `/games/admin`):
   - `current/` -- eigenes laufendes Spiel, falls vorhanden (`api/client/game/current/`);
     bettet dafuer `shared/game-canvas/` direkt ein, ohne auf `/game/:name`
-    umzuleiten.
-  - `list/` -- laufende Spiele, pollt alle 5s.
-  - `create/` -- Spiel erstellen.
-  - `join/` -- Spiel beitreten (Name vorbelegt, wenn man aus `list/` kommt).
+    umzuleiten. Steht das Spiel noch nicht auf `running`, leitet die Seite
+    auf `lobby/` um; pollt alle 5s, ob der Gegner das Spiel beendet hat.
+    Verlassen beendet das Spiel fuer beide Spieler.
+  - `lobby/` -- Wartebereich nach Erstellen/Beitreten, pollt
+    `api/client/game/current/` alle 2s. Der Host startet das Spiel per
+    Knopf (`api/client/game/start/`), sobald ein Gegner da ist. Der Aufruf
+    ist synchron: er kehrt erst zurueck, wenn die Spielinstanz das Spiel
+    aufgesetzt hat, und liefert es dann als `running` -- dann geht es weiter
+    auf `current/`. Der zweite Spieler erfaehrt den Start ueber das Polling.
+  - `list/` -- offene Spiele (in der Lobby) samt Punktelimit, pollt alle 5s.
+  - `create/` -- Spiel erstellen: Name, Passwort, Punktelimit und die eigene
+    Armee, mit der man antritt (`army-picker.component.ts`; Armeen ohne
+    Einheiten oder ueber dem Limit sind nicht waehlbar).
+  - `join/` -- Spiel beitreten (Name vorbelegt, wenn man aus `list/` kommt),
+    ebenfalls mit Armeeauswahl gegen das Punktelimit des Spiels.
+  - `armies/` -- eigene Armeen (`api/client/armies/`): Liste mit Loeschen
+    (`list/`), Anlegen und Bearbeiten unter `/games/armies/new` bzw.
+    `/games/armies/:id` (`edit/`). Der Editor hat zwei Stufen auf einer
+    Seite: eine Uebersicht mit einer Zeile je Einheit (Zusammensetzung,
+    schwere Waffe, Kosten, Regelverstoesse) und die Detailansicht einer
+    Einheit (`?unit=<Nr.>`, `unit-detail.component.ts`) mit einer Zeile je
+    Entitaet. Er waehlt nur aus dem Katalog (`api/client/catalog/`) aus
+    und rechnet die Kosten (Profil + Waffen + Ausruestung, auch die
+    schweren Waffen der Entitaeten) live mit (`army-draft.ts`). Waffen haben
+    eine Klasse (Standard, schwer, super-schwer); alle traegt eine einzelne
+    Entitaet, in so vielen Slots je Klasse, wie ihr Entitaetsprofil
+    vorsieht.
   - `admin/` -- nur sichtbar/erreichbar mit der Keycloak-Realm-Rolle
-    "Radish-Admin": listet die angemeldeten Game-Server auf
-    (`api/admin/servers/`, pollt alle 5s wie `list/`).
+    "Radish-Admin", mit Unternavigation (`admin-shell.component.ts`):
+    - `/games/admin/servers` -- listet die angemeldeten Game-Server auf
+      (`api/admin/servers/`, pollt alle 5s wie `list/`).
+    - `/games/admin/catalog` -- pflegt den Armee-Katalog
+      (`api/admin/catalog/`, Modelle in `catalog/catalog-config.ts`): je
+      Modell (Spezies, Einheitentypen, Entitaetsprofile, Waffen,
+      Ausruestung) eine Seite zum Anlegen (`.../new`) und eine zum Aendern
+      (`.../edit`) mit Suche im Namen -- bewusst keine Liste aller
+      Eintraege. Alle Werte sind jederzeit aenderbar, auch wenn Spieler den
+      Eintrag verwenden; nur Loeschen ist dann gesperrt.
 - `src/app/shared/game-canvas` -- `GameCanvasComponent`: Canvas und
   WASM-Client (`client.js`/`client.wasm`), aktuell ohne Verbindung zu einem
   Spielserver (die bisherige WebRTC/Relay-Verbindung ist entfernt, siehe
@@ -94,5 +128,5 @@ Ergebnis mit hinein -- siehe dort und `radish/backend/web/views.py`).
 - `src/app/pages/game` -- eigenstaendige Seite fuer `/game/:name`: nur noch
   Titel/Zurueck-Link als Rahmen um `GameCanvasComponent`. Nach dem
   Erstellen/Beitreten (`create/`/`join/`) geht es nicht mehr hierher,
-  sondern zu `/games/current` -- die Route bleibt aber fuer einen direkten
+  sondern zu `/games/lobby` -- die Route bleibt aber fuer einen direkten
   Aufruf bestehen.

@@ -21,9 +21,12 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 # (Game/GameServer/Player), die nur *verwaltet*, wer mit wem in welchem
 # Spiel steckt.
 #
-# Noch eine leere Huelle: kein Modell, keine View, keine eigene Logik unter
-# instances/ -- die Instanzverwaltung selbst kommt in einem spaeteren Schritt.
+# Schnittstelle Backend -> Instanzen: instances/views.py nimmt Aufrufe des
+# Backends entgegen (Spiel starten/abbrechen), bislang aber nur als leere
+# Huellen ohne Logik und ohne Auth -- die Instanzverwaltung selbst kommt in
+# einem spaeteren Schritt.
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -39,7 +42,11 @@ SECRET_KEY = 'django-insecure--thi5fbtf5!a$^6%j_cm6adi2_rruv@$y=2xj%1%@xpkm&ny3i
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# "game-server" ist der Compose-Servicename, unter dem das Backend diesen
+# Container erreicht (siehe docker-compose.yaml). Ohne ihn lehnt Django jeden
+# Aufruf des Backends mit 400 ab -- die leere Liste erlaubt auch mit DEBUG nur
+# localhost.
+ALLOWED_HOSTS = ["game-server", "localhost", "127.0.0.1"]
 
 
 # Application definition
@@ -51,6 +58,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'instances',
 ]
 
@@ -135,3 +143,16 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Wo die Instanzen ihre Dateien austauschen: je Instanz ein Verzeichnis
+# <RADISH_GAME_DATA_DIR>/<instanz>/ mit der Spielstart-Datei (schreibt
+# instances/views.py) und der PID-Datei von radish_server (schreibt der
+# C-Prozess selbst). Angelegt wird es von docker/game-server/
+# game-instance-entrypoint.sh.
+RADISH_GAME_DATA_DIR = os.environ.get("RADISH_GAME_DATA_DIR", "/run/radish")
+
+# Der Admin-Client von zucchini, ueber den instances/views.py die Codes der
+# Spieler in die Whitelist eintraegt und wieder austraegt. Er spricht die eine
+# zucchini-Instanz dieses Containers an (docker/game-server/Dockerfile).
+ZUCCHINI_ADMIN_CLIENT = os.environ.get("ZUCCHINI_ADMIN_CLIENT", "/usr/local/bin/zucchini_admin_client")

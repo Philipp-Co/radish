@@ -66,3 +66,4 @@ class HasAdminRole(BasePermission):
 
     def has_permission(self, request, view):
         return "Radish-Admin" in _realm_roles(request)
+

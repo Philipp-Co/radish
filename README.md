@@ -23,16 +23,28 @@ Rechts vom Browser/WASM-Client haengt der Server dieses Projekts. Aus Sicht
 von Zucchini ist er ein lokaler Client: zwei Ringpuffer im Shared Memory
 plus eine FIFO zum Aufwecken, gekapselt in der Zucchini-Api. Es sind also
 zwei Prozesse — `zucchini_server` nimmt die UDP-Pakete an, `server` hält
-den Spielzustand. Das 8-Byte-Codefeld, das der Client jedem Paket
-voranstellt, wertet Zucchini selbst aus (Whitelist) und schneidet es ab;
-beim Server kommt nur die Nutzlast an.
+den Spielzustand. Das 8-Byte-Codefeld vor jedem Paket wertet Zucchini selbst
+aus (Whitelist) und schneidet es ab. Gesetzt wird es nicht vom Client, sondern
+vom WebSocket-Consumer im Backend, zusammen mit der Spieler-Id dahinter
+([access.py](radish/backend/api/access.py)):
+
+```
+[ Zucchini-Code 8 Byte ][ Spieler-Id 8 Byte ][ NetUserRequest vom Client ]
+```
+
+Der Code ist geheim — das Backend vergibt ihn je Spieler beim Spielstart, die
+Instanz trägt ihn in die Whitelist ein, kein Client sieht ihn. Die Spieler-Id
+ist öffentlich: die Kennung des Spielers, in eine `uint64_t` gepackt. Der
+Spielserver liest den Absender aus ihr (`RAD_ParseSenderFromMessage`), und der
+Client bekommt seine eigene beim Verbinden, um Eigenes von Fremdem zu
+unterscheiden.
 
 ## Verzeichnisse
 
 | Pfad | Inhalt |
 |---|---|
 | `radish/` | Das Spiel: CMake-Dachprojekt über drei Unterprojekte |
-| `radish/game/` | Bibliothek `radish_game` — Spiellogik: Spiel, Welt, Tiles, Entitäten, dazu Kommandos und das Speichern als JSON |
+| `radish/game/` | Bibliothek `radish_game` — Spiellogik: Spiel, Welt, Tiles, Einheiten, dazu Kommandos und das Laden der Weltdefinition |
 | `radish/client/` | Das Wasm-Programm: `main.c` und die isometrische Darstellung mit SDL2 |
 | `radish/game-server-core/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
@@ -63,13 +75,11 @@ steht die Abhängigkeitsrichtung nicht mehr nur in dieser Datei, sondern im Buil
 `radish_game` kennt das Rendering nicht und kann es auch nicht versehentlich
 benutzen.
 
-Die Serialisierung war einmal eine zweite Bibliothek daneben und liegt heute
-*in* `radish_game` (`game/src/serialization/`). Der Grund ist die Kapselung des
-Modells: die Serialisierer bilden jedes Feld von Welt und Spiel ab, brauchen also
-deren Strukturen — und die stehen hinter `game/src/include/`. Eine Bibliothek
-daneben hätte diesen Pfad von außen gebraucht, und damit wäre die Grenze für alle
-offen gewesen. Ein Serialisierer ist aber kein Aufrufer von außen, sondern die
-Gegenseite zum Modell: er schreibt auf, was das Modul führt.
+Das Einlesen der Weltdefinition liegt *in* `radish_game`
+(`game/src/serialization/`). Der Grund ist die Kapselung des Modells: der Leser
+schreibt in die Welt, braucht also ihre Struktur — und die steht hinter
+`game/src/include/`. Eine Bibliothek daneben hätte diesen Pfad von außen
+gebraucht, und damit wäre die Grenze für alle offen gewesen.
 
 Client und Server schließen sich im Build aus, weil ihre Umgebungen es tun: der
 Client hängt an Emscripten, der Server an POSIX (Shared Memory, `mkfifo`,
@@ -78,16 +88,21 @@ siehe [Bauen](#bauen).
 
 **`game/`** ist die Spiellogik und hat **keine** Abhängigkeiten — kein SDL, kein
 Emscripten, keinen Parser. Ein Spiel besteht aus einer Welt, eine Welt aus einem
-2D-Raster von Tiles und einem Pool von Entitäten. Es gilt: *pro Tile steht zu
-jedem Zeitpunkt höchstens eine Entität.* Tile und Entität kennen beide die
-Position, geschrieben wird sie aber ausschließlich von `RAD_WorldSpawnEntity`,
-`RAD_WorldSpawnEntityWithId`, `RAD_WorldMoveEntity` und `RAD_WorldRemoveEntity` —
+2D-Raster von Tiles und einem Pool von Einheiten. Es gilt: *pro Tile steht zu
+jedem Zeitpunkt höchstens eine Einheit.* Tile und Einheit kennen beide die
+Position, geschrieben wird sie aber ausschließlich von `RAD_WorldSpawnUnit`,
+`RAD_WorldDeployUnit`, `RAD_WorldMoveUnit` und `RAD_WorldRemoveUnit` —
 so kann die Doppelbuchführung nicht auseinanderlaufen.
 `RAD_WorldIsConsistent` prüft sie vollständig nach.
 
-Entitäten werden über `RAD_EntityId_t` referenziert, den Slot-Index im Pool.
-Anders als ein Zeiger kann er nicht baumeln und übersteht das Speichern
-unverändert.
+Einheiten werden über `RAD_UnitId_t` referenziert, den Slot-Index im Pool.
+Anders als ein Zeiger kann er nicht baumeln, und er wird nie neu vergeben. Eine
+Einheit durchläuft drei Zustände (`RAD_UnitState_t`): in der **Reserve** ist sie
+dem Spiel bekannt, steht aber auf keinem Feld (`RAD_WorldAddReserveUnit`), auf dem
+**Feld** steht sie nach `RAD_WorldDeployUnit`, und **zerstört** behält sie ihren
+Slot. Die Werte aus der Armee — Einheitentyp, Bewegung, Mitglieder mit Profil und
+Waffen — trägt sie in festen Feldern mit
+([unit.h](radish/game/include/radish/game/model/unit/unit.h)).
 
 In `game/src/control/command/` liegt daneben das Kommando: ein Anlass in
 Datenform, die Absicht den Zustand zu ändern, ohne ihn schon zu ändern
@@ -95,9 +110,7 @@ Datenform, die Absicht den Zustand zu ändern, ohne ihn schon zu ändern
 seine Übersetzung auf die Strecke — das Format steht geschlossen in
 [codec.h](radish/game/include/radish/game/control/command/codec.h), je eine Datei
 beschreibt die Nutzlast einer Kommandoart, und `byte_writer`/`byte_reader` nehmen
-ihnen die Byte-Reihenfolge ab. Dieselbe Trennung wie zwischen `json_writer` und
-den Serializern in `game/src/serialization/`: eine Datei beschreibt Felder, nicht
-Bytes.
+ihnen die Byte-Reihenfolge ab: eine Datei beschreibt Felder, nicht Bytes.
 
 Der Kopf jedes Kommandos trägt neben Art und Sequenznummer den **Absender**:
 `RAD_UserId_t` aus [user.h](radish/game/include/radish/game/user.h), die Uuid des
@@ -106,7 +119,7 @@ weil der Server ihn sonst nicht erfahren könnte — das Codefeld, mit dem Zucch
 den Rückweg kennt, ist abgeschnitten, bevor die Nutzlast ankommt. Die
 Sequenznummer zählt damit je Benutzer, nicht über alle zusammen. Der Typ liegt im
 Spielmodul, weil der Codec ihn schreibt und liest; wer mitspielt, weiß trotzdem
-nur der Server (siehe unten) — eine Welt kennt Entitäten, keine Konten.
+nur der Server (siehe unten) — eine Welt kennt Einheiten, keine Konten.
 
 Der Rückweg liegt daneben in
 [response.h](radish/game/include/radish/game/control/command/response.h) — die
@@ -123,7 +136,7 @@ die Serialisierung brauchte.
 **`client/`** ist das Programm: `main.c` und darunter `src/rendering/`, das mit
 SDL2 auf ein Canvas zeichnet. Die Typen tragen dort das Präfix `RAD_Iso*`
 (`RAD_IsoMap_t`, `RAD_IsoObject_t`) und sind bewusst von den Spiel-Typen
-getrennt — eine `RAD_Entity_t` aus `game/` ist etwas anderes als das, was am
+getrennt — eine `RAD_Unit_t` aus `game/` ist etwas anderes als das, was am
 Bildschirm erscheint. Das Rendering bleibt Teil des Clients und keine eigene
 Bibliothek: es hängt wie er an SDL und hat genau einen Nutzer.
 
@@ -165,7 +178,7 @@ Ausführung ihrer Kommandoart — bisher nur
 `RAD_CONTROL_ERROR_NOT_EXECUTED`. Diese Ausführenden sind wie der Roster privat:
 ihr Header liegt neben der Quelle, denn sie prüfen nichts mehr — wäre einer von
 außen erreichbar, ließe sich ein Zug an der Berechtigung vorbei ausführen.
-Gezogen wird über `RAD_WorldMoveEntity`, die einzige Stelle, die Tile und Entität
+Gezogen wird über `RAD_WorldMoveUnit`, die einzige Stelle, die Tile und Einheit
 synchron hält; ein abgelehnter Zug lässt die Welt garantiert unverändert, und
 `value` sagt warum (`TARGET_OCCUPIED`, `OUT_OF_BOUNDS`, `NO_SUCH_ENTITY`).
 
@@ -174,26 +187,30 @@ Daneben liegt in `control/` der Loader
 das Spiel kommt, an dem der Server arbeitet. Dieselbe Frage von der anderen
 Seite: `execute` entscheidet, was mit dem Spielzustand geschieht, der Loader
 bringt ihn hervor. `main` holt das Spiel dort und füttert damit die Steuerung,
-kennt seine Herkunft also nicht. `RAD_ControlCreateGame(world_path, save_path)`
-legt ein leeres Spiel an, lädt, wenn ein Pfad dasteht, zuerst eine
-Weltdefinition (Gelände, Höhen, Größe — Format in
-[world.schema.json](radish/game/schema/world.schema.json)) und danach einen
-Spielstand; ohne Pfade bleibt es leer, mit einem Pfad, der nicht trägt, gibt es
-kein Spiel und der Server bricht ab. Der Event-Manager, an dem das Spiel hängt, gehört dabei dem
+kennt seine Herkunft also nicht. `RAD_ControlCreateGame(world_path)` legt ein
+leeres Spiel an und lädt, wenn ein Pfad dasteht, eine Weltdefinition (Gelände,
+Höhen, Größe — Format in
+[world.schema.json](radish/game/schema/world.schema.json)); ohne Pfad bleibt es
+leer, mit einem Pfad, der nicht trägt, gibt es kein Spiel und der Server bricht
+ab. Der Event-Manager, an dem das Spiel hängt, gehört dabei dem
 Loader — er liegt auf dem Heap und wird in `RAD_ControlDestroyGame` mit
 abgebaut, sodass der Aufrufer nichts länger am Leben halten muss als das Spiel
 selbst.
 
-Die Datei selbst nimmt ein Modul im Innern:
-[loader/save_file.c](radish/game-server-core/src/control/loader/save_file.c), privat wie
-alles unter `control/`. Es macht die Datei auf, misst sie gegen
-`RAD_SAVE_JSON_MAX`, liest sie am Stück und gibt sie an
-`RAD_DeserializeGameFromJson` — das Format steht in `serialization/` und nur
-dort. Sein Ergebnis-Enum beschreibt allein die Datei (nicht zu öffnen, nicht zu
-lesen, zu groß); was am *Inhalt* falsch war, reicht es als
-`RAD_SerializeResult_t` unverändert durch, statt es nachzubauen. Entschieden
-wird dort nichts: ob ein misslungener Ladevorgang den Server anhält, steht in
-`loader.c`.
+Die Armeen kommen später, mit dem Spielstart: das Backend legt die Datei ab
+([spielstart.schema.json](radish/game/schema/spielstart.schema.json)) und meldet
+sich per `SIGUSR1`. Der Server liest sie vollständig ein
+([game_start.h](radish/game-server-core/src/include/radish/server/control/game_start.h))
+und richtet das Spiel mit `RAD_ControlStartGame` ein — genau einmal: beide
+Spieler spielen mit, der Host zuerst, und ihre Einheiten stehen in der Reserve.
+Die Id eines Spielers im Spiel ist seine Kennung, Zeichen für Zeichen in die acht
+Bytes einer `uint64_t` gepackt (`RAD_ControlUserIdFromIdentifier`).
+
+Die Datei selbst liest das Spielmodul: `RAD_LoadWorldFromFile` aus
+[game.h](radish/game/include/radish/game/game.h) macht sie auf, misst sie, liest
+sie am Stück und prüft den Inhalt — das Format steht in
+`game/src/serialization/` und nur dort. Entschieden wird dort nichts: ob ein
+misslungener Ladevorgang den Server anhält, steht in `loader.c`.
 
 Der Zustand von `execute` ist ein unvollständiger Typ, `RAD_Control_t`, wie
 `ZUC_Api_t` — angelegt mit `RAD_CreateControl`, abgebaut mit
@@ -203,12 +220,12 @@ dessen Figuren findet — und umgekehrt zur Figur ihren Besitzer. Ein Benutzer
 führt beliebig viele Figuren, eine Figur gehört höchstens einem Benutzer; die
 zweite Hälfte ist die wichtige, denn nur durch sie ist „darf der das bewegen?"
 überhaupt entscheidbar. Die Liste je Mitspieler ist so lang wie der
-Entitätenpool der Welt und kann deshalb nie voll laufen — im Grenzfall gehören
+Einheitenpool der Welt und kann deshalb nie voll laufen — im Grenzfall gehören
 alle Figuren demselben. Ihr Header liegt
 als einziger im Server **nicht** unter `src/include/`, sondern neben seiner
 Quelle: der Roster ist ein Modul im Innern von `control/`. Wer einen Benutzer
 anlegen oder ihm eine Figur zuordnen will, geht durch `RAD_ControlAddUser` und
-`RAD_ControlBindUserEntity` — sonst ließe sich an der Prüfung vorbei ändern, wer
+`RAD_ControlBindUserUnit` — sonst ließe sich an der Prüfung vorbei ändern, wer
 mitspielt und wem was gehört. Nachgeschlagen wird linear; bei acht Plätzen wäre
 jede Beschleunigung teurer als die Suche. Und wie `interface/` ändert der Roster
 **nie** einen Spielzustand: eine Figur entsteht im Spielmodul, hier wird nur
@@ -216,26 +233,21 @@ vermerkt, wem sie gehört. Im Server steht er und nicht in `radish_game`, weil e
 Benutzer existiert, weil eine Verbindung existiert — und davon weiß eine Welt
 nichts.
 
-**`serialization/`** bildet den Spielzustand auf JSON ab. Zu jedem Typ gibt es
-einen eigenen Serializer (`tile_serializer`, `entity_serializer`,
-`world_serializer`, `game_serializer`), der genau seinen Typ auf ein
-JSON-Objekt abbildet und nichts darüber hinaus prüft; die Prüfung übergreifender
-Zusammenhänge macht der World-Serializer. `json_writer` und `json_reader`
-kapseln Formatierung und Token-Lauf, sodass die Serializer nur die Struktur
-beschreiben. Einstiegspunkte sind `RAD_SerializeGameToJson` und
-`RAD_DeserializeGameFromJson` in
-[serialization.h](radish/serialization/include/radish/serialization/serialization.h).
+**`game/src/serialization/`** liest die Weltdefinition aus JSON. `json_reader`
+kapselt den Token-Lauf über jsmn, `world_definition` baut daraus die Welt auf,
+und `world_file` liest die Datei ein. Nach außen geht davon nur
+`RAD_LoadWorldFromFile` in
+[game.h](radish/game/include/radish/game/game.h).
 
-Weil `game/` und `serialization/` kein SDL ziehen, lassen sich beide Bibliotheken
-ohne Emscripten auf dem Host bauen — siehe [Bauen](#bauen).
+Weil `game/` kein SDL zieht, lässt sich die Bibliothek ohne Emscripten auf dem
+Host bauen — siehe [Bauen](#bauen).
 
-Jede der beiden Bibliotheken legt ihre öffentlichen Header unter
+Die Bibliothek legt ihre öffentlichen Header unter
 `<projekt>/include/radish/<modul>/` ab und gibt dieses Verzeichnis `PUBLIC`
 weiter. Deshalb bindet man sie überall gleich ein, egal von wo:
 
 ```c
-#include <radish/game/model/world/world.h>
-#include <radish/serialization/serialization.h>
+#include <radish/game/game.h>
 ```
 
 Client und Server halten es genauso, nur liegt ihr `include/` innerhalb von
@@ -248,41 +260,32 @@ etwas einbindet:
 ```
 
 > Stand jetzt ruft [main.c](radish/client/src/main.c) noch ausschließlich das
-> Rendering auf. Das Game-Modul und die Serialisierung sind gebaut und getestet,
-> aber noch nicht angebunden.
+> Rendering auf. Das Game-Modul ist gebaut und getestet, aber noch nicht
+> angebunden.
 >
 > Der Server liest eingehende Nachrichten als Kommando, gibt sie an `control/` und
 > schickt die Antwort zurück — `handle_message` in
 > [main.c](radish/game-server-core/src/main.c). **Ausgeführt** wird davon bisher
-> `move_entity`; die übrigen vier Arten werden geprüft und mit
+> `move_unit`; die übrigen vier Arten werden geprüft und mit
 > `RAD_CONTROL_ERROR_NOT_EXECUTED` beantwortet, ihr Ausführender fehlt noch.
 >
 > Der Spielzustand dazu kommt aus dem Loader: die Welt aus der Weltdefinition,
 > auf die `RADISH_WORLD_PATH` zeigt — das Docker-Image bringt
 > [assets/worlds/](radish/assets/worlds/) unter `/usr/local/share/radish/worlds/`
-> mit und setzt die Variable auf `default.json` —, ohne sie 8×8 Grund; mit einem
-> zweiten Argument darüber ein Spielstand aus einer JSON-Datei
-> (`server zucchini stand.json`).
+> mit und setzt die Variable auf `default.json` —, ohne sie 8×8 Grund.
 > Zugeordnet wird eine Figur bisher von niemandem
-> (`RAD_ControlBindUserEntity` hat keinen Aufrufer): solange keine einen Besitzer
+> (`RAD_ControlBindUserUnit` hat keinen Aufrufer): solange keine einen Besitzer
 > hat, darf jeder Mitspieler jede ziehen.
->
-> **Laden schlägt derzeit immer fehl**, und zwar an einer Stelle im Spielmodul:
-> `RAD_InitWorld` setzt eine Figur auf (0,0) —
-> [world.c](radish/game/src/world.c) —, und `RAD_DeserializeWorld` ruft
-> `RAD_InitWorld`, bevor es die gespeicherten Entitäten setzt. Deren Id 0 ist
-> dann schon vergeben, und die Datei wird mit „ungültige oder doppelte
-> Entitäts-Id" abgelehnt. Ohne diese eine Zeile lädt derselbe Stand anstandslos.
 >
 > Fortgeschrieben wird schon die Teilnehmerliste: wer sendet, spielt mit. Ein
 > Beitritt ist im Protokoll nicht vorgesehen, und eine getrennte Verbindung meldet
 > Zucchini dem Server auch nicht — deshalb ruft `handle_message` für jedes
 > eingehende Kommando `RAD_ControlAddUser`, und `RAD_ControlRemoveUser` hat noch
-> keinen Aufrufer. `RAD_ControlBindUserEntity` auch nicht: eine Figur bekommt
-> ihren Besitzer, sobald `spawn_entity` wirklich ausgeführt wird. Die Uuid im Client ist
-> aus demselben Grund fest verdrahtet (`RAD_CLIENT_USER_ID` in
-> [main.c](radish/client/src/main.c)): eine Anmeldung, die eine ausstellen könnte,
-> gibt es nicht.
+> keinen Aufrufer. `RAD_ControlBindUserUnit` auch nicht: eine Einheit bekommt
+> ihren Besitzer mit dem Spielstart (`RAD_ControlStartGame`) und kommt mit
+> `deploy_unit` aus der Reserve aufs Feld. Seine eigene Spieler-Id bekommt der
+> Client vom Backend beim Verbinden (`RAD_ClientSetPlayerId` in
+> [main.c](radish/client/src/main.c)).
 >
 > Auf eine Nachricht, die kein Kommando ist, geht nichts zurück: eine Antwort
 > trägt den Kopf ihres Kommandos, und den gibt es dann nicht. Was ein Absender
@@ -420,10 +423,12 @@ dafür ist kein vorheriges `npm install` auf dem Host nötig.
 `backend` ist der einzige Dienst mit zwei Prozessen, und das aus einem Grund:
 `zucchini_server` und der Spielserver reden über Shared Memory und eine FIFO,
 nicht über das Netz — getrennte Container gäbe das nicht her. Der
-[Einstiegspunkt](docker/backend/entrypoint.sh) startet Zucchini, setzt über den
-Admin-Client den Code des Clients (`0x1`) auf die Whitelist und startet dann den
-Spielserver. Ohne diesen Eintrag verwirft Zucchini jedes Paket, denn mit dem Code
-merkt es sich auch, wohin die Antwort geht.
+[Einstiegspunkt](docker/game-server/game-instance-entrypoint.sh) startet Zucchini
+mit leerer Whitelist und dann den Spielserver. Die Codes der Spieler trägt erst das
+Django der Instanz beim Spielstart über den Admin-Client ein und beim Abbruch
+wieder aus ([views.py](radish/game-server/instances/views.py)). Ohne Eintrag
+verwirft Zucchini jedes Paket, denn mit dem Code merkt es sich auch, wohin die
+Antwort geht.
 
 Gebaut wird [aus dem Quelltext](docker/backend/Dockerfile), mit der Wurzel des
 Repositorys als Kontext: das Image braucht `radish/`, `jsmn/` und `zucchini/`
@@ -437,21 +442,12 @@ Nur das Backend, ohne Browser:
 docker compose up --build backend
 ```
 
-Zum Prüfen braucht es ein UDP-Paket aus acht Byte Code (big endian, hier `1`) und
-einem Kommando dahinter — etwa `spawn_entity` mit Sequenznummer 7 von Benutzer
-`1`, ein `player` auf (3,4):
-
-```
-01  00 00 00 00 00 00 00 07  00 00 00 00 00 00 00 01  01  00 03  00 04  00
-│   └─ sequence 7 ────────┘  └─ user 1 ───────────┘   │   └ x ┘  └ y ┘  └ z
-└ Art 1 (spawn_entity)                                └ player
-```
-
-Zurück kommen 13 Byte mit derselben Art und Sequenznummer und `value` = 0:
-`01 00 00 00 00 00 00 00 07 00 00 00 00`. Das Format steht in
-[codec.h](radish/game/include/radish/game/control/command/codec.h) und
-[response.h](radish/game/include/radish/game/control/command/response.h). Alles,
-was kein Kommando ist, wird verworfen und nur geloggt.
+Zum Prüfen braucht es ein UDP-Paket aus acht Byte Code (big endian, einer aus der
+Whitelist), acht Byte Spieler-Id und einer `NetUserRequest` dahinter ([message.proto](radish/protobuf/message.proto)) — etwa
+ein `NetDeployCommand` ([command.proto](radish/protobuf/command.proto)), das eine
+Einheit aus der Reserve aufstellt. Zurück kommt eine `NetCommandResponse` mit dem
+Kommando, `success` und dem Grund als Text. Alles, was kein Kommando ist, wird
+verworfen und nur geloggt.
 
 ## Externe Abhängigkeiten
 

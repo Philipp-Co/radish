@@ -228,11 +228,13 @@ static int RAD_MapDepthComparator(const void *a, const void *b)
     }
 }
 
-void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_NetTile_t *tile)
+void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile)
 {
-    const int32_t x = (int32_t)tile->x;
-    const int32_t y = (int32_t)tile->y;
-    const int32_t layer = (int32_t)tile->z;
+    const int32_t x = tile->x;
+    const int32_t y = tile->y;
+
+    // Das Model kennt keine Hoehe (model/tile.h): alles liegt auf Ebene 0.
+    const int32_t layer = 0;
 
     if(!RAD_IsoMapInBounds(x, y) || (layer >= RAD_ISO_MAP_LAYERS))
     {
@@ -257,7 +259,7 @@ void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_NetTile_t *tile)
         );
     }
 
-    RAD_IsoMapSetEntity(map, x, y, tile->entity_id);
+    RAD_IsoMapSetEntity(map, x, y, (tile->unit != NULL) ? tile->unit->id : RAD_NET_ENTITY_NONE);
 }
 
 void RAD_IsoMapRemoveTile(RAD_IsoMap_t *map, uint32_t x, uint32_t y)

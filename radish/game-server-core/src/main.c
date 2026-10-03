@@ -3,6 +3,7 @@
 #include <radish/server/interface/message.h>
 #include <radish/server/control/execute.h>
 #include <radish/server/control/loader.h>
+#include <radish/server/control/game_start.h>
 #include <radish/server/control/events/tiles.h>
 
 #include <zucchini/api/api.h>
@@ -15,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 ///
 /// Der Server ist die Gegenseite des Clients: er haelt den Spielzustand und
@@ -32,25 +34,42 @@
 /// "zucchini" ist der Default von zucchini_server (ZUC_SERVER_NAME in dessen
 /// main.c); ein anderer laesst sich als erstes Argument uebergeben.
 ///
-///     server [zucchini-name] [spielstand.json]
-///
-/// Das zweite Argument ist ein Spielstand im Speicherformat (siehe
-/// radish/game/serialization). Ohne ihn faengt der Server mit einem leeren Spiel
-/// an; mit einem, der sich nicht lesen laesst, faengt er gar nicht erst an.
+///     server [zucchini-name]
 ///
 /// Die Welt, mit der das Spiel beginnt, kommt aus der Umgebung:
 ///
 ///     RADISH_WORLD_PATH=assets/worlds/default.json server
 ///
-/// Eine Weltdefinition (game/schema/world.schema.json), geladen vor einem
-/// Spielstand. Ohne sie ist die Welt ein Raster aus Grund in der groessten Form;
-/// mit einer, die sich nicht lesen laesst, faengt der Server nicht an -- wie beim
-/// Spielstand.
+/// Eine Weltdefinition (game/schema/world.schema.json). Ohne sie ist die Welt ein
+/// Raster aus Grund in der groessten Form; mit einer, die sich nicht lesen laesst,
+/// faengt der Server gar nicht erst an.
+///
+/// Wer spielt, legt das Backend beim Start eines Spiels als Datei ab, und der
+/// Server erfaehrt davon per Signal:
+///
+///     RADISH_GAME_START_PATH=/run/radish/game-instance-1/spielstart.json
+///     RADISH_GAME_PID_PATH=/run/radish/game-instance-1/radish_server.pid
+///
+/// Das Django des Game-Servers (radish/game-server/instances/views.py) schreibt
+/// die Spielstart-Datei (game/schema/spielstart.schema.json) bzw. loescht sie beim
+/// Abbruch und schickt danach SIGUSR1 an die PID aus der PID-Datei. Die schreibt
+/// dieser Server selbst, und zwar erst, nachdem der Handler fuer SIGUSR1 steht:
+/// ohne ihn beendet das Signal den Prozess, und eine PID, die vorher schon in der
+/// Datei stuende, liesse genau das zu. Beim Beenden loescht er sie wieder.
+///
+/// Auf das Signal liest er die Datei neu (game_start_changed): ist sie da, wird
+/// sie geladen, fehlt sie, ist kein Spiel mehr angesetzt. Eine Rueckmeldung an
+/// Django gibt es nicht -- was ankam, steht nur im Log. Fehlen die beiden
+/// Variablen (meist auf dem Host), gibt es weder PID-Datei noch Spielstart.
 ///
 #define RAD_SERVER_DEFAULT_INTERFACE_NAME "zucchini"
 
 /// Die Umgebungsvariable mit dem Pfad der Weltdefinition (siehe main).
 #define RAD_SERVER_WORLD_PATH_VARIABLE "RADISH_WORLD_PATH"
+
+/// Die Umgebungsvariablen mit den Pfaden der Spielstart- und der PID-Datei (oben).
+#define RAD_SERVER_GAME_START_PATH_VARIABLE "RADISH_GAME_START_PATH"
+#define RAD_SERVER_PID_PATH_VARIABLE "RADISH_GAME_PID_PATH"
 
 ///
 /// Obergrenze eines Ringpuffer-Slots und damit einer Nachricht. Kommt aus
@@ -87,13 +106,116 @@
 ///
 static volatile sig_atomic_t terminate = 0;
 
+///
+/// Gesetzt von SIGUSR1: die Spielstart-Datei hat sich geaendert. Die Schleife setzt
+/// es zurueck, bevor sie liest -- ein Signal waehrend des Lesens fuehrt so zu einem
+/// weiteren Durchlauf und geht nicht verloren.
+///
+static volatile sig_atomic_t game_start_changed = 0;
 
-static void log_entity_path(const RAD_EntityPath_t *path);
+
+static void log_unit_path(const RAD_Path_t *path);
 
 static void handle_signal(int signum)
 {
     (void)signum;
     terminate = 1;
+}
+
+static void handle_game_start_signal(int signum)
+{
+    (void)signum;
+    game_start_changed = 1;
+}
+
+///
+/// Liefert den Wert der Umgebungsvariable, oder NULL, wenn sie fehlt oder leer ist
+/// -- leer zaehlt wie nicht gesetzt, wie bei RADISH_WORLD_PATH.
+///
+static const char* path_from_environment(const char *variable)
+{
+    const char *path = getenv(variable);
+    if((path != NULL) && (path[0] == '\0'))
+    {
+        return NULL;
+    }
+    return path;
+}
+
+///
+/// Schreibt die eigene PID nach "path", damit Django weiss, wohin SIGUSR1 geht.
+/// false, wenn das nicht klappt -- dann erreicht den Server kein Spielstart.
+///
+static bool write_pid_file(const char *path)
+{
+    FILE *file = fopen(path, "w");
+    if(file == NULL)
+    {
+        return false;
+    }
+    const bool written = (fprintf(file, "%ld\n", (long)getpid()) > 0);
+    const bool closed = (fclose(file) == 0);
+    return written && closed;
+}
+
+///
+/// Liest die Spielstart-Datei nach dem Signal und richtet das Spiel danach ein:
+/// beide Spieler spielen mit, ihre Armeen stehen in der Reserve
+/// (RAD_ControlStartGame). Was ankam und was daraus wurde, steht im Log.
+///
+/// Ein zweites Signal fuer einen Start, der schon eingerichtet ist, aendert
+/// nichts -- die Steuerung lehnt es ab (RAD_GAME_ERROR_STARTED), und das Log sagt
+/// es. Eine geloeschte Datei (Abbruch im Backend) nimmt nichts zurueck: aus einem
+/// angefangenen Spiel wird kein leeres, das ist eine neue Instanz.
+///
+static void load_game_start(RAD_Control_t control, const char *path)
+{
+    if(access(path, F_OK) != 0)
+    {
+        printf("Spielstart: keine Datei unter %s -- kein Spiel angesetzt.\n", path);
+        return;
+    }
+
+    // Auf dem Heap: zwei Armeen mit allen Werten sind zu gross fuer diesen
+    // Aufrufrahmen (game_start.h).
+    RAD_ControlGameStart_t *start = RAD_ControlCreateGameStart();
+    if(start == NULL)
+    {
+        printf("Spielstart: kein Speicher.\n");
+        return;
+    }
+
+    const RAD_ControlGameStartResult_t result = RAD_ControlLoadGameStart(path, start);
+    if(result != RAD_CONTROL_GAME_START_OK)
+    {
+        printf("Spielstart: %s nicht geladen -- %s.\n", path, RAD_ControlGameStartResultText(result));
+        RAD_ControlDestroyGameStart(&start);
+        return;
+    }
+
+    printf("Spielstart geladen:\n");
+    for(int32_t i=0;i < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++i)
+    {
+        const RAD_ControlGameStartPlayer_t *player = &start->players[i];
+        printf("  %s (%s, Id 0x%" PRIx64 ") mit \"%s\": %" PRId32 " Einheiten\n",
+               player->name,
+               player->identifier,
+               RAD_ControlUserIdFromIdentifier(player->identifier),
+               player->army_name,
+               player->number_of_units);
+    }
+
+    const RAD_GameResult_t started = RAD_ControlStartGame(control, start);
+    if(started == RAD_GAME_OK)
+    {
+        printf("Spielstart: beide Armeen in der Reserve.\n");
+    }
+    else
+    {
+        printf("Spielstart: nicht eingerichtet -- %s.\n", RAD_GameResultText(started));
+    }
+
+    RAD_ControlDestroyGameStart(&start);
 }
 
 ///
@@ -112,24 +234,23 @@ static void log_command(const RAD_Command_t *command)
 
     switch(command->header.type)
     {
-        case RAD_COMMAND_TYPE_SPAWN_ENTITY:
-            printf("spawn_entity  typ=%d auf (%d,%d) z=%d\n",
-                   (int)command->command.spawn_entity.entity_type,
-                   command->command.spawn_entity.x,
-                   command->command.spawn_entity.y,
-                   command->command.spawn_entity.z);
+        case RAD_COMMAND_TYPE_DEPLOY_UNIT:
+            printf("deploy_unit   id=%d auf (%d,%d)\n",
+                   command->command.deploy_unit.unit,
+                   command->command.deploy_unit.x,
+                   command->command.deploy_unit.y);
             break;
 
         // Der Weg und nicht sein Ziel: wo die Figur aufsetzt, steht erst am Ende --
         // was dazwischen liegt, entscheidet, ob der Zug ueberhaupt so geht.
-        case RAD_COMMAND_TYPE_MOVE_ENTITY:
+        case RAD_COMMAND_TYPE_MOVE_UNIT:
             printf("move_entity   id=%d ",
-                   command->command.move_entity.entity);
-            log_entity_path(&command->command.move_entity.path);
+                   command->command.move_unit.unit);
+            log_unit_path(&command->command.move_unit.path);
             break;
 
-        case RAD_COMMAND_TYPE_REMOVE_ENTITY:
-            printf("remove_entity id=%d\n", command->command.remove_entity.entity);
+        case RAD_COMMAND_TYPE_REMOVE_UNIT:
+            printf("remove_entity id=%d\n", command->command.remove_unit.unit);
             break;
 
         case RAD_COMMAND_TYPE_CREATE_TILE:
@@ -153,7 +274,7 @@ static void log_command(const RAD_Command_t *command)
 
         case RAD_COMMAND_TYPE_SHOOT:
             printf("shoot         id=%d auf (%d,%d) mit Waffe %u\n",
-                   command->command.shoot.entity,
+                   command->command.shoot.unit,
                    command->command.shoot.x,
                    command->command.shoot.y,
                    (unsigned)command->command.shoot.weapon);
@@ -161,7 +282,7 @@ static void log_command(const RAD_Command_t *command)
 
         case RAD_COMMAND_TYPE_USE:
             printf("use           id=%d auf (%d,%d)\n",
-                   command->command.use.entity,
+                   command->command.use.unit,
                    command->command.use.x,
                    command->command.use.y);
             break;
@@ -186,14 +307,14 @@ static void log_command(const RAD_Command_t *command)
 /// die Zahl, die jemand nachzaehlen wuerde, wenn er auf die Klammern sieht.
 ///
 /// Nur die belegten Plaetze. Hinter number_of_steps fahren die ungenutzten mit und
-/// stehen genullt (move_entity.h); sie mitzuloggen hiesse, sechzehnmal (0,0) in die
+/// stehen genullt (move_unit.h); sie mitzuloggen hiesse, sechzehnmal (0,0) in die
 /// Zeile zu schreiben, wo drei Schritte gemeint sind.
 ///
 /// Ein Pfad mit weniger als zwei Feldern kommt aus dem Codec nicht heraus. Er wird
 /// hier trotzdem abgefangen, weil diese Zeile sonst "von" ohne ein Feld dahinter
 /// schriebe -- und ein Log soll auch dann lesbar bleiben, wenn die Annahme faellt.
 ///
-static void log_entity_path(const RAD_EntityPath_t *path)
+static void log_unit_path(const RAD_Path_t *path)
 {
     if(path->number_of_steps < 2)
     {
@@ -424,8 +545,49 @@ static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, const RAD
     send_discover_tiles(control, api, request);
 }
 
-static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *data, uint16_t size)
+///
+/// Die Antwort auf eine Reserve-Anfrage: jede Einheit, die noch in der Reserve
+/// steht, als eigene Nachricht, in der Reihenfolge ihrer Ids -- beide Spieler,
+/// denn zucchini schickt ohnehin an alle (protobuf/discover.proto). Steht keine
+/// in der Reserve, geht nichts hinaus.
+///
+static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api)
 {
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    int32_t sent = 0;
+
+    for(int32_t i = 0; i < RAD_ControlNumberOfUnits(control); ++i)
+    {
+        RAD_Unit_t unit;
+        if(!RAD_ControlUnitAt(control, i, &unit) || (unit.state != RAD_UNIT_STATE_RESERVE))
+        {
+            continue;
+        }
+
+        uint16_t message_size = 0;
+        const RAD_NetCodecResult_t result =
+            RAD_SerializeReserveUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
+        send_packed(api, result, message, message_size, "reserve_unit");
+        sent++;
+    }
+
+    printf("-> Reserve: %" PRId32 " Einheiten\n", sent);
+}
+
+static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *raw, uint16_t raw_size)
+{
+    // Zuerst der Absender: die ersten 8 Byte setzt das Backend, nicht der Client
+    // (RAD_ParseSenderFromMessage). Was danach kommt, ist die NetUserRequest.
+    RAD_UserId_t sender = RAD_USER_NONE;
+    const uint8_t *data = NULL;
+    uint16_t size = 0;
+    const RAD_NetCodecResult_t sender_result = RAD_ParseSenderFromMessage(raw, raw_size, &sender, &data, &size);
+    if(sender_result != RAD_NET_CODEC_OK)
+    {
+        printf("<- %u Bytes verworfen: %s\n", raw_size, RAD_NetCodecResultText(sender_result));
+        return;
+    }
+
     // Erst als Discover-Anfrage lesen, dann als Kommando: eine Nachricht, die
     // keine Discover-Anfrage ist, liefert UNEXPECTED_MESSAGE und geht den
     // bisherigen Weg. Beantwortet wird sie mit drei Spiel-Ereignissen und den
@@ -440,6 +602,15 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
         return;
     }
 
+    // Dann als Reserve-Anfrage, nach demselben Muster: ist sie es nicht, geht die
+    // Nachricht weiter zum Kommando.
+    if(RAD_ParseDiscoverReserveFromMessage(data, size) == RAD_NET_CODEC_OK)
+    {
+        printf("<- discover_reserve\n");
+        send_reserve_units(control, api);
+        return;
+    }
+
     RAD_Command_t command;
     const RAD_NetCodecResult_t parse_result = RAD_ParseCommandFromMessage(data, size, &command);
 
@@ -448,6 +619,10 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
         printf("<- %u Bytes verworfen: %s\n", size, RAD_NetCodecResultText(parse_result));
         return;
     }
+
+    // Der Absender ist der aus dem Kopf der Nachricht, gleich was im Kommando steht:
+    // ein user_id dort hat der Client geschrieben (message.h).
+    command.header.user = sender;
 
     log_command(&command);
 
@@ -509,14 +684,11 @@ int main(int argc, char **argv)
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
+    signal(SIGUSR1, handle_game_start_signal);
 
     const char *interface_name = (argc > 1) ? argv[1] : RAD_SERVER_DEFAULT_INTERFACE_NAME;
 
-    // Zweites Argument: der Spielstand, der geladen werden soll. Ohne ihn faengt
-    // der Server mit einem leeren Spiel an.
-    const char *save_path = (argc > 2) ? argv[2] : NULL;
-
-    // Die Welt, mit der das Spiel beginnt, aus der Umgebung und nicht als drittes
+    // Die Welt, mit der das Spiel beginnt, aus der Umgebung und nicht als zweites
     // Argument: sie ist eine Einstellung des Betriebs und keine des einzelnen
     // Starts. Das Image setzt sie auf die Standardwelt, die es mitbringt
     // (docker/game-server/Dockerfile); auf dem Host fehlt sie meist, und dann
@@ -541,7 +713,7 @@ int main(int argc, char **argv)
             .changed = RAD_OnTileStateChanged 
         }
     };
-    RAD_ControlGame_t loaded = RAD_ControlCreateGame(world_path, save_path, & event_callbacks);
+    RAD_ControlGame_t loaded = RAD_ControlCreateGame(world_path, & event_callbacks);
     if(loaded.game == NULL)
     {
         printf("Kein Spiel -- Abbruch.\n");
@@ -550,7 +722,7 @@ int main(int argc, char **argv)
 
     // Die Steuerung bekommt das Spiel geliehen und wird deshalb vor ihm abgebaut.
     // Wer mitspielt, steht im Spiel selbst; geaendert wird es aber nur ueber die
-    // Steuerung -- RAD_ControlAddUser und RAD_ControlBindUserEntity.
+    // Steuerung -- RAD_ControlAddUser und RAD_ControlBindUserUnit.
     RAD_Control_t control = RAD_CreateControl(loaded.game);
     if(control == NULL)
     {
@@ -568,6 +740,17 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Die PID-Datei erst jetzt: lange nach dem Handler fuer SIGUSR1 (siehe oben),
+    // und erst wenn der Server wirklich laeuft -- bei jedem Abbruch davor bliebe
+    // sonst eine PID liegen, hinter der kein Server mehr steht.
+    const char *game_start_path = path_from_environment(RAD_SERVER_GAME_START_PATH_VARIABLE);
+    const char *pid_path = path_from_environment(RAD_SERVER_PID_PATH_VARIABLE);
+    if(pid_path != NULL && !write_pid_file(pid_path))
+    {
+        printf("PID-Datei %s nicht geschrieben -- Spielstarts erreichen diesen Server nicht.\n", pid_path);
+        pid_path = NULL;
+    }
+
     printf("An Zucchini-Instanz '%s' angebunden. Beenden mit SIGINT/SIGTERM.\n", interface_name);
 
     while(!terminate)
@@ -582,10 +765,26 @@ int main(int argc, char **argv)
             handle_message(control, api, message, size);
         }
 
+        if(game_start_changed)
+        {
+            game_start_changed = 0;
+            if(game_start_path != NULL)
+            {
+                load_game_start(control, game_start_path);
+            }
+        }
+
+        // Ein Signal unterbricht das Warten (poll in ZUC_ApiWait) -- ein Spielstart
+        // kommt also gleich an und nicht erst nach Ablauf der Wartezeit.
         ZUC_ApiWait(api, RAD_SERVER_WAIT_TIMEOUT_MS);
     }
 
     printf("\nEnde.\n");
+
+    if(pid_path != NULL)
+    {
+        unlink(pid_path);
+    }
 
     ZUC_DestroyApi(&api);
     RAD_DestroyControl(&control);

@@ -61,6 +61,7 @@ else()
         enable_testing()
 
         add_subdirectory(game/test)
+        add_subdirectory(game-server-core/test)
     endif()
 endif()
 

@@ -18,13 +18,45 @@ add_executable(client
     src/rendering/iso_map.c
     src/rendering/game_events/move.c
     
-    src/io/user_input.c
+    src/view/user_input.c
     src/io/net_codec.c
     src/io/camera_control.c
+    src/io/net_transport.c
+
+    src/io/net_event_handler/common.c
+    src/io/net_event_handler/command_response.c
+    src/io/net_event_handler/game_created.c
+    src/io/net_event_handler/game_finished.c
+    src/io/net_event_handler/current_player.c
+    src/io/net_event_handler/players.c
+    src/io/net_event_handler/world_size.c
+    src/io/net_event_handler/tiles.c
+    src/io/net_event_handler/reserve_unit.c
+    src/io/net_event_handler/tile_created.c
+    src/io/net_event_handler/tile_removed.c
+    src/io/net_event_handler/tile_changed.c
+
+    src/io/net_request/move.c
+    src/io/net_request/discover.c
+    src/io/net_request/discover_reserve.c
 
     src/events/event_manager.c
 
     src/model/world.c
+    src/model/unit.c
+    src/model/tile.c
+    src/model/reserve.c
+    src/model/events/observable.c
+
+    src/view/view.c
+    src/view/terrain_info_view.c
+    src/view/unit_info_view.c
+    src/view/iso_map_view.c
+    src/view/bar_view.c
+    src/view/text_view.c
+    src/view/labeled_bar_view.c
+    src/view/weapon_view.c
+    src/view/entity_view.c
 )
 
 target_include_directories(client PRIVATE
@@ -73,7 +105,7 @@ target_link_options(client PRIVATE
     "-sUSE_SDL=2"
     "-sUSE_SDL_TTF=2"
     "--embed-file" "${ZUC_FONT_PATH}@/assets/LiberationSansBold.ttf"
-    "-sEXPORTED_FUNCTIONS=['_main','_zuc_on_response','_zuc_on_connection_state','_malloc','_free']"
+    "-sEXPORTED_FUNCTIONS=['_main','_RAD_OnMessageReceived','_zuc_on_connection_state','_RAD_ClientSetPlayerId','_malloc','_free']"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']"
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createZucchiniModule"

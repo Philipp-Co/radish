@@ -17,10 +17,14 @@ von den (binaeren) UDP-Spieldaten unterscheiden kann.
 
 Eingehende WebSocket-Nachrichten sind durchgehend JSON mit einem "type"-
 Feld (siehe frontend/src/app/core/game-socket.service.ts): receive()
-unten entpackt sie und leitet beim Typ "command" nur die darin Base64-
-kodierten Rohdaten -- roh, ohne die JSON-Huelle -- an den Spielserver
-weiter. Jeder andere Typ (z.B. der "ping"-Heartbeat des Clients) wird nur
+unten entpackt sie und leitet beim Typ "command" die darin Base64-
+kodierten Rohdaten an den Spielserver weiter -- davor den geheimen
+Zucchini-Code und die Spieler-Id des angemeldeten Spielers (access.py).
+Jeder andere Typ (z.B. der "ping"-Heartbeat des Clients) wird nur
 geloggt, nicht weitergereicht.
+
+Gleich nach dem Verbindungsaufbau bekommt der Client {"type": "identity"}
+mit seiner oeffentlichen Spieler-Id -- den Code nie.
 
 Durch echte Consumer ersetzen/ergaenzen, sobald die eigentliche Logik
 (Lobby-/Matchmaking-Status) feststeht -- die UDP-Bruecke selbst ist oben
@@ -36,7 +40,8 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db.models import Q
 
-from .models import Game, Player
+from . import access
+from .models import Game, GameStatus, Player
 
 PING_INTERVAL_SECONDS = 10
 
@@ -117,6 +122,16 @@ class EchoConsumer(AsyncWebsocketConsumer):
             await self.close(code=4409)
             return
 
+        # Der Code dieses Spielers, geheim (access.py). Ohne ihn liesse zucchini
+        # keine Nachricht durch -- ein Spiel, das vor den Codes gestartet wurde,
+        # hat keinen, und mit ihm ist dann nicht zu reden.
+        zucchini_code = game.zucchini_code_for(self.player)
+        if not zucchini_code:
+            print(f"Spiel '{game.name}' ohne Zugangscode fuer {self.player.identifier}")
+            await self.close(code=4409)
+            return
+        self.zucchini_code = zucchini_code
+
         server = game.server
         loop = asyncio.get_running_loop()
         self.transport, _ = await loop.create_datagram_endpoint(
@@ -125,6 +140,13 @@ class EchoConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
+
+        # Die eigene, oeffentliche Spieler-Id (access.py) -- damit der Client
+        # in Antworten und Ereignissen erkennt, was seins ist. Der Zucchini-Code
+        # geht nicht mit: den kennt nur das Backend.
+        await self.send(
+            text_data=dumps({"type": "identity", "data": {"player_id": self.player.identifier}})
+        )
 
         # Erst nach accept() starten: send() davor wuerde fehlschlagen,
         # weil die Verbindung noch nicht offen ist.
@@ -152,8 +174,13 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # in connect() gebraucht -- ohne select_related waere das ein
         # zweiter, synchroner ORM-Zugriff ausserhalb dieser Methode (und
         # damit ausserhalb von database_sync_to_async).
+        #
+        # Nur RUNNING: in der Lobby hat die Instanz das Spiel noch nicht
+        # aufgesetzt, die UDP-Bruecke haette niemanden zum Reden --
+        # connect() schliesst dann wie ohne Spiel mit 4409.
         return (
             Game.objects.filter(Q(host=self.player) | Q(second_player=self.player))
+            .filter(status=GameStatus.RUNNING)
             .select_related("server")
             .first()
         )
@@ -197,10 +224,13 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # aus connect() (nicht zu verwechseln mit self.send(), das in die
         # andere Richtung, zum WebSocket-Client, schickt). Kein Ziel noetig,
         # weil der Transport mit remote_addr=(server.address, server.port)
-        # erzeugt wurde -- er kennt sein Ziel also schon. Roh weitergereicht,
-        # ohne JSON-Huelle: der Spielserver erwartet das Kommando-Binaerformat
-        # aus radish/game/control/command/codec.h, kein JSON.
-        self.transport.sendto(payload)
+        # erzeugt wurde -- er kennt sein Ziel also schon.
+        #
+        # Der Client schickt nur die NetUserRequest (protobuf/message.proto);
+        # Code und Absender setzt das Backend davor (access.frame). So kommt
+        # keine Nachricht durch, die nicht von hier stammt, und keine in einem
+        # fremden Namen.
+        self.transport.sendto(access.frame(self.zucchini_code, self.player.identifier, payload))
 
     async def disconnect(self, close_code):
         # Laeuft in beiden Faellen: wenn der Client die Verbindung beendet

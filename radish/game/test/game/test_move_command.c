@@ -33,14 +33,14 @@ typedef struct
 {
     int moved;
     bool mit_figur;
-    RAD_EntityId_t id;
+    RAD_UnitId_t id;
     int16_t x;
     int16_t y;
-    RAD_EntityPath_t pfad;
+    RAD_Path_t pfad;
     int32_t ergebnis;
 } RAD_ZugMitschrift_t;
 
-static void notiere_zug(void *user_argument, const RAD_Entity_t *entity, const RAD_EntityPath_t *path, int32_t result)
+static void notiere_zug(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
     // Ohne Pfad waere das Ereignis keine Bewegung.
     TEST_ASSERT_NOT_NULL(path);
@@ -49,20 +49,20 @@ static void notiere_zug(void *user_argument, const RAD_Entity_t *entity, const R
     mitschrift->moved += 1;
     mitschrift->pfad = *path;
     mitschrift->ergebnis = result;
-    mitschrift->mit_figur = (entity != NULL);
+    mitschrift->mit_figur = (unit != NULL);
 
-    if(entity != NULL)
+    if(unit != NULL)
     {
-        mitschrift->id = entity->id;
-        mitschrift->x = entity->x;
-        mitschrift->y = entity->y;
+        mitschrift->id = unit->id;
+        mitschrift->x = unit->x;
+        mitschrift->y = unit->y;
     }
 }
 
-static void notiere_nichts(void *user_argument, const RAD_Entity_t *entity, int32_t x, int32_t y)
+static void notiere_nichts(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
     (void)user_argument;
-    (void)entity;
+    (void)unit;
     (void)x;
     (void)y;
 }
@@ -77,7 +77,7 @@ static void abonniere_zug(RAD_EventManager_t *events, RAD_ZugMitschrift_t *mitsc
 {
     *mitschrift = (RAD_ZugMitschrift_t){ .moved = 0, .mit_figur = false };
 
-    RAD_EventManagerSubscribeToEntityEvents(events, (RAD_EventsEntityChangedCallback_t){
+    RAD_EventManagerSubscribeToUnitEvents(events, (RAD_EventsUnitChangedCallback_t){
         .user_argument = mitschrift,
         .spawned = notiere_nichts,
         .destroyed = notiere_nichts,
@@ -90,16 +90,16 @@ static void abonniere_zug(RAD_EventManager_t *events, RAD_ZugMitschrift_t *mitsc
 /// Doppelbuchfuehrung, nicht nur eine: die Figur kennt ihre Position, das Tile
 /// seine Figur, und auseinanderlaufen duerfen sie nie (world.h).
 ///
-static void pruefe_figur_steht_auf(RAD_Game_t *game, RAD_EntityId_t id, int32_t x, int32_t y)
+static void pruefe_figur_steht_auf(RAD_Game_t *game, RAD_UnitId_t id, int32_t x, int32_t y)
 {
-    const RAD_Entity_t *entity = RAD_WorldEntityById(&game->world, id);
-    TEST_ASSERT_NOT_NULL(entity);
-    TEST_ASSERT_EQUAL_INT(x, entity->x);
-    TEST_ASSERT_EQUAL_INT(y, entity->y);
+    const RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, id);
+    TEST_ASSERT_NOT_NULL(unit);
+    TEST_ASSERT_EQUAL_INT(x, unit->x);
+    TEST_ASSERT_EQUAL_INT(y, unit->y);
 
     const RAD_Tile_t *tile = RAD_WorldTileAt(&game->world, x, y);
     TEST_ASSERT_NOT_NULL(tile);
-    TEST_ASSERT_EQUAL_INT(id, tile->entity);
+    TEST_ASSERT_EQUAL_INT(id, tile->unit);
 }
 
 /// Ist das Feld frei? Nur die Tile-Seite -- die Figur, die es nicht traegt, gibt
@@ -108,7 +108,7 @@ static void pruefe_feld_ist_frei(RAD_Game_t *game, int32_t x, int32_t y)
 {
     const RAD_Tile_t *tile = RAD_WorldTileAt(&game->world, x, y);
     TEST_ASSERT_NOT_NULL(tile);
-    TEST_ASSERT_EQUAL_INT(RAD_ENTITY_NONE, tile->entity);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, tile->unit);
 }
 
 
@@ -128,21 +128,21 @@ void test_move_kommando_bewegt_die_figur(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_EntityId_t figur = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 2, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, figur);
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
 
     RAD_ZugMitschrift_t mitschrift;
     abonniere_zug(events, &mitschrift);
 
     // (2,2) -> (3,2) -> (3,3). Das erste Feld ist der Standort und wird nicht auf
     // Belegung geprueft -- dort steht die Figur. Beide folgenden sind leer.
-    const RAD_EntityPath_t weg = {
+    const RAD_Path_t weg = {
         .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 }, { .x = 3, .y = 3 } },
         .number_of_steps = 3
     };
 
     RAD_Command_t command = {0};
-    TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, figur, &weg, &command));
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, figur, &weg, &command));
 
     RAD_GameExecuteCommand(game, &command);
 
@@ -194,24 +194,24 @@ void test_move_kommando_auf_besetztes_feld_bewegt_nicht(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_EntityId_t zieher = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 2, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, zieher);
+    const RAD_UnitId_t zieher = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, zieher);
 
     // Direkt daneben, auf dem Feld, auf das der Zug gehen soll.
-    const RAD_EntityId_t im_weg = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, 3, 2);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, im_weg);
+    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, im_weg);
     TEST_ASSERT_NOT_EQUAL(zieher, im_weg);
 
     RAD_ZugMitschrift_t mitschrift;
     abonniere_zug(events, &mitschrift);
 
-    const RAD_EntityPath_t weg = {
+    const RAD_Path_t weg = {
         .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 } },
         .number_of_steps = 2
     };
 
     RAD_Command_t command = {0};
-    TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, zieher, &weg, &command));
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, zieher, &weg, &command));
 
     RAD_GameExecuteCommand(game, &command);
 
@@ -265,13 +265,13 @@ void test_move_kommando_ueber_den_rand_bewegt_nicht(void)
     // Ganz an den Rand, damit der naechste Schritt schon draussen liegt.
     const int16_t rand_x = (int16_t)(RAD_WORLD_WIDTH - 1);
 
-    const RAD_EntityId_t figur = RAD_WorldSpawnEntity(&game->world, RAD_ENTITY_TYPE_PLAYER, rand_x, 3);
-    TEST_ASSERT_NOT_EQUAL(RAD_ENTITY_NONE, figur);
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, rand_x, 3);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
 
     RAD_ZugMitschrift_t mitschrift;
     abonniere_zug(events, &mitschrift);
 
-    const RAD_EntityPath_t weg = {
+    const RAD_Path_t weg = {
         .steps_to = { { .x = rand_x, .y = 3 }, { .x = (int16_t)(rand_x + 1), .y = 3 } },
         .number_of_steps = 2
     };
@@ -281,7 +281,7 @@ void test_move_kommando_ueber_den_rand_bewegt_nicht(void)
     TEST_ASSERT_FALSE(RAD_WorldInBounds(&game->world, weg.steps_to[1].x, weg.steps_to[1].y));
 
     RAD_Command_t command = {0};
-    TEST_ASSERT_TRUE(RAD_GameMoveEntity(game, figur, &weg, &command));
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, figur, &weg, &command));
 
     RAD_GameExecuteCommand(game, &command);
 
@@ -298,6 +298,55 @@ void test_move_kommando_ueber_den_rand_bewegt_nicht(void)
     TEST_ASSERT_EQUAL_INT(figur, mitschrift.id);
     TEST_ASSERT_EQUAL_INT(rand_x, mitschrift.x);
     TEST_ASSERT_EQUAL_INT(3, mitschrift.y);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Eine Einheit in der Reserve: sie geht nicht.**
+///
+/// Sie ist dem Spiel bekannt, steht aber auf keinem Feld -- ihre Position ist
+/// (-1,-1), und ein Weg von dort aus waere ein Griff neben das Raster. Abgelehnt
+/// wird wie bei einer Figur, die es nicht gibt: mit einem Fehlschlag im Ereignis
+/// und ohne Spur in der Welt.
+///
+void test_move_kommando_fuer_einheit_in_reserve_bewegt_nicht(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    TEST_ASSERT_NOT_NULL(events);
+
+    RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
+    TEST_ASSERT_NOT_NULL(game);
+
+    RAD_Unit_t values = { .number_of_members = 1 };
+    const RAD_UnitId_t reserve = RAD_WorldAddReserveUnit(&game->world, &values, (RAD_UserId_t)0x4711);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, reserve);
+
+    RAD_ZugMitschrift_t mitschrift;
+    abonniere_zug(events, &mitschrift);
+
+    const RAD_Path_t weg = {
+        .steps_to = { { .x = 0, .y = 0 }, { .x = 1, .y = 0 } },
+        .number_of_steps = 2
+    };
+
+    RAD_Command_t command = {0};
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, reserve, &weg, &command));
+
+    RAD_GameExecuteCommand(game, &command);
+
+    const RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, reserve);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, unit->state);
+    TEST_ASSERT_EQUAL_INT(-1, unit->x);
+    TEST_ASSERT_EQUAL_INT(-1, unit->y);
+    pruefe_feld_ist_frei(game, 0, 0);
+    pruefe_feld_ist_frei(game, 1, 0);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
+
+    TEST_ASSERT_EQUAL_INT(1, mitschrift.moved);
+    TEST_ASSERT_NOT_EQUAL(0, mitschrift.ergebnis);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.pfad.number_of_steps);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

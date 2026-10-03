@@ -18,15 +18,15 @@ message NetTile
     uint32 y = 3;
     NetTileType type = 4;
 
-    // Die Figur auf dem Feld, als Id des Spiels (RAD_EntityId_t) und
-    // unveraendert: -1 heisst keine (RAD_ENTITY_NONE), jede andere Zahl ist eine
+    // Die Figur auf dem Feld, als Id des Spiels (RAD_UnitId_t) und
+    // unveraendert: -1 heisst keine (RAD_UNIT_NONE), jede andere Zahl ist eine
     // Figur, die 0 eingeschlossen.
     //
     // sint32 und nicht int32: ein negativer int32 kostet auf der Strecke immer
     // zehn Bytes, und -1 steht auf fast jedem Feld. sint32 kodiert ihn in einem.
     // Kein "optional": protoc-gen-c (protobuf-c 1.5) erzeugt dafuer in proto3
     // keinen Code.
-    sint32 entity_id = 5;
+    sint32 unit_id = 5;
 
     // Hoehe des Feldes (RAD_Tile_t.z). Auf einem Feld ohne Gelaende 0.
     uint32 z = 6;

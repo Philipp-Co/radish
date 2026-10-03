@@ -27,6 +27,40 @@ typedef int32_t RAD_NetEntityId_t;
 ///
 typedef uint64_t RAD_NetUserId_t;
 
+/// Kein Spieler -- solange der Client seine eigene Id nicht kennt.
+#define RAD_NET_USER_NONE ((RAD_NetUserId_t)0)
+
+///
+/// Die oeffentliche Spieler-Id zur Kennung (Player.identifier im Backend): die
+/// acht Zeichen als Big-Endian-Zahl, "aB3xK9pQ" -> 0x614233784B397051. Dieselbe
+/// Rechnung wie RAD_ControlUserIdFromIdentifier im Spielserver
+/// (game-server-core/src/include/radish/server/control/game_start.h) und
+/// access.player_id im Backend -- nur so erkennt der Client sich selbst in dem,
+/// was der Server schickt.
+///
+/// RAD_NET_USER_NONE fuer alles, was nicht genau acht Zeichen aus [A-Za-z0-9] ist.
+///
+static inline RAD_NetUserId_t RAD_NetUserIdFromIdentifier(const char *identifier)
+{
+    if(identifier == 0)
+    {
+        return RAD_NET_USER_NONE;
+    }
+
+    RAD_NetUserId_t user = 0;
+    for(int i = 0; i < 8; ++i)
+    {
+        const char c = identifier[i];
+        const int valid = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if(!valid)
+        {
+            return RAD_NET_USER_NONE;
+        }
+        user = (user << 8) | (RAD_NetUserId_t)(unsigned char)c;
+    }
+    return (identifier[8] == '\0') ? user : RAD_NET_USER_NONE;
+}
+
 ///
 /// Sequenznummer eines Kommandos. Der Client vergibt sie selbst und zaehlt je
 /// Kommando weiter; der Server schickt sie in der Antwort zurueck.
@@ -67,6 +101,26 @@ typedef struct
     RAD_NetEntityId_t entity;
     RAD_NetPath_t path;
 } RAD_NetMoveRequest_t;
+
+///
+/// Platz fuer den Namen einer Einheit samt abschliessender Null -- derselbe wie im
+/// Spiel (RAD_UNIT_NAME_MAX). Ein laengerer Name aus der Nachricht wird gekuerzt:
+/// der Client zeigt ihn nur an.
+///
+#define RAD_NET_UNIT_NAME_MAX 32
+
+///
+/// Eine Einheit in der Reserve (game.proto NetReserveUnitEvent, eine Nachricht je
+/// Einheit): dem Spiel bekannt, auf dem Feld noch nicht. "owner" ist die
+/// oeffentliche Spieler-Id ihres Besitzers.
+///
+typedef struct
+{
+    RAD_NetEntityId_t unit;
+    RAD_NetUserId_t owner;
+    char name[RAD_NET_UNIT_NAME_MAX];
+    uint32_t number_of_members;
+} RAD_NetReserveUnit_t;
 
 ///
 /// Die Antwort des Servers auf einen Zug (command.proto NetCommandResponse). Der

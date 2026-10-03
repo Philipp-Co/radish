@@ -1,5 +1,5 @@
 # Ein Ziel fuer das ganze Spielmodul: die Spiellogik, der Codec der Kommandos und
-# die Serialisierung des Spielstands.
+# das Einlesen der Weltdefinition.
 #
 # radish_game haengt an nichts, was eine Umgebung mitbringt -- kein SDL, kein
 # Emscripten, kein POSIX. Das ist der Grund, warum es im Browser wie auf dem Host
@@ -12,13 +12,12 @@
 # unter control/ liegen nur noch command/, events/ und execute/, und die kommen
 # mit stdint aus. Damit fiel der Grund fuer die Trennung weg.
 #
-# Aus demselben Ring heraus liegt inzwischen auch serialization/ hier und nicht
-# mehr in einer eigenen Bibliothek: die Serialisierer bilden jedes Feld von Welt
-# und Spiel ab, brauchen dafuer also deren Strukturen -- und die stehen seit der
-# Kapselung des Modells hinter src/include/. Eine Bibliothek daneben haette diesen
-# Pfad von aussen gebraucht, und damit waere die Grenze fuer alle offen gewesen.
-# Ein Serialisierer ist aber kein Aufrufer von aussen, sondern die Gegenseite zum
-# Modell: er schreibt auf, was das Modul fuehrt. Deshalb gehoert er hinein --
+# Aus demselben Ring heraus liegt auch serialization/ hier und nicht in einer
+# eigenen Bibliothek: der Leser der Weltdefinition schreibt in die Welt, braucht
+# dafuer also ihre Struktur -- und die steht seit der Kapselung des Modells hinter
+# src/include/. Eine Bibliothek daneben haette diesen Pfad von aussen gebraucht, und
+# damit waere die Grenze fuer alle offen gewesen. Der Leser ist aber kein Aufrufer
+# von aussen, sondern die Gegenseite zum Modell. Deshalb gehoert er hinein --
 # dasselbe Argument, mit dem die Tests den privaten Pfad sehen (test/CMakeLists.txt).
 add_library(radish_game STATIC
     src/game.c
@@ -30,17 +29,12 @@ add_library(radish_game STATIC
     src/model/turn.c
 
     src/control/events/event_manager.c
-    src/control/execute/entity.c
+    src/control/execute/unit.c
 
     src/serialization/jsmn_impl.c
-    src/serialization/json_writer.c
     src/serialization/json_reader.c
-    src/serialization/tile_serializer.c
-    src/serialization/entity_serializer.c
-    src/serialization/world_serializer.c
-    src/serialization/game_serializer.c
     src/serialization/serialization.c
-    src/serialization/save_file.c
+    src/serialization/world_file.c
     src/serialization/world_definition.c
 )
 
@@ -51,23 +45,21 @@ add_library(radish_game STATIC
 # Regeln nicht vorbei in der Welt schreiben.
 #
 # Die Grenze verlaeuft dabei durch model/ hindurch und nicht darum herum: Tile und
-# Entitaet liegen mit ihren Feldern unter include/, weil die Ereignisse sie nach
+# Einheit liegen mit ihren Feldern unter include/, weil die Ereignisse sie nach
 # draussen reichen und ein Abonnent in ihnen lesen muss. Welt, Zug und Spiel liegen
 # unter src/include/ und bleiben nach aussen bloss Namen -- sie sind das, was das
 # Modul fuehrt, nicht das, was es erzaehlt. Warum das keine halbe Kapselung ist,
 # steht in include/radish/game/model.h.
 #
-# serialization/ liegt dagegen vollstaendig privat, jeder ihrer sieben Header --
-# das Format, der JSON-Leser, der Schreiber und die vier Serialisierer. Nach aussen
-# geht von ihr keine Datei, sondern vier Zeilen in game.h: speichern, laden, das
-# Ergebnis und sein Text (RAD_SaveGameToFile, RAD_LoadGameFromFile).
+# serialization/ liegt dagegen vollstaendig privat, jeder ihrer drei Header --
+# das Ergebnis, der JSON-Leser und die Weltdefinition. Nach aussen geht von ihr
+# keine Datei, sondern drei Zeilen in game.h: laden, das Ergebnis und sein Text
+# (RAD_LoadWorldFromFile, RAD_GameLoadResultText).
 #
-# Das ist der Zweck der Uebung. Ein Aufrufer soll einen Spielstand nennen koennen,
-# ohne das Format zu kennen, ohne einen Puffer zu stellen und ohne zu wissen, dass
-# JSON im Spiel ist -- vorher lag beides offen, und der Server trug die Haelfte der
-# Arbeit selbst (sein control/loader/save_file.c gibt es deshalb nicht mehr).
-# Getauscht wird damit eine breite Schnittstelle gegen eine schmale: was ein
-# Spielstand ist, entscheidet ab jetzt nur dieses Modul.
+# Das ist der Zweck der Uebung. Ein Aufrufer soll eine Weltdefinition nennen
+# koennen, ohne das Format zu kennen, ohne einen Puffer zu stellen und ohne zu
+# wissen, dass JSON im Spiel ist. Was eine Weltdefinition ist, entscheidet nur
+# dieses Modul.
 #
 # Dieselbe Aufteilung wie beim Server und beim Client, wo include/ ebenfalls
 # innerhalb von src/ liegt -- nur dass dort alles privat ist, weil sie Programme

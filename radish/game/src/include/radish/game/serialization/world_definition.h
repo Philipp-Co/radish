@@ -42,8 +42,8 @@
 ///   RAD_SERIALIZE_ERROR_INCONSISTENT   eine Hoehe ungleich 0 auf einem Feld ohne
 ///       Gelaende -- was nicht da ist, hat keine Hoehe (world.h).
 ///
-/// **Strenger als der Spielstand.** Ein unbekannter Schluessel ist ein Fehler und
-/// wird nicht uebergangen. Eine Weltdefinition wird von Hand geschrieben, und ein
+/// **Streng.** Ein unbekannter Schluessel ist ein Fehler und wird nicht
+/// uebergangen. Eine Weltdefinition wird von Hand geschrieben, und ein
 /// vertipptes "heigths" soll beim Laden auffallen, statt still eine flache Welt
 /// zu ergeben -- wie additionalProperties: false im Schema.
 ///

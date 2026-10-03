@@ -26,18 +26,18 @@
 /// Wer diese drei Strukturen wirklich braucht, uebersetzt innerhalb von
 /// radish_game und bekommt sie ueber den privaten Suchpfad.
 ///
-/// **Tile und Entitaet kommen hier nicht mehr vor, und zwar begruendet.** Ihre
+/// **Tile und Einheit kommen hier nicht mehr vor, und zwar begruendet.** Ihre
 /// Strukturen stehen vollstaendig im oeffentlichen Baum (model/tile/tile.h,
-/// model/entity/entity.h) -- und mit ihnen ihre Namen. Der Grund sind die
+/// model/unit/unit.h) -- und mit ihnen ihre Namen. Der Grund sind die
 /// Ereignisse: event_manager.h gibt seinen Abonnenten const RAD_Tile_t* und const
-/// RAD_Entity_t* in die Hand, und ein Zeiger, den der Empfaenger nicht
+/// RAD_Unit_t* in die Hand, und ein Zeiger, den der Empfaenger nicht
 /// dereferenzieren kann, ist kein Ereignis -- wer auf ein neues Tile hin zeichnen
 /// soll, muss wissen, wo es liegt. Dasselbe verlangen die Serialisierer, die jedes
 /// Feld beider Strukturen abbilden.
 ///
 /// Wer eine dieser zwei braucht, bindet also ihren Header ein und nicht diesen.
 /// Das ist der Unterschied zu den drei darunter: bei ihnen sind Name und Inhalt
-/// getrennt, weil der Inhalt nicht heraus soll; bei Tile und Entitaet gibt es
+/// getrennt, weil der Inhalt nicht heraus soll; bei Tile und Einheit gibt es
 /// nichts zu trennen.
 ///
 /// Die Grenze verlaeuft damit nicht um das Modell herum, sondern durch es
@@ -47,20 +47,20 @@
 ///
 
 ///
-/// Handle auf eine Entitaet: der Slot-Index im Entity-Pool der Welt. Der Index
-/// bleibt ueber die Lebensdauer der Entitaet stabil, anders als ein Zeiger kann
+/// Handle auf eine Einheit: der Slot-Index im Unit-Pool der Welt. Der Index
+/// bleibt ueber die Lebensdauer der Einheit stabil, anders als ein Zeiger kann
 /// er aber nicht baumeln und laesst sich unveraendert uebertragen.
 ///
-typedef int32_t RAD_EntityId_t;
+typedef int32_t RAD_UnitId_t;
 
-#define RAD_ENTITY_NONE ((RAD_EntityId_t)-1)
+#define RAD_UNIT_NONE ((RAD_UnitId_t)-1)
 
 typedef enum
 {
-    RAD_ENTITY_TYPE_NONE = 0,
-    RAD_ENTITY_TYPE_PLAYER,
-    RAD_ENTITY_TYPE_NPC
-} RAD_EntityType_t;
+    RAD_UNIT_TYPE_NONE = 0,
+    RAD_UNIT_TYPE_PLAYER,
+    RAD_UNIT_TYPE_NPC
+} RAD_UnitType_t;
 
 typedef enum
 {
@@ -75,11 +75,11 @@ typedef enum
 ///
 /// **Hier steht nur, was unvollstaendig bleibt.** Wer seinen Namen und seinen
 /// Inhalt an derselben Stelle fuehrt, fuehrt ihn dort -- RAD_Tile_t und
-/// RAD_Entity_t stehen deshalb bei ihren Strukturen (model/tile/tile.h,
-/// model/entity/entity.h) und nicht mehr hier. Ein Name ohne Inhalt braucht
+/// RAD_Unit_t stehen deshalb bei ihren Strukturen (model/tile/tile.h,
+/// model/unit/unit.h) und nicht mehr hier. Ein Name ohne Inhalt braucht
 /// dagegen eine Datei, in der er allein stehen kann, und das ist diese.
 ///
-/// Das kostet einen Preis, und er ist sichtbar: wer RAD_Tile_t oder RAD_Entity_t
+/// Das kostet einen Preis, und er ist sichtbar: wer RAD_Tile_t oder RAD_Unit_t
 /// nennt, muss ihren Header einbinden und bekommt damit die ganze Struktur --
 /// auch wenn er nur einen Zeiger weiterreicht. event_manager.h ist der Fall, an
 /// dem sich das ablesen laesst. Ein zweiter typedef daneben waere der Ausweg und

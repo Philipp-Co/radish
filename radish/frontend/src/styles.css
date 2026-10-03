@@ -41,7 +41,7 @@ a {
   color: var(--accent);
 }
 
-button, input {
+button, input, select {
   font-family: inherit;
   font-size: 1rem;
 }
@@ -76,7 +76,7 @@ button.secondary:hover:not(:disabled) {
   background: var(--bg-elevated);
 }
 
-input[type="text"], input[type="password"] {
+input[type="text"], input[type="password"], input[type="number"], select {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--text);

@@ -57,12 +57,12 @@ bool RAD_GameTileAt(const RAD_Game_t *game, int16_t x, int16_t y, RAD_Tile_t *ou
     assert((x >= 0) && (x < game->world.width));
     assert((y >= 0) && (y < game->world.height));
 
-    // Zeilenweise, Zeile 0 zuerst -- dieselbe Reihenfolge wie im Serializer.
+    // Zeilenweise, Zeile 0 zuerst -- dieselbe Reihenfolge wie in der Weltdefinition.
     *output = game->world.tiles[y][x];
     return true;
 }
 
-int32_t RAD_GameNumberOfEntities(const RAD_Game_t *game)
+int32_t RAD_GameNumberOfUnits(const RAD_Game_t *game)
 {
     if(game == NULL)
     {
@@ -72,43 +72,43 @@ int32_t RAD_GameNumberOfEntities(const RAD_Game_t *game)
     // Der mitgefuehrte Zaehler und keine eigene Schleife: die Welt haelt ihn bei
     // jedem Setzen und Entfernen fort, und RAD_WorldIsConsistent prueft ihn gegen
     // die belegten Plaetze. Ihn hier nachzuzaehlen waere ein zweites Buch.
-    return game->world.number_of_entities;
+    return game->world.number_of_units;
 }
 
-bool RAD_GameEntityAt(const RAD_Game_t *game, int32_t index, RAD_Entity_t *output)
+bool RAD_GameUnitAt(const RAD_Game_t *game, int32_t index, RAD_Unit_t *output)
 {
     if((game == NULL) || (output == NULL))
     {
         return false;
     }
 
-    if((index < 0) || (index >= RAD_GameNumberOfEntities(game)))
+    if((index < 0) || (index >= RAD_GameNumberOfUnits(game)))
     {
         return false;
     }
 
-    // Der Pool hat Luecken, der Index ist dicht: durchlaufen und die belegten
+    // Der Pool kann Luecken haben, der Index ist dicht: durchlaufen und die belegten
     // Plaetze zaehlen, bis der gesuchte erreicht ist. Dasselbe Verfahren wie
-    // RAD_GameUserEntityAt in player.c, und aus demselben Grund -- bei hoechstens
-    // RAD_MAX_ENTITIES Plaetzen ist jede Beschleunigung teurer als die Suche.
+    // RAD_GameUserUnitAt in player.c, und aus demselben Grund -- bei hoechstens
+    // RAD_MAX_UNITS Plaetzen ist jede Beschleunigung teurer als die Suche.
     int32_t seen = 0;
-    for(RAD_EntityId_t i=0;i < RAD_MAX_ENTITIES; ++i)
+    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
     {
-        const RAD_Entity_t *entity = &game->world.entities[i];
-        if(entity->id == RAD_ENTITY_NONE)
+        const RAD_Unit_t *unit = &game->world.units[i];
+        if(unit->id == RAD_UNIT_NONE)
         {
             continue;
         }
 
         if(seen == index)
         {
-            *output = *entity;
+            *output = *unit;
             return true;
         }
         seen++;
     }
 
-    // Nicht zu erreichen, solange "number_of_entities" mit den belegten Plaetzen
+    // Nicht zu erreichen, solange "number_of_units" mit den belegten Plaetzen
     // uebereinstimmt -- der Index wurde oben dagegen geprueft. Laeuft der Zaehler
     // dennoch vor, ist false die ehrliche Antwort und kein halb gefuelltes output.
     return false;
