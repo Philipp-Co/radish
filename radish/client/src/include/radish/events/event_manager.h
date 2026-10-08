@@ -26,10 +26,33 @@
 ///
 typedef void (*RAD_OnNetCommandResponse_t)(void *user_argument, const RAD_NetCommandResponse_t *response);
 
+///
+/// Antwort auf ein Deployment (io/net_types.h) -- eigenes oder fremdes.
+///
+typedef void (*RAD_OnNetDeployResponse_t)(void *user_argument, const RAD_NetDeployResponse_t *response);
+
+///
+/// Antwort auf ein Abgeben (io/net_types.h) -- eigenes oder fremdes.
+///
+typedef void (*RAD_OnNetEndTurnResponse_t)(void *user_argument, const RAD_NetEndTurnResponse_t *response);
+
+///
+/// Antwort auf einen Angriff (io/net_types.h) -- eigenen oder fremden.
+///
+typedef void (*RAD_OnNetAttackResponse_t)(void *user_argument, const RAD_NetAttackResponse_t *response);
+
+///
+/// "received" bekommt die Antworten auf Zuege, "deploy_received" die auf
+/// Deployments, "end_turn_received" die aufs Abgeben, "attack_received" die auf
+/// Angriffe.
+///
 typedef struct
 {
     void *user_argument;
     RAD_OnNetCommandResponse_t received;
+    RAD_OnNetDeployResponse_t deploy_received;
+    RAD_OnNetEndTurnResponse_t end_turn_received;
+    RAD_OnNetAttackResponse_t attack_received;
 } RAD_NetEventsCommandResponseCallback_t;
 
 
@@ -41,7 +64,8 @@ typedef struct
 ///
 /// Die vier uebrigen schickt der Server auf eine Discover-Anfrage:
 ///
-///   current_player  wer dran ist, 0 wenn niemand
+///   current_player  wer dran ist, 0 wenn niemand -- kommt auch nach jedem
+///                   Abgeben, ohne Anfrage
 ///   players         wer mitspielt, in Zugreihenfolge -- "user_ids" gilt nur,
 ///                   solange der Callback laeuft, und ist bei
 ///                   "number_of_users" == 0 nicht zu lesen
@@ -68,6 +92,13 @@ typedef void (*RAD_OnNetTiles_t)(void *user_argument, const RAD_NetTile_t *tiles
 // zucchini an alle schickt, kommen auch die Antworten auf fremde Anfragen hier an.
 typedef void (*RAD_OnNetReserveUnit_t)(void *user_argument, const RAD_NetReserveUnit_t *unit);
 
+// Eine Einheit steht jetzt auf dem Feld -- aufgestellt, gleich von wem.
+typedef void (*RAD_OnNetUnitDeployed_t)(void *user_argument, const RAD_NetUnitDeployed_t *deployed);
+
+// Eine Einheit, die einem Spieler gehoert, als Antwort auf eine
+// Einheiten-Anfrage -- je Einheit ein Aufruf, wie bei der Reserve.
+typedef void (*RAD_OnNetUnit_t)(void *user_argument, const RAD_NetUnit_t *unit);
+
 typedef struct
 {
     void *user_argument;
@@ -78,6 +109,8 @@ typedef struct
     RAD_OnNetWorldSize_t world_size;
     RAD_OnNetTiles_t tiles;
     RAD_OnNetReserveUnit_t reserve_unit;
+    RAD_OnNetUnitDeployed_t unit_deployed;
+    RAD_OnNetUnit_t unit;
 } RAD_NetEventsGameCallback_t;
 
 
@@ -113,6 +146,9 @@ void RAD_DestroyNetEventManager(RAD_NetEventManager_t **manager);
 
 void RAD_NetEventManagerSubscribeToCommandResponseEvents(RAD_NetEventManager_t *manager, RAD_NetEventsCommandResponseCallback_t callbacks);
 void RAD_NetEventManagerPublishCommandResponse(RAD_NetEventManager_t *manager, const RAD_NetCommandResponse_t *response);
+void RAD_NetEventManagerPublishDeployResponse(RAD_NetEventManager_t *manager, const RAD_NetDeployResponse_t *response);
+void RAD_NetEventManagerPublishEndTurnResponse(RAD_NetEventManager_t *manager, const RAD_NetEndTurnResponse_t *response);
+void RAD_NetEventManagerPublishAttackResponse(RAD_NetEventManager_t *manager, const RAD_NetAttackResponse_t *response);
 
 void RAD_NetEventManagerSubscribeToGameEvents(RAD_NetEventManager_t *manager, RAD_NetEventsGameCallback_t callbacks);
 void RAD_NetEventManagerPublishGameCreated(RAD_NetEventManager_t *manager);
@@ -122,6 +158,8 @@ void RAD_NetEventManagerPublishPlayers(RAD_NetEventManager_t *manager, const uin
 void RAD_NetEventManagerPublishWorldSize(RAD_NetEventManager_t *manager, uint32_t width, uint32_t height);
 void RAD_NetEventManagerPublishTiles(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 void RAD_NetEventManagerPublishReserveUnit(RAD_NetEventManager_t *manager, const RAD_NetReserveUnit_t *unit);
+void RAD_NetEventManagerPublishUnitDeployed(RAD_NetEventManager_t *manager, const RAD_NetUnitDeployed_t *deployed);
+void RAD_NetEventManagerPublishUnit(RAD_NetEventManager_t *manager, const RAD_NetUnit_t *unit);
 
 void RAD_NetEventManagerSubscribeToTileEvents(RAD_NetEventManager_t *manager, RAD_NetEventsTileCallback_t callbacks);
 void RAD_NetEventManagerPublishTileCreated(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tile);

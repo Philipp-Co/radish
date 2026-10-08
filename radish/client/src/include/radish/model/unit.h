@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <radish/io/net_types.h>
 #include <radish/model/events/observable.h>
 
 ///
@@ -14,7 +13,7 @@
 /// es aus dem, was der Server schickt; Regeln wendet es keine an.
 ///
 /// **Eine Einheit besteht aus Mitgliedern.** Auf dem Feld steht die Einheit, mit
-/// ihrer Id (RAD_NetEntityId_t, im Tile als entity_id); ihre Mitglieder haben
+/// ihrer Id (RAD_ClientUnitId_t, im Tile als entity_id); ihre Mitglieder haben
 /// keine eigene Id und stehen nur in ihr. Derselbe Begriff wie im Spiel
 /// (RAD_UnitMember_t, game/model/unit/unit.h); das Backend nennt ein Mitglied
 /// "Entitaet".
@@ -24,12 +23,35 @@
 ///
 /// **Beobachtbar** (model/events/observable.h): eine Einheit meldet "changed",
 /// sobald sich an ihr etwas aendert -- auch an einem ihrer Mitglieder, die selbst
-/// nicht beobachtbar sind.
+/// nicht beobachtbar sind --, und "removed", wenn der, der sie haelt, sie
+/// entfernt (RAD_ClientUnitRemove).
 ///
 /// **Nicht per Zuweisung ersetzen.** "*a = *b" ueberschriebe die Beobachter von a
 /// mit denen von b und meldete nichts. Eine Einheit, die schon jemand beobachten
 /// kann, wird mit RAD_ClientUnitAssign ersetzt.
 ///
+/// **Unabhaengig von der Verbindung.** Das Modell hat eigene Typen und Grenzen;
+/// sie entsprechen denen in io/net_types.h, uebersetzt wird beim Befuellen.
+///
+
+///
+/// Die Id einer Einheit. Ids sind nicht negativ, die 0 eingeschlossen;
+/// RAD_CLIENT_UNIT_ID_NONE heisst: keine Einheit.
+///
+typedef int32_t RAD_ClientUnitId_t;
+#define RAD_CLIENT_UNIT_ID_NONE ((RAD_ClientUnitId_t)-1)
+
+///
+/// Die oeffentliche Id eines Spielers; RAD_CLIENT_PLAYER_NONE heisst: niemand.
+///
+typedef uint64_t RAD_ClientPlayerId_t;
+#define RAD_CLIENT_PLAYER_NONE ((RAD_ClientPlayerId_t)0)
+
+///
+/// Platz fuer einen Namen (Einheit, Profil, Waffe), mit abschliessender Null --
+/// wie RAD_UNIT_NAME_MAX im Spiel. Ein laengerer wird gekuerzt.
+///
+#define RAD_CLIENT_UNIT_NAME_MAX 32
 
 ///
 /// Mitglieder einer Einheit, wie RAD_UNIT_MAX_MEMBERS im Spiel.
@@ -43,7 +65,7 @@
 
 typedef struct
 {
-    char name[RAD_NET_UNIT_NAME_MAX];
+    char name[RAD_CLIENT_UNIT_NAME_MAX];
     int16_t shots;
     int16_t strength;
 
@@ -60,7 +82,7 @@ typedef struct
 ///
 typedef struct
 {
-    char profile[RAD_NET_UNIT_NAME_MAX];
+    char profile[RAD_CLIENT_UNIT_NAME_MAX];
 
     /// Lebenspunkte: was es noch hat und was es hoechstens hat.
     int16_t health;
@@ -76,16 +98,26 @@ typedef struct
 
 typedef struct
 {
-    RAD_NetEntityId_t id;
+    RAD_ClientUnitId_t id;
 
-    /// Oeffentliche Spieler-Id des Besitzers, RAD_NET_USER_NONE fuer herrenlos.
-    RAD_NetUserId_t owner;
+    /// Oeffentliche Spieler-Id des Besitzers, RAD_CLIENT_PLAYER_NONE fuer herrenlos.
+    RAD_ClientPlayerId_t owner;
 
     /// Der Einheitentyp, z.B. "Trupp".
-    char name[RAD_NET_UNIT_NAME_MAX];
+    char name[RAD_CLIENT_UNIT_NAME_MAX];
 
     /// Bewegungsreichweite in Feldern.
     int16_t movement;
+
+    ///
+    /// Was sie im laufenden Zug schon getan hat, wie der Server es meldet: in
+    /// diesem Zug aufgestellt -- dann darf sie weder ziehen noch angreifen --,
+    /// gezogen, angegriffen; beides darf sie je Zug einmal. Mit jedem Zugwechsel
+    /// schickt der Server sie wieder ohne.
+    ///
+    bool deployed;
+    bool moved;
+    bool attacked;
 
     RAD_ClientMember_t members[RAD_CLIENT_UNIT_MEMBERS_MAX];
     uint32_t number_of_members;
@@ -96,7 +128,8 @@ typedef struct
 
 typedef enum
 {
-    RAD_CLIENT_UNIT_EVENT_CHANGED = 0
+    RAD_CLIENT_UNIT_EVENT_CHANGED = 0,
+    RAD_CLIENT_UNIT_EVENT_REMOVED
 } RAD_ClientUnitEvent_t;
 
 ///
@@ -104,10 +137,14 @@ typedef enum
 /// gilt, solange sie an ihrem Platz steht. Ein NULL-Callback heisst: dieses
 /// Ereignis nicht.
 ///
+/// Nach "removed" ist der Beobachter abgemeldet -- die Einheit gibt es dort
+/// nicht mehr.
+///
 typedef struct
 {
     void *user_argument;
     void (*changed)(void *user_argument, const RAD_ClientUnit_t *unit);
+    void (*removed)(void *user_argument, const RAD_ClientUnit_t *unit);
 } RAD_ClientUnitObserver_t;
 
 ///
@@ -116,7 +153,7 @@ typedef struct
 /// nicht fuer eine, die schon jemand beobachtet. Ein zu langer Name wird
 /// gekuerzt -- der Client zeigt ihn nur an --, NULL gilt als leerer Name.
 ///
-void RAD_ClientUnitInit(RAD_ClientUnit_t *unit, RAD_NetEntityId_t id, RAD_NetUserId_t owner, const char *name);
+void RAD_ClientUnitInit(RAD_ClientUnit_t *unit, RAD_ClientUnitId_t id, RAD_ClientPlayerId_t owner, const char *name);
 
 ///
 /// Uebernimmt alles aus "source" ausser dessen Beobachtern: die von "unit"
@@ -136,6 +173,13 @@ bool RAD_ClientUnitAddMember(RAD_ClientUnit_t *unit, const RAD_ClientMember_t *m
 /// Entfernt alle Mitglieder und meldet "changed".
 ///
 void RAD_ClientUnitClearMembers(RAD_ClientUnit_t *unit);
+
+///
+/// Meldet "removed" und danach alle Beobachter ab. Fuer den, der die Einheit
+/// haelt, wenn er sie entfernt (RAD_ClientUnitRepositoryRemove); an den Daten
+/// aendert es nichts.
+///
+void RAD_ClientUnitRemove(RAD_ClientUnit_t *unit);
 
 ///
 /// Meldet "observer" an der Einheit an, bzw. den mit "user_argument" ab

@@ -180,6 +180,24 @@ struct RAD_Unit
         uint32_t burning: 1;
         uint32_t poisoned: 1;
     } conditions;
+
+    ///
+    /// Was die Einheit im laufenden Zug schon getan hat. Eine Einheit darf je
+    /// Zug ihres Besitzers einmal ziehen und einmal angreifen, unabhaengig
+    /// voneinander; wurde sie in diesem Zug aufgestellt, darf sie keins von
+    /// beiden (RAD_GameCheckMoveUnit, RAD_GameCheckAttack).
+    ///
+    /// Gesetzt wird beim Ausfuehren des Kommandos -- "moved" nur, wenn sie
+    /// wenigstens ein Feld weit gekommen ist --, zurueckgesetzt fuer alle
+    /// Einheiten mit jedem Zugwechsel (RAD_GameEndTurn). Eine neue Einheit
+    /// faengt mit allem frei an.
+    ///
+    struct
+    {
+        uint32_t deployed: 1;
+        uint32_t moved: 1;
+        uint32_t attacked: 1;
+    } turn;
 };
 
 ///

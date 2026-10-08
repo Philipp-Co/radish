@@ -351,3 +351,146 @@ void test_move_kommando_fuer_einheit_in_reserve_bewegt_nicht(void)
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
 }
+
+///
+/// **Was die Einheit im Zug schon getan hat** (RAD_Unit_t.turn): je Zug zieht
+/// sie einmal, im Zug ihres Aufstellens gar nicht, und mit dem Zugwechsel ist
+/// es vergessen. Ein Spieler genuegt -- gibt er ab, ist er wieder dran, und es
+/// ist ein neuer Zug (RAD_GameEndTurn).
+///
+
+static const RAD_UserId_t ziehender = (RAD_UserId_t)0x4711;
+
+/// Ein Weg aus zwei Feldern, von (x, y) einen Schritt nach rechts.
+static RAD_Path_t ein_schritt_nach_rechts(int16_t x, int16_t y)
+{
+    return (RAD_Path_t){
+        .steps_to = { { .x = x, .y = y }, { .x = (int16_t)(x + 1), .y = y } },
+        .number_of_steps = 2
+    };
+}
+
+static void ziehe(RAD_Game_t *game, RAD_UnitId_t figur, const RAD_Path_t *weg)
+{
+    RAD_Command_t command = {0};
+    TEST_ASSERT_TRUE(RAD_GameMoveUnit(game, figur, weg, &command));
+    RAD_GameExecuteCommand(game, &command);
+}
+
+///
+/// **Eine gerade aufgestellte Einheit zieht nicht** -- erst im naechsten Zug.
+///
+void test_move_kommando_frisch_aufgestellt_zieht_nicht(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
+
+    RAD_Unit_t values = { .number_of_members = 1 };
+    RAD_UnitId_t figur = RAD_UNIT_NONE;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, ziehender, &values, &figur));
+
+    RAD_Command_t deploy = {0};
+    TEST_ASSERT_TRUE(RAD_GameDeployUnit(game, figur, 3, 4, &deploy));
+    RAD_GameExecuteCommand(game, &deploy);
+    pruefe_figur_steht_auf(game, figur, 3, 4);
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_UNIT_JUST_DEPLOYED, RAD_GameCheckMoveUnit(game, figur));
+    TEST_ASSERT_FALSE(RAD_GameUnitCanMove(game, figur));
+
+    const RAD_Path_t weg = ein_schritt_nach_rechts(3, 4);
+    ziehe(game, figur, &weg);
+    pruefe_figur_steht_auf(game, figur, 3, 4);
+
+    // Im naechsten Zug darf sie.
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, ziehender));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckMoveUnit(game, figur));
+
+    ziehe(game, figur, &weg);
+    pruefe_figur_steht_auf(game, figur, 4, 4);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Einmal je Zug:** der zweite Zug im selben Zug wird abgelehnt, nach dem
+/// Zugwechsel geht es wieder.
+///
+void test_move_kommando_nur_einmal_je_zug(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
+
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    TEST_ASSERT_TRUE(RAD_GameUnitCanMove(game, figur));
+
+    const RAD_Path_t erster = ein_schritt_nach_rechts(2, 2);
+    ziehe(game, figur, &erster);
+    pruefe_figur_steht_auf(game, figur, 3, 2);
+    TEST_ASSERT_TRUE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_UNIT_ALREADY_MOVED, RAD_GameCheckMoveUnit(game, figur));
+
+    const RAD_Path_t zweiter = ein_schritt_nach_rechts(3, 2);
+    ziehe(game, figur, &zweiter);
+    pruefe_figur_steht_auf(game, figur, 3, 2);
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, ziehender));
+    TEST_ASSERT_FALSE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+
+    ziehe(game, figur, &zweiter);
+    pruefe_figur_steht_auf(game, figur, 4, 2);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Kam sie nicht los, hat sie nicht gezogen:** ist schon das erste Feld
+/// besetzt, darf sie es noch einmal versuchen.
+///
+void test_move_kommando_am_ersten_feld_blockiert_zaehlt_nicht(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+
+    const RAD_Path_t weg = ein_schritt_nach_rechts(2, 2);
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 2, 2);
+    TEST_ASSERT_FALSE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckMoveUnit(game, figur));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Kam sie ein Stueck weit, hat sie gezogen** -- auch wenn der Weg danach
+/// besetzt war.
+///
+void test_move_kommando_teilweise_blockiert_zaehlt(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 4, 2);
+
+    const RAD_Path_t weg = {
+        .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 }, { .x = 4, .y = 2 } },
+        .number_of_steps = 3
+    };
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 3, 2);
+    TEST_ASSERT_TRUE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_UNIT_ALREADY_MOVED, RAD_GameCheckMoveUnit(game, figur));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}

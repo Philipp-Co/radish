@@ -46,20 +46,87 @@ message NetTilesEvent
     repeated NetTile tiles = 1;
 }
 
-// Eine Einheit, wie der Client sie fuer die Reserve braucht: wer sie ist, wem sie
-// gehoert und was sie ist. Ihre Werte (Bewegung, Mitglieder mit Waffen) kommen
-// spaeter dazu, wenn der Client sie anzeigt.
+// Eine Waffe eines Mitglieds (RAD_Weapon_t). weapon_class wie RAD_WeaponClass_t
+// (0 standard, 1 heavy, 2 super heavy). Alle Werte sind nie negativ; 0 wird in
+// proto3 gar nicht geschrieben.
+message NetWeapon
+{
+    string name = 1;
+    uint32 weapon_class = 2;
+    uint32 shots = 3;
+    uint32 strength = 4;
+    uint32 min_range = 5;
+    uint32 max_range = 6;
+    uint32 penetration = 7;
+}
+
+// Ein Mitglied einer Einheit (RAD_UnitMember_t), mit seinem Profil und seinen
+// Waffen.
+message NetUnitMember
+{
+    string profile = 1;
+    uint32 health = 2;
+    uint32 armor = 3;
+    uint32 strength = 4;
+    uint32 accuracy = 5;
+    repeated NetWeapon weapons = 6;
+}
+
+// Eine Einheit, vollstaendig: aus dieser einen Nachricht laesst sie sich ganz
+// rekonstruieren -- wer sie ist, wem sie gehoert, ihre Werte und alle Mitglieder
+// mit ihren Waffen. Wo sie steht, ist nicht Teil davon.
+//
+// **Sie muss in einen Ringpuffer-Platz passen** (1024 Byte fuer die ganze
+// NetServerMessage, ZUC_RING_BUFFER_SLOT_SIZE). Eine volle Einheit mit langen
+// Namen passt nicht; dass das nicht vorkommt, stellt der Server sicher, wenn er
+// Einheiten aufnimmt.
+//
+// number_of_members ist neben "members" ueberzaehlig und faellt spaeter weg.
 message NetUnit
 {
     uint32 unit_id = 1;
     uint64 owner_id = 2;
     string name = 3;
     uint32 number_of_members = 4;
+    uint32 movement = 5;
+    uint32 transport_capacity = 6;
+    bool can_capture = 7;
+    repeated NetUnitMember members = 8;
+
+    // Was die Einheit im laufenden Zug schon getan hat (RAD_Unit_t.turn im
+    // Spiel): in diesem Zug aufgestellt, gezogen, angegriffen. Aufgestellt darf
+    // sie weder ziehen noch angreifen, sonst je einmal. Mit jedem Zugwechsel
+    // wieder false -- der Server schickt dann alle Einheiten neu.
+    bool deployed = 9;
+    bool moved = 10;
+    bool attacked = 11;
 }
 
 // Eine Einheit in der Reserve, als Antwort auf NetDiscoverReserveRequest
 // (discover.proto) -- eine Nachricht je Einheit.
 message NetReserveUnitEvent
+{
+    NetUnit unit = 1;
+}
+
+// Eine Einheit steht jetzt auf dem Feld (x, y), wo vorher keine stand -- aus der
+// Reserve aufgestellt (RAD_WorldDeployUnit) oder vom Spiel direkt angelegt
+// (RAD_WorldSpawnUnit); fuer einen Client ist beides dasselbe. Der Server schickt
+// es an alle, sobald es geschehen ist, noch vor der Antwort auf das Kommando.
+//
+// Die ganze Einheit und nicht nur ihre Id: wer die Reserve nicht abgefragt hat,
+// kennt sie sonst nicht.
+message NetUnitDeployedEvent
+{
+    NetUnit unit = 1;
+    uint32 x = 2;
+    uint32 y = 3;
+}
+
+// Eine Einheit, die einem Spieler gehoert, als Antwort auf
+// NetDiscoverUnitsRequest (discover.proto) -- eine Nachricht je Einheit. Ohne
+// Feld: wo sie steht, ist nicht Teil der Antwort.
+message NetUnitEvent
 {
     NetUnit unit = 1;
 }
@@ -75,5 +142,7 @@ message NetGameEvent
         NetWorldSizeEvent world_size = 5;
         NetTilesEvent tiles = 6;
         NetReserveUnitEvent reserve_unit = 7;
+        NetUnitDeployedEvent unit_deployed = 8;
+        NetUnitEvent unit = 9;
     }
 }

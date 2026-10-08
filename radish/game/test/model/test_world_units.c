@@ -108,6 +108,7 @@ static RAD_Unit_t trupp(void)
 typedef struct
 {
     RAD_EventManager_t *events;
+    RAD_UnitPool_t *units;
     RAD_World_t world;
 } RAD_WeltImTest_t;
 
@@ -118,12 +119,16 @@ static void aufbauen(void)
     welt.events = RAD_CreateEventManager();
     TEST_ASSERT_NOT_NULL(welt.events);
 
-    RAD_CreateWorld(&welt.world, welt.events);
+    welt.units = RAD_CreateUnitPool();
+    TEST_ASSERT_NOT_NULL(welt.units);
+
+    RAD_CreateWorld(&welt.world, welt.events, welt.units);
     RAD_InitWorld(&welt.world);
 }
 
 static void abbauen(void)
 {
+    RAD_DestroyUnitPool(&welt.units);
     RAD_DestroyEventManager(&welt.events);
 }
 
@@ -162,7 +167,7 @@ void test_world_reserve_einheit_steht_auf_keinem_feld(void)
 
     // Dem Spiel bekannt, auf dem Feld nicht: kein Tile zeigt auf sie, und gemeldet
     // wurde nichts.
-    TEST_ASSERT_EQUAL_INT(1, welt.world.number_of_units);
+    TEST_ASSERT_EQUAL_INT(1, RAD_UnitPoolNumberOfUnits(welt.units));
     for(int32_t y=0;y < welt.world.height; ++y)
     {
         for(int32_t x=0;x < welt.world.width; ++x)
@@ -201,7 +206,7 @@ void test_world_reserve_lehnt_unhaltbare_werte_ab(void)
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldAddReserveUnit(&welt.world, &name_ohne_ende, RAD_USER_NONE));
 
     // Abgelehnt heisst: kein Slot belegt.
-    TEST_ASSERT_EQUAL_INT(0, welt.world.number_of_units);
+    TEST_ASSERT_EQUAL_INT(0, RAD_UnitPoolNumberOfUnits(welt.units));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
 
     abbauen();
@@ -221,7 +226,7 @@ void test_world_reserve_lehnt_ab_wenn_der_pool_voll_ist(void)
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE));
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 0, 0));
 
-    TEST_ASSERT_EQUAL_INT(RAD_MAX_UNITS, welt.world.number_of_units);
+    TEST_ASSERT_EQUAL_INT(RAD_MAX_UNITS, RAD_UnitPoolNumberOfUnits(welt.units));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
 
     abbauen();
@@ -371,7 +376,7 @@ void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void)
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.destroyed);
 
     // Beide Slots bleiben belegt; die naechste Einheit bekommt eine neue Id.
-    TEST_ASSERT_EQUAL_INT(2, welt.world.number_of_units);
+    TEST_ASSERT_EQUAL_INT(2, RAD_UnitPoolNumberOfUnits(welt.units));
     const RAD_UnitId_t neu = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 2, 3);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, neu);
     TEST_ASSERT_NOT_EQUAL(auf_dem_feld, neu);

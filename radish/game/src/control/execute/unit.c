@@ -48,39 +48,26 @@ bool RAD_GameDestroyUnit(RAD_Game_t *game, RAD_UnitId_t id, RAD_Command_t *outpu
     return true;
 }
 
-bool RAD_GameShoot(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output)
+bool RAD_GameAttack(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output)
 {
-    output->header.sequence = game->current_sequence_number;
-    output->header.type = RAD_COMMAND_TYPE_NONE;
-    output->header.user = game->local_user;
-    output->command.shoot.unit = RAD_COMMAND_TYPE_NONE;
-    output->command.shoot.weapon = 0;
-    output->command.shoot.x = 0;
-    output->command.shoot.y = 0;
-
-    if((game == NULL) || (output == NULL))
+    // Wie beim Aufstellen: erst pruefen, dann schreiben.
+    if((game == NULL) || (output == NULL) || (id < 0))
     {
         return false;
     }
-    
-    output->header.type = RAD_COMMAND_TYPE_SHOOT;
+
+    output->header.type = RAD_COMMAND_TYPE_ATTACK;
     output->header.sequence = game->current_sequence_number++;
     output->header.user = game->local_user;
 
-    output->command.shoot.unit = id;
-    output->command.shoot.x = x;
-    output->command.shoot.y = y;
+    output->command.attack.unit = id;
+    output->command.attack.x = x;
+    output->command.attack.y = y;
     return true;
 }
 
 bool RAD_GameMoveUnit(RAD_Game_t *game, RAD_UnitId_t id, const RAD_Path_t *path, RAD_Command_t *output)
 {
-    output->header.sequence = game->current_sequence_number;
-    output->header.type = RAD_COMMAND_TYPE_NONE;
-    output->header.user = game->local_user;
-    output->command.move_unit.unit = RAD_UNIT_NONE;
-    output->command.move_unit.path.number_of_steps = 0;
-
     if((game == NULL) || (path == NULL) || (output == NULL))
     {
         return false;

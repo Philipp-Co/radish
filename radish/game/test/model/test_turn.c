@@ -11,5 +11,4 @@ void test_turn_faengt_leer_an(void)
 
     TEST_ASSERT_EQUAL_INT(0, RAD_TurnNumberOfUsers(&turn));
     TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_TurnCurrentUser(&turn));
-    TEST_ASSERT_EQUAL_INT(0, RAD_TurnActionPoints(&turn));
 }

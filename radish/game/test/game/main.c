@@ -18,6 +18,17 @@ void test_move_kommando_bewegt_die_figur(void);
 void test_move_kommando_auf_besetztes_feld_bewegt_nicht(void);
 void test_move_kommando_ueber_den_rand_bewegt_nicht(void);
 void test_move_kommando_fuer_einheit_in_reserve_bewegt_nicht(void);
+void test_move_kommando_frisch_aufgestellt_zieht_nicht(void);
+void test_move_kommando_nur_einmal_je_zug(void);
+void test_move_kommando_am_ersten_feld_blockiert_zaehlt_nicht(void);
+void test_move_kommando_teilweise_blockiert_zaehlt(void);
+
+void test_attack_fabrik_fuellt_das_kommando(void);
+void test_attack_frisch_aufgestellt_greift_nicht_an(void);
+void test_attack_nur_einmal_je_zug(void);
+void test_attack_und_move_sind_unabhaengig(void);
+void test_attack_ohne_gueltiges_ziel_oder_figur_zaehlt_nicht(void);
+void test_attack_prueft_die_reichweite(void);
 
 void test_view_zaehlt_alle_tiles(void);
 void test_view_liefert_jedes_tile_mit_seiner_position(void);
@@ -54,6 +65,21 @@ void test_deploy_regel_nennt_jeden_grund(void);
 void test_deploy_kommando_stellt_die_einheit_auf(void);
 void test_deploy_kommando_fuer_fremde_einheit_aendert_nichts(void);
 
+void test_players_beitritt_legt_einen_spieler_an(void);
+void test_players_ohne_benutzer_kein_spieler(void);
+void test_players_austritt_zerstoert_nur_seinen_spieler(void);
+void test_players_volles_spiel_legt_keinen_an(void);
+void test_players_neue_einheit_steht_in_liste_und_reserve(void);
+void test_players_aufstellen_verlaesst_die_reserve(void);
+void test_players_zuordnen_und_loesen(void);
+void test_players_wiederkehr_findet_seine_einheiten(void);
+void test_players_end_turn_kommando_gibt_den_zug_weiter(void);
+
+void test_zugwechsel_erster_beitritt_meldet_ihn(void);
+void test_zugwechsel_abgeben_meldet_den_naechsten(void);
+void test_zugwechsel_allein_abgeben_meldet_ihn_erneut(void);
+void test_zugwechsel_austritt_meldet_nur_eine_aenderung(void);
+
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -70,6 +96,17 @@ int main(void)
     RUN_TEST(test_move_kommando_auf_besetztes_feld_bewegt_nicht);
     RUN_TEST(test_move_kommando_ueber_den_rand_bewegt_nicht);
     RUN_TEST(test_move_kommando_fuer_einheit_in_reserve_bewegt_nicht);
+    RUN_TEST(test_move_kommando_frisch_aufgestellt_zieht_nicht);
+    RUN_TEST(test_move_kommando_nur_einmal_je_zug);
+    RUN_TEST(test_move_kommando_am_ersten_feld_blockiert_zaehlt_nicht);
+    RUN_TEST(test_move_kommando_teilweise_blockiert_zaehlt);
+
+    RUN_TEST(test_attack_fabrik_fuellt_das_kommando);
+    RUN_TEST(test_attack_frisch_aufgestellt_greift_nicht_an);
+    RUN_TEST(test_attack_nur_einmal_je_zug);
+    RUN_TEST(test_attack_und_move_sind_unabhaengig);
+    RUN_TEST(test_attack_ohne_gueltiges_ziel_oder_figur_zaehlt_nicht);
+    RUN_TEST(test_attack_prueft_die_reichweite);
 
     RUN_TEST(test_view_zaehlt_alle_tiles);
     RUN_TEST(test_view_liefert_jedes_tile_mit_seiner_position);
@@ -105,6 +142,21 @@ int main(void)
     RUN_TEST(test_deploy_regel_nennt_jeden_grund);
     RUN_TEST(test_deploy_kommando_stellt_die_einheit_auf);
     RUN_TEST(test_deploy_kommando_fuer_fremde_einheit_aendert_nichts);
+
+    RUN_TEST(test_players_beitritt_legt_einen_spieler_an);
+    RUN_TEST(test_players_ohne_benutzer_kein_spieler);
+    RUN_TEST(test_players_austritt_zerstoert_nur_seinen_spieler);
+    RUN_TEST(test_players_volles_spiel_legt_keinen_an);
+    RUN_TEST(test_players_neue_einheit_steht_in_liste_und_reserve);
+    RUN_TEST(test_players_aufstellen_verlaesst_die_reserve);
+    RUN_TEST(test_players_zuordnen_und_loesen);
+    RUN_TEST(test_players_wiederkehr_findet_seine_einheiten);
+    RUN_TEST(test_players_end_turn_kommando_gibt_den_zug_weiter);
+
+    RUN_TEST(test_zugwechsel_erster_beitritt_meldet_ihn);
+    RUN_TEST(test_zugwechsel_abgeben_meldet_den_naechsten);
+    RUN_TEST(test_zugwechsel_allein_abgeben_meldet_ihn_erneut);
+    RUN_TEST(test_zugwechsel_austritt_meldet_nur_eine_aenderung);
 
     return UNITY_END();
 }

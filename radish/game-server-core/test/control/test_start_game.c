@@ -4,23 +4,24 @@
 #include <radish/game/game.h>
 #include <radish/game/model/unit/unit.h>
 #include <radish/server/control/execute.h>
-#include <radish/server/control/game_start.h>
+#include <radish/game/control/start_game.h>
 
 ///
-/// Der Spielstart im Spiel (RAD_ControlStartGame, control/execute.h): beide
+/// Der Spielstart im Spiel (RAD_ControlStartGame und RAD_ControlStartGameFromFile,
+/// control/execute.h): beide
 /// Spieler spielen mit, ihre Armeen stehen in der Reserve -- und das genau einmal.
 ///
 /// Der Spielstart wird hier von Hand gebaut und nicht aus einer Datei gelesen: was
-/// der Leser kann, prueft test_game_start.c, hier geht es um das, was danach im
+/// der Leser kann, prueft game/test/control/start_game/test_parse.c, hier geht es um das, was danach im
 /// Spiel steht.
 ///
 
 static RAD_EventManager_t *events;
 static RAD_Game_t *game;
 static RAD_Control_t control;
-static RAD_ControlGameStart_t *start;
+static RAD_GameStart_t *start;
 
-static void einheit(RAD_ControlGameStartPlayer_t *player, const char *name)
+static void einheit(RAD_GameStartPlayer_t *player, const char *name)
 {
     RAD_Unit_t *unit = &player->units[player->number_of_units++];
     memset(unit, 0, sizeof(*unit));
@@ -39,7 +40,7 @@ static void aufbauen(void)
     control = RAD_CreateControl(game);
     TEST_ASSERT_NOT_NULL(control);
 
-    start = RAD_ControlCreateGameStart();
+    start = RAD_CreateGameStart();
     TEST_ASSERT_NOT_NULL(start);
 
     strcpy(start->players[0].identifier, "aB3xK9pQ");
@@ -52,7 +53,7 @@ static void aufbauen(void)
 
 static void abbauen(void)
 {
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
     RAD_DestroyControl(&control);
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -64,8 +65,8 @@ void test_spielstart_traegt_spieler_und_armeen_ein(void)
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_ControlStartGame(control, start));
 
-    const RAD_UserId_t host = RAD_ControlUserIdFromIdentifier("aB3xK9pQ");
-    const RAD_UserId_t zweiter = RAD_ControlUserIdFromIdentifier("Zz1Yy2Xx");
+    const RAD_UserId_t host = RAD_UserIdFromIdentifier("aB3xK9pQ");
+    const RAD_UserId_t zweiter = RAD_UserIdFromIdentifier("Zz1Yy2Xx");
 
     // Beide spielen mit, der Host zuerst -- und damit ist er auch dran.
     TEST_ASSERT_EQUAL_INT(2, RAD_GameNumberOfPlayers(game));
@@ -120,6 +121,50 @@ void test_spielstart_mit_ungueltiger_kennung_aendert_nichts(void)
     TEST_ASSERT_EQUAL_INT(0, RAD_GameNumberOfUnits(game));
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_UNIT, RAD_ControlStartGame(control, NULL));
+
+    abbauen();
+}
+
+///
+/// Der Weg des Servers nach SIGUSR1 (main.c): die Datei lesen und das Spiel
+/// danach einrichten, in einem Aufruf. Gelesen wird das gueltige Beispiel der
+/// Schema-Tests -- dieselbe Datei, die check-jsonschema prueft.
+///
+void test_spielstart_aus_datei_ueber_die_steuerung(void)
+{
+    aufbauen();
+    const char *path = RAD_SCHEMA_EXAMPLES_DIR "/spielstart/valid/zwei_spieler.json";
+    RAD_GameResult_t grund = RAD_GAME_ERROR_FULL;
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, RAD_ControlStartGameFromFile(control, path, &grund));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, grund);
+    TEST_ASSERT_EQUAL_INT(2, RAD_ControlNumberOfPlayers(control));
+
+    // Was der Server danach an die Clients schickt, sieht er ueber die Steuerung:
+    // jede Einheit in der Reserve, mit ihrem Besitzer.
+    const RAD_UserId_t host = RAD_ControlPlayerAt(control, 0);
+    TEST_ASSERT_EQUAL_INT(2, RAD_ControlNumberOfUserUnits(control, host));
+    RAD_Unit_t unit;
+    TEST_ASSERT_TRUE(RAD_ControlUnitAt(control, 0, &unit));
+    TEST_ASSERT_EQUAL_STRING("Trupp", unit.name);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, unit.state);
+    TEST_ASSERT_EQUAL_UINT64(host, unit.owner);
+
+    // Dasselbe Signal noch einmal: die Datei ist in Ordnung, das Spiel lehnt ab.
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_REJECTED, RAD_ControlStartGameFromFile(control, path, &grund));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_STARTED, grund);
+
+    abbauen();
+}
+
+void test_spielstart_ohne_datei_ueber_die_steuerung(void)
+{
+    aufbauen();
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_NOT_FOUND,
+        RAD_ControlStartGameFromFile(control, "/gibt/es/nicht/spielstart.json", NULL));
+    TEST_ASSERT_EQUAL_INT(0, RAD_ControlNumberOfPlayers(control));
+    TEST_ASSERT_EQUAL_INT(0, RAD_ControlNumberOfUnits(control));
 
     abbauen();
 }

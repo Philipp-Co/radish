@@ -33,6 +33,25 @@ void test_world_nur_einheiten_auf_dem_feld_ziehen(void);
 void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void);
 void test_world_konsistenz_kennt_die_zustaende(void);
 
+void test_unit_pool_faengt_leer_an(void);
+void test_unit_pool_neue_einheit_steht_in_der_reserve(void);
+void test_unit_pool_entfernen_gibt_den_platz_frei_aber_nicht_die_id(void);
+void test_unit_pool_entfernen_weist_fremde_zeiger_ab(void);
+void test_unit_pool_lehnt_ab_wenn_er_voll_ist(void);
+
+void test_reserve_faengt_leer_an(void);
+void test_reserve_haengt_hinten_an_und_rueckt_nach(void);
+void test_reserve_aendert_die_einheit_nicht(void);
+void test_reserve_doppelt_und_ungueltig(void);
+void test_reserven_sind_voneinander_unabhaengig(void);
+void test_reserve_lehnt_ab_wenn_sie_voll_ist(void);
+
+void test_player_faengt_leer_an(void);
+void test_player_ohne_benutzer_gibt_es_nicht(void);
+void test_player_einheitenliste(void);
+void test_player_entfernen_nimmt_auch_aus_der_reserve(void);
+void test_player_lehnt_ab_wenn_die_liste_voll_ist(void);
+
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -63,6 +82,25 @@ int main(void)
     RUN_TEST(test_world_nur_einheiten_auf_dem_feld_ziehen);
     RUN_TEST(test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu);
     RUN_TEST(test_world_konsistenz_kennt_die_zustaende);
+
+    RUN_TEST(test_unit_pool_faengt_leer_an);
+    RUN_TEST(test_unit_pool_neue_einheit_steht_in_der_reserve);
+    RUN_TEST(test_unit_pool_entfernen_gibt_den_platz_frei_aber_nicht_die_id);
+    RUN_TEST(test_unit_pool_entfernen_weist_fremde_zeiger_ab);
+    RUN_TEST(test_unit_pool_lehnt_ab_wenn_er_voll_ist);
+
+    RUN_TEST(test_reserve_faengt_leer_an);
+    RUN_TEST(test_reserve_haengt_hinten_an_und_rueckt_nach);
+    RUN_TEST(test_reserve_aendert_die_einheit_nicht);
+    RUN_TEST(test_reserve_doppelt_und_ungueltig);
+    RUN_TEST(test_reserven_sind_voneinander_unabhaengig);
+    RUN_TEST(test_reserve_lehnt_ab_wenn_sie_voll_ist);
+
+    RUN_TEST(test_player_faengt_leer_an);
+    RUN_TEST(test_player_ohne_benutzer_gibt_es_nicht);
+    RUN_TEST(test_player_einheitenliste);
+    RUN_TEST(test_player_entfernen_nimmt_auch_aus_der_reserve);
+    RUN_TEST(test_player_lehnt_ab_wenn_die_liste_voll_ist);
 
     return UNITY_END();
 }

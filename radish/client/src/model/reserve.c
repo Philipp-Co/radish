@@ -2,9 +2,9 @@
 
 #include <stddef.h>
 
-typedef void (*RAD_ClientReserveCallback_t)(void *user_argument, const RAD_ClientReserve_t *reserve, const RAD_ClientUnit_t *unit);
+typedef void (*RAD_ClientReserveCallback_t)(void *user_argument, const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
 
-static void RAD_ClientReserveNotify(const RAD_ClientReserve_t *reserve, RAD_ClientReserveEvent_t event, const RAD_ClientUnit_t *unit)
+static void RAD_ClientReserveNotify(const RAD_ClientReserve_t *reserve, RAD_ClientReserveEvent_t event, RAD_ClientUnitId_t id)
 {
     // Eine Kopie: ein Beobachter darf sich im Callback an- und abmelden.
     const RAD_ModelObservable_t observable = reserve->observable;
@@ -15,46 +15,83 @@ static void RAD_ClientReserveNotify(const RAD_ClientReserve_t *reserve, RAD_Clie
         const RAD_ClientReserveCallback_t callback = (RAD_ClientReserveCallback_t)observer->callbacks[event];
         if(callback != NULL)
         {
-            callback(observer->user_argument, reserve, unit);
+            callback(observer->user_argument, reserve, id);
         }
     }
 }
 
-bool RAD_ClientReserveAddUnit(RAD_ClientReserve_t *reserve, const RAD_ClientUnit_t *unit)
+///
+/// Die Stelle von "id" in der Liste, oder -1.
+///
+static int32_t RAD_ClientReserveIndexOf(const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id)
 {
-    RAD_ClientUnit_t *existing = RAD_ClientReserveFindUnit(reserve, unit->id);
-    if(existing != NULL)
+    for(uint32_t i = 0; i < reserve->number_of_units; ++i)
     {
-        RAD_ClientUnitAssign(existing, unit);
-        RAD_ClientReserveNotify(reserve, RAD_CLIENT_RESERVE_EVENT_UNIT_CHANGED, existing);
+        if(reserve->ids[i] == id)
+        {
+            return (int32_t)i;
+        }
+    }
+    return -1;
+}
+
+bool RAD_ClientReserveAddUnit(RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id)
+{
+    if(id < 0)
+    {
+        return false;
+    }
+    if(RAD_ClientReserveIndexOf(reserve, id) >= 0)
+    {
         return true;
     }
-
     if(reserve->number_of_units >= RAD_CLIENT_RESERVE_UNITS_MAX)
     {
         return false;
     }
 
-    // Ein Platz wird nie wieder frei, der neue hat also noch keine Beobachter --
-    // Assign meldet niemandem etwas und uebernimmt keine fremden.
-    RAD_ClientUnit_t *added = &reserve->units[reserve->number_of_units];
-    RAD_ClientUnitAssign(added, unit);
+    reserve->ids[reserve->number_of_units] = id;
     ++reserve->number_of_units;
 
-    RAD_ClientReserveNotify(reserve, RAD_CLIENT_RESERVE_EVENT_UNIT_ADDED, added);
+    RAD_ClientReserveNotify(reserve, RAD_CLIENT_RESERVE_EVENT_UNIT_ADDED, id);
     return true;
 }
 
-RAD_ClientUnit_t* RAD_ClientReserveFindUnit(RAD_ClientReserve_t *reserve, RAD_NetEntityId_t id)
+bool RAD_ClientReserveRemoveUnit(RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id)
 {
-    for(uint32_t i = 0; i < reserve->number_of_units; ++i)
+    const int32_t index = RAD_ClientReserveIndexOf(reserve, id);
+    if(index < 0)
     {
-        if(reserve->units[i].id == id)
-        {
-            return &reserve->units[i];
-        }
+        return false;
     }
-    return NULL;
+
+    for(uint32_t i = (uint32_t)index + 1; i < reserve->number_of_units; ++i)
+    {
+        reserve->ids[i - 1] = reserve->ids[i];
+    }
+    --reserve->number_of_units;
+
+    RAD_ClientReserveNotify(reserve, RAD_CLIENT_RESERVE_EVENT_UNIT_REMOVED, id);
+    return true;
+}
+
+bool RAD_ClientReserveContains(const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id)
+{
+    return RAD_ClientReserveIndexOf(reserve, id) >= 0;
+}
+
+uint32_t RAD_ClientReserveNumberOfUnits(const RAD_ClientReserve_t *reserve)
+{
+    return reserve->number_of_units;
+}
+
+RAD_ClientUnitId_t RAD_ClientReserveUnitAt(const RAD_ClientReserve_t *reserve, size_t index)
+{
+    if(index >= reserve->number_of_units)
+    {
+        return RAD_CLIENT_UNIT_ID_NONE;
+    }
+    return reserve->ids[index];
 }
 
 bool RAD_ClientReserveSubscribe(const RAD_ClientReserve_t *reserve, RAD_ClientReserveObserver_t observer)
@@ -63,7 +100,7 @@ bool RAD_ClientReserveSubscribe(const RAD_ClientReserve_t *reserve, RAD_ClientRe
         .user_argument = observer.user_argument,
         .callbacks = {
             [RAD_CLIENT_RESERVE_EVENT_UNIT_ADDED] = (RAD_ModelCallback_t)observer.unit_added,
-            [RAD_CLIENT_RESERVE_EVENT_UNIT_CHANGED] = (RAD_ModelCallback_t)observer.unit_changed
+            [RAD_CLIENT_RESERVE_EVENT_UNIT_REMOVED] = (RAD_ModelCallback_t)observer.unit_removed
         }
     };
     return RAD_ModelObservableSubscribe(RAD_ModelObservableOf(&reserve->observable), &generic);

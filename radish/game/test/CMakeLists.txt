@@ -8,6 +8,7 @@
 #       model/            ->    model/             test_model
 #       control/events/   ->    control/events/    test_control_events
 #       control/execute/  ->    control/execute/   test_control_execute
+#       control/start_game.c ->  control/start_game/ test_control_start_game
 
 ###
 # Die Tests sehen den privaten Teil des Moduls.
@@ -47,6 +48,7 @@ add_subdirectory(game)
 add_subdirectory(model)
 add_subdirectory(control/events)
 add_subdirectory(control/execute)
+add_subdirectory(control/start_game)
 
 ###
 # Das Schema der Weltdefinition und die Welten, die danach geschrieben sind.

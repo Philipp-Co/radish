@@ -7,6 +7,7 @@
 #include <radish/game/model/model.h>
 #include <radish/game/model/tile/tile.h>
 #include <radish/game/model/unit/unit.h>
+#include <radish/game/model/unit_pool/unit_pool.h>
 #include <radish/game/control/events/event_manager.h>
 
 struct RAD_World
@@ -23,20 +24,20 @@ struct RAD_World
     int32_t height;
 
     ///
-    /// Jede Einheit des Spiels, in jedem Zustand (RAD_UnitState_t): freie Slots
-    /// tragen id == RAD_UNIT_NONE. Der Array-Index ist die RAD_UnitId_t. Ein Slot
-    /// wird einmal belegt und danach nicht mehr frei -- auch eine zerstoerte
-    /// Einheit behaelt ihn, damit ihre Id keine andere trifft.
+    /// Jede Einheit des Spiels, in jedem Zustand (RAD_UnitState_t) -- im
+    /// Einheitenpool (unit_pool/unit_pool.h). **Geliehen:** der Pool gehoert dem
+    /// Spiel, das ihn beim Anlegen der Welt hereinreicht und laenger lebt als sie.
     ///
-    /// Die Reserve steht hier und nicht in einer Liste daneben: platzieren heisst,
-    /// den Zustand einer Einheit zu wechseln, nicht sie von einer Liste in eine
-    /// andere zu tragen. So gibt es nichts, was zwischen zwei Listen auseinander
-    /// laufen koennte.
+    /// Die Welt legt darin an (RAD_WorldAddReserveUnit, RAD_WorldSpawnUnit) und
+    /// fuehrt Zustand und Position, entfernt aber nie: eine zerstoerte Einheit
+    /// bleibt mit RAD_UNIT_STATE_DESTROYED stehen. Ihre Id vergibt der Pool, und
+    /// er vergibt keine zweimal -- ein Kommando, das eine zerstoerte Einheit nennt,
+    /// trifft nie eine andere.
     ///
-    RAD_Unit_t units[RAD_MAX_UNITS];
-
-    /// Anzahl belegter Slots, nicht der hoechste vergebene Index.
-    int32_t number_of_units;
+    /// Wem eine Einheit gehoert und ob sie in einer Reserve steht, fuehren dazu die
+    /// Spieler (player/player.h) -- das Spiel haelt beides mit der Welt zusammen.
+    ///
+    RAD_UnitPool_t *units;
 
     RAD_EventManager_t *event_manager;
 };
@@ -46,15 +47,22 @@ struct RAD_World
 /// RAD_WORLD_HEIGHT). Solange keine Weltdefinition geladen ist, ist das die Welt
 /// des Spiels. Gefuellt wird sie erst mit RAD_InitWorld.
 ///
-/// In den Speicher des Aufrufers und nicht als Rueckgabewert: der Einheitenpool
-/// macht die Welt gross genug, dass eine Kopie bei jeder Erzeugung ein Aufrufrahmen
-/// waere, den niemand will.
+/// In den Speicher des Aufrufers und nicht als Rueckgabewert: das Raster macht die
+/// Welt gross genug, dass eine Kopie bei jeder Erzeugung ein Aufrufrahmen waere,
+/// den niemand will. "units" ist der Einheitenpool, den die Welt sich leiht
+/// (oben); er muss laenger leben als sie.
 ///
-void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager);
+void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager, RAD_UnitPool_t *units);
 
 ///
-/// Bringt die Welt in den Grundzustand: jedes Feld Boden auf Hoehe 0, keine
-/// Einheit -- auch keine in der Reserve.
+/// Bringt das Raster in den Grundzustand: jedes Feld Boden auf Hoehe 0, auf
+/// keinem eine Einheit.
+///
+/// **Den Pool fasst das nicht an** -- er gehoert dem Spiel, und Spieler zeigen
+/// hinein. Zurueckgesetzt wird deshalb nur, solange keine Einheit auf dem Feld
+/// steht; das Laden einer Weltdefinition lehnt eine Welt mit Einheiten ohnehin ab
+/// (RAD_SERIALIZE_ERROR_WORLD_OCCUPIED). Steht doch eine dort, zeigt sie danach
+/// auf ein Feld, das nicht auf sie zurueckzeigt (RAD_WorldIsConsistent).
 ///
 /// RAD_InitWorld meldet danach jedes Feld als added -- der Aufbau einer Welt,
 /// die es vorher nicht gab. RAD_ResetWorld tut dasselbe still. Es ist fuer den
@@ -150,7 +158,7 @@ void RAD_WorldPublishTileChanges(
 ///
 /// Uebernommen werden aus "values" die Werte der Einheit -- type, name, movement,
 /// transport_capacity, can_capture, attributes und die Mitglieder. Id, Zustand,
-/// Besitzer und Position vergibt die Welt: die Id ist der naechste freie Slot, der
+/// Besitzer und Position vergibt die Welt: die Id der Pool, der
 /// Zustand RAD_UNIT_STATE_RESERVE, der Besitzer "owner", die Position (-1,-1). Ein
 /// Ereignis gibt es nicht -- auf dem Feld hat sich nichts geaendert.
 ///
@@ -177,7 +185,7 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
 ///
 /// RAD_WorldRemoveUnit zerstoert eine Einheit: vom Feld genommen, mit
 /// RAD_OnUnitDestroyed_t; aus der Reserve gestrichen, ohne Ereignis -- auf dem
-/// Feld hat sie nie gestanden. Ihr Slot bleibt belegt (RAD_UNIT_STATE_DESTROYED),
+/// Feld hat sie nie gestanden. Sie bleibt im Pool (RAD_UNIT_STATE_DESTROYED),
 /// und eine schon zerstoerte Einheit noch einmal zu entfernen tut nichts.
 ///
 RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y);
@@ -210,8 +218,8 @@ bool RAD_WorldSetUnitOwner(RAD_World_t *world, RAD_UnitId_t id, RAD_UserId_t own
 /// Prueft die Doppelbuchfuehrung zwischen Tiles und Einheiten vollstaendig
 /// gegeneinander: eine Einheit auf dem Feld steht auf einem Tile, das auf sie
 /// zurueckzeigt; eine in der Reserve oder zerstoerte steht auf keinem und traegt
-/// (-1,-1). Dazu die Zusagen ueber den Pool: ein freier Slot traegt keinen
-/// Besitzer, und keine Einheit hat mehr Mitglieder oder Waffen, als Platz ist.
+/// (-1,-1). Dazu die Zusage ueber den Pool: keine Einheit hat mehr Mitglieder
+/// oder Waffen, als Platz ist.
 /// Beim regulaeren Spielverlauf immer true -- eine Zusicherung im Test.
 ///
 bool RAD_WorldIsConsistent(const RAD_World_t *world);

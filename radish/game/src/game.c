@@ -16,6 +16,13 @@ RAD_Game_t* RAD_CreateGame(RAD_EventManager_t *event_manager, RAD_UserId_t local
         return NULL;
     }
 
+    game->unit_pool = RAD_CreateUnitPool();
+    if(game->unit_pool == NULL)
+    {
+        free(game);
+        return NULL;
+    }
+
     game->event_manager = event_manager;
     game->local_user = local_user;
 
@@ -30,8 +37,9 @@ RAD_Game_t* RAD_CreateGame(RAD_EventManager_t *event_manager, RAD_UserId_t local
     // niemand dran -- der erste Beitritt eroeffnet den ersten Zug.
     game->turn = RAD_CreateTurn();
     game->started = false;
+    game->number_of_players = 0;
 
-    RAD_CreateWorld(&game->world, event_manager);
+    RAD_CreateWorld(&game->world, event_manager, game->unit_pool);
     RAD_InitWorld(&game->world);
 
     return game;
@@ -39,6 +47,15 @@ RAD_Game_t* RAD_CreateGame(RAD_EventManager_t *event_manager, RAD_UserId_t local
 
 void RAD_DestroyGame(RAD_Game_t **game)
 {
+    if(*game != NULL)
+    {
+        for(int32_t i = 0; i < (*game)->number_of_players; ++i)
+        {
+            RAD_DestroyPlayer(&(*game)->players[i]);
+        }
+        // Nach den Spielern: ihre Listen zeigen in den Pool.
+        RAD_DestroyUnitPool(&(*game)->unit_pool);
+    }
     free(*game);
     *game = NULL;
 }
@@ -62,13 +79,15 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *m
         goto end;
     }
     //
-    // Nur was auf dem Feld steht, kann ziehen. Eine Einheit in der Reserve oder
-    // eine zerstoerte hat keine Position -- x/y sind -1, und darunter liegt kein
-    // Tile, von dem aus sich ein Weg gehen liesse.
+    // Nur was auf dem Feld steht, kann ziehen -- eine Einheit in der Reserve oder
+    // eine zerstoerte hat keine Position --, und nur einmal je Zug, nicht im Zug
+    // ihres Aufstellens (RAD_GameCheckMoveUnit). Der Server hat das schon
+    // gefragt; geschrieben wird trotzdem nur, was hier geprueft ist.
     //
-    if(RAD_UNIT_STATE_DEPLOYED != unit->state)
+    const RAD_GameResult_t allowed = RAD_GameCheckMoveUnit(game, move->unit);
+    if(RAD_GAME_OK != allowed)
     {
-        printf("Unit with Id %i is not on the field!\n", move->unit);
+        printf("Unit with Id %i does not move: %s\n", move->unit, RAD_GameResultText(allowed));
         goto end;
     }
     //
@@ -143,6 +162,16 @@ static void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *m
     unit->x = x;
     unit->y = y;
 
+    //
+    // Gezogen ist sie, sobald sie wenigstens ein Feld weit kam -- auch wenn der
+    // Weg danach besetzt war. Kam sie gar nicht los, darf sie es noch einmal
+    // versuchen.
+    //
+    if(valid_path.number_of_steps >= 2)
+    {
+        unit->turn.moved = 1;
+    }
+
 end:
     //
     // Beobachter benachrichtigen...
@@ -170,7 +199,43 @@ static void RAD_GameHandleDeployCommand(RAD_Game_t *game, RAD_UserId_t user, con
         return;
     }
 
-    RAD_WorldDeployUnit(&game->world, deploy->unit, deploy->x, deploy->y);
+    // Im Zug ihres Aufstellens darf sie weder ziehen noch angreifen. Gesetzt
+    // vor dem Aufstellen: die Welt meldet sie dabei (RAD_WorldDeployUnit), und
+    // ein Abonnent soll sie schon so sehen. Die Pruefung oben hat sichergestellt,
+    // dass es sie gibt.
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, deploy->unit);
+    unit->turn.deployed = 1;
+
+    if(!RAD_WorldDeployUnit(&game->world, deploy->unit, deploy->x, deploy->y))
+    {
+        unit->turn.deployed = 0;
+        return;
+    }
+
+    // Auf dem Feld steht sie in keiner Reserve mehr. Die Pruefung oben hat
+    // sichergestellt, dass sie "user" gehoert und er mitspielt.
+    RAD_Player_t *player = RAD_GameFindPlayer(game, user);
+    RAD_ReserveRemoveUnit(RAD_PlayerReserve(player), unit);
+}
+
+///
+/// Eine Einheit greift ein Feld an. Die Regel steht in RAD_GameCheckAttack und
+/// gilt hier noch einmal, wie beim Aufstellen. Abgelehnt wird still.
+///
+/// Einen Kampf gibt es noch nicht: der Angriff trifft nichts, aber er zaehlt --
+/// die Einheit hat in diesem Zug angegriffen (RAD_Unit_t.turn).
+///
+static void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *attack)
+{
+    const RAD_GameResult_t allowed = RAD_GameCheckAttack(game, attack->unit, attack->x, attack->y);
+    if(allowed != RAD_GAME_OK)
+    {
+        printf("Unit with Id %i does not attack: %s\n", attack->unit, RAD_GameResultText(allowed));
+        return;
+    }
+
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, attack->unit);
+    unit->turn.attacked = 1;
 }
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
@@ -182,6 +247,14 @@ void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
             break;
         case RAD_COMMAND_TYPE_DEPLOY_UNIT:
             RAD_GameHandleDeployCommand(game, command->header.user, &command->command.deploy_unit);
+            break;
+        case RAD_COMMAND_TYPE_ATTACK:
+            RAD_GameHandleAttackCommand(game, &command->command.attack);
+            break;
+        // Wie ein Zug, der nicht geht: wer nicht dran ist, gibt still nichts ab
+        // (RAD_GameEndTurn).
+        case RAD_COMMAND_TYPE_END_TURN:
+            RAD_GameEndTurn(game, command->header.user);
             break;
         default:
             break;

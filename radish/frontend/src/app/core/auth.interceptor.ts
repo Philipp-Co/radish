@@ -12,10 +12,15 @@ import { AuthService } from './auth.service';
  * durchlaufen deshalb nie diesen Zweig -- dort ist der Access-Token ja
  * gerade erst das Ergebnis des Aufrufs, nicht seine Voraussetzung.
  *
- * Bei 401 (Access-Token zwischenzeitlich abgelaufen, z.B. weil der
- * Refresh-Timer in AuthService noch nicht dran war) wird einmalig per
- * Refresh-Token ein neuer Token geholt und der Request wiederholt --
- * schlaegt auch das fehl, geht es zu /login.
+ * Der Token kommt aus getValidAccessToken(): ist er abgelaufen oder laeuft
+ * gleich ab, wird er vor dem Request erneuert. Das ist der Normalfall nach
+ * einem Hintergrund-Tab oder Ruhezustand, in dem der Refresh-Timer in
+ * AuthService nicht rechtzeitig dran war.
+ *
+ * Bei 401 trotzdem (etwa weil Keycloak den Token frueher verworfen hat) wird
+ * einmalig per Refresh-Token ein neuer Token geholt und der Request
+ * wiederholt -- auch dann, wenn vorher gar kein gueltiger Token da war.
+ * Schlaegt auch das fehl, geht es zu /login.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
@@ -25,24 +30,22 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return next(req);
   }
 
-  const token = auth.getAccessToken();
-  const authorizedReq = token
-    ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
-    : req;
+  const withToken = (token: string | null) =>
+    token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req;
 
-  return next(authorizedReq).pipe(
+  return from(auth.getValidAccessToken()).pipe(
+    switchMap((token) => next(withToken(token))),
     catchError((err) => {
-      if (err?.status !== 401 || !token) {
+      if (err?.status !== 401) {
         return throwError(() => err);
       }
-      return from(auth.refreshAccessToken()).pipe(
+      return from(auth.refreshAccessToken().catch(() => null)).pipe(
         switchMap((newToken) => {
           if (!newToken) {
             router.navigate(['/login']);
             return throwError(() => err);
           }
-          const retriedReq = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
-          return next(retriedReq);
+          return next(withToken(newToken));
         }),
       );
     }),

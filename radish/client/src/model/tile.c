@@ -20,11 +20,11 @@ static void RAD_ClientTileNotify(const RAD_ClientTile_t *tile, RAD_ClientTileEve
     }
 }
 
-void RAD_ClientTileFromNet(RAD_ClientTile_t *tile, const RAD_NetTile_t *net, RAD_ClientUnit_t *unit)
+void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit)
 {
-    tile->x = (int32_t)net->x;
-    tile->y = (int32_t)net->y;
-    tile->type = net->type;
+    tile->x = x;
+    tile->y = y;
+    tile->type = type;
     tile->unit = unit;
 
     RAD_ClientTileNotify(tile, RAD_CLIENT_TILE_EVENT_CHANGED);
@@ -45,6 +45,18 @@ void RAD_ClientTileRemove(RAD_ClientTile_t *tile)
 {
     RAD_ClientTileNotify(tile, RAD_CLIENT_TILE_EVENT_REMOVED);
     RAD_ModelObservableClear(&tile->observable);
+}
+
+const char* RAD_ClientTileTypeText(RAD_ClientTileType_t type)
+{
+    switch(type)
+    {
+        case RAD_CLIENT_TILE_TYPE_GROUND:  return "ground";
+        case RAD_CLIENT_TILE_TYPE_WATER:   return "water";
+        case RAD_CLIENT_TILE_TYPE_VOID:    return "void";
+        case RAD_CLIENT_TILE_TYPE_UNKNOWN: return "unbekannt";
+    }
+    return "unbekannt";
 }
 
 bool RAD_ClientTileHasUnit(const RAD_ClientTile_t *tile)

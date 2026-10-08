@@ -3,6 +3,7 @@
 
 #include <SDL2/SDL.h>
 #include <stdint.h>
+#include <radish/model/focus.h>
 #include <radish/model/world.h>
 #include <radish/rendering/iso_map.h>
 
@@ -38,20 +39,34 @@ typedef struct RAD_IsoMapView RAD_IsoMapView_t;
 
 ///
 /// Legt eine IsoMapView mit der oberen linken Ecke bei (x, y) und width x height
-/// Pixeln an, die "map" zeichnet und "world" beobachtet; NULL, wenn kein
-/// Speicher da ist oder die Welt keinen Beobachter mehr annimmt. "map" und
-/// "world" duerfen nicht NULL sein und muessen die IsoMapView ueberleben.
-/// RAD_DestroyIsoMapView laesst beide stehen und nullt den Zeiger des Aufrufers.
+/// Pixeln an, die "map" zeichnet, "world" beobachtet und "focus" schreibt
+/// (RAD_IsoMapViewHandleMouseMotion); NULL, wenn kein Speicher da ist oder die
+/// Welt keinen Beobachter mehr annimmt. "map", "world" und "focus" duerfen nicht
+/// NULL sein und muessen die IsoMapView ueberleben. RAD_DestroyIsoMapView laesst
+/// alle drei stehen -- "focus" auf nichts gesetzt -- und nullt den Zeiger des
+/// Aufrufers.
 ///
 /// Am besten, bevor etwas in der Welt steht -- sonst entgeht ihr, was schon da
 /// ist.
 ///
-RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map, const RAD_ClientWorld_t *world);
+RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map, const RAD_ClientWorld_t *world, RAD_ClientFocus_t *focus);
 void RAD_DestroyIsoMapView(RAD_IsoMapView_t **iso_map_view);
 
 ///
 /// Zeichnet die IsoMapView mit "renderer". Einmal je Frame zu rufen.
 ///
 void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer);
+
+///
+/// Wertet eine Mausbewegung aus (view/view.h). Das Iso-Objekt unter dem Zeiger
+/// wird zum Fokus der IsoMapView: sein "focus" wird gesetzt, es wird also
+/// hervorgehoben gezeichnet (rendering/iso_object.h), das des vorigen
+/// zurueckgesetzt. Das Feld der Welt dazu kommt in "focus" (model/focus.h). Ein
+/// Wechsel geht zusaetzlich ins Log. Liegt der Zeiger ausserhalb ihrer Flaeche,
+/// des Rasters oder ueber einem Feld, das noch nicht gezeichnet wird, hat sie
+/// keinen Fokus. Verwirft die Welt das Feld im Fokus, steht danach nichts mehr
+/// darin.
+///
+void RAD_IsoMapViewHandleMouseMotion(RAD_IsoMapView_t *iso_map_view, const SDL_MouseMotionEvent *motion);
 
 #endif

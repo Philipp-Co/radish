@@ -10,9 +10,9 @@
 /// Steuert die Kamera der Iso-Map: Ziehen mit gedrueckter rechter Maustaste und
 /// die Pfeiltasten.
 ///
-/// **Rechts und nicht links**, weil die linke Taste dem User-Input gehoert
-/// (view/user_input.h): sein Loslassen waehlt aus, setzt Wegpunkte und schickt
-/// Zuege. Mit der rechten Taste kommen sich Ziehen und Klicken nicht in die Quere.
+/// **Rechts und nicht links**, weil die linke Taste der RootView gehoert
+/// (view/view.h): ihr Loslassen waehlt ein Feld fuer die ContextMenuView aus.
+/// Mit der rechten Taste kommen sich Ziehen und Klicken nicht in die Quere.
 ///
 /// **Die Kamera bleibt an der Karte.** Nach jeder Bewegung wird sie begrenzt:
 /// ist die Karte kleiner als der Bildschirm, laesst sie sich nur so weit

@@ -22,9 +22,8 @@
 ///
 /// **Ausgefuehrt wird an einer Stelle, und die liegt nicht hier.** Vorher lag unter
 /// execute/ je eine Datei pro Kommandoart, die in der Welt nachsah und selbst
-/// schrieb; dazu fuehrte diese Datei den Vorrat des Zuges und eine Preisliste. Beides
-/// ist weg: der Weg hinein ist RAD_GameExecuteCommand, und was ein Kommando bewirkt,
-/// was es kostet und wann ein Zug vorbei ist, wertet das Spiel selbst aus.
+/// schrieb. Das ist weg: der Weg hinein ist RAD_GameExecuteCommand, und was ein
+/// Kommando bewirkt und wann ein Zug vorbei ist, wertet das Spiel selbst aus.
 ///
 /// Der Preis dafuer steht offen und ist an RAD_ControlExecuteAllowedCommand
 /// beschrieben: aus dem Spiel kommt kein Ergebnis zurueck, also sagt "value" in der
@@ -40,6 +39,9 @@ struct RAD_Control
 static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const RAD_Command_t *command);
 static RAD_ControlResult_t RAD_ControlCheckUnitOwner(RAD_Control_t control, RAD_UserId_t user, RAD_UnitId_t unit);
 static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandDeployUnit_t *deploy);
+static RAD_ControlResult_t RAD_ControlCheckMove(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandMoveUnit_t *move);
+static RAD_ControlResult_t RAD_ControlCheckAttack(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandAttack_t *attack);
+static RAD_ControlResult_t RAD_ControlFromUnitActionResult(RAD_GameResult_t result);
 static uint32_t RAD_ControlExecuteAllowedCommand(RAD_Control_t control, const RAD_Command_t *command);
 
 
@@ -57,10 +59,18 @@ const char* RAD_ControlResultText(RAD_ControlResult_t result)
         case RAD_CONTROL_ERROR_OUT_OF_BOUNDS:   return "Ziel liegt ausserhalb der Welt";
         case RAD_CONTROL_ERROR_TARGET_OCCUPIED: return "Zielfeld ist besetzt";
         case RAD_CONTROL_ERROR_NOT_YOUR_TURN:   return "ein anderer ist dran";
-        case RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS:
-                                                return "nicht genug Aktionspunkte";
         case RAD_CONTROL_ERROR_NOT_IN_RESERVE:  return "Einheit steht nicht in der Reserve";
         case RAD_CONTROL_ERROR_NO_GROUND:       return "Zielfeld hat kein Gelaende";
+        case RAD_CONTROL_ERROR_UNIT_JUST_DEPLOYED:
+                                                return "Einheit ist in diesem Zug erst aufgestellt worden";
+        case RAD_CONTROL_ERROR_UNIT_ALREADY_MOVED:
+                                                return "Einheit ist in diesem Zug schon gezogen";
+        case RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED:
+                                                return "Einheit hat in diesem Zug schon angegriffen";
+        case RAD_CONTROL_ERROR_UNIT_NOT_DEPLOYED:
+                                                return "Einheit steht nicht auf dem Feld";
+        case RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE:
+                                                return "Ziel liegt ausserhalb der Reichweite";
         default:                                return "unbekanntes Ergebnis";
     }
 }
@@ -103,55 +113,15 @@ RAD_ControlResult_t RAD_ControlAddUser(RAD_Control_t control, RAD_UserId_t user)
     }
 }
 
-RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_ControlGameStart_t *start)
+RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_GameStart_t *start)
 {
-    if(start == NULL)
-    {
-        return RAD_GAME_ERROR_INVALID_UNIT;
-    }
+    // Wie aus einem Spielstart ein Spiel wird, weiss das Spiel (start_game.h).
+    return RAD_StartGame(control->game, start);
+}
 
-    // Genau einmal (execute.h): ein Spiel mit Einheiten oder eines, das schon
-    // laeuft, hat seinen Start hinter sich.
-    if(RAD_GameHasStarted(control->game) || (RAD_GameNumberOfUnits(control->game) > 0))
-    {
-        return RAD_GAME_ERROR_STARTED;
-    }
-
-    // Erst alle Spieler, dann alle Einheiten: scheitert ein Spieler, steht noch
-    // keine Einheit im Spiel. Die Reihenfolge der Aufnahme ist die Zugreihenfolge.
-    RAD_UserId_t users[RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS];
-    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
-    {
-        users[p] = RAD_ControlUserIdFromIdentifier(start->players[p].identifier);
-        if(users[p] == RAD_USER_NONE)
-        {
-            return RAD_GAME_ERROR_NO_USER;
-        }
-    }
-
-    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
-    {
-        const RAD_GameResult_t joined = RAD_GameAddPlayer(control->game, users[p]);
-        if(joined != RAD_GAME_OK)
-        {
-            return joined;
-        }
-    }
-
-    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
-    {
-        const RAD_ControlGameStartPlayer_t *player = &start->players[p];
-        for(int32_t u=0;u < player->number_of_units; ++u)
-        {
-            const RAD_GameResult_t added = RAD_GameAddUnit(control->game, users[p], &player->units[u], NULL);
-            if(added != RAD_GAME_OK)
-            {
-                return added;
-            }
-        }
-    }
-
-    return RAD_GAME_OK;
+RAD_GameStartResult_t RAD_ControlStartGameFromFile(RAD_Control_t control, const char *path, RAD_GameResult_t *game_result)
+{
+    return RAD_StartGameFromFile(control->game, path, game_result);
 }
 
 void RAD_ControlRemoveUser(RAD_Control_t control, RAD_UserId_t user)
@@ -345,32 +315,21 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
         return RAD_CONTROL_ERROR_NOT_YOUR_TURN;
     }
 
-    // Was ein Kommando kostet und ob der Absender es sich leisten kann, steht
-    // nicht mehr hier: das wertet das Spiel aus, wenn es das Kommando bekommt.
-    // Diese Datei kannte dafuer den Vorrat des Zuges und die Preisliste -- beides
-    // sind Regeln, und Regeln stehen im Spiel.
-    //
-    // RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS bleibt in der Aufzaehlung stehen,
-    // hat aber vorlaeufig keinen Absender mehr: solange RAD_GameExecuteCommand
-    // nichts zurueckgibt, kommt aus dem Spiel kein Grund heraus. Der Weg dafuer sind
-    // die Ereignisse, siehe RAD_ControlExecuteAllowedCommand.
-
     switch(command->header.type)
     {
+        // Der Besitz und dazu, ob die Einheit in diesem Zug noch ziehen darf.
         case RAD_COMMAND_TYPE_MOVE_UNIT:
-            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.move_unit.unit);
+            return RAD_ControlCheckMove(control, command->header.user, &command->command.move_unit);
 
         case RAD_COMMAND_TYPE_REMOVE_UNIT:
             return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.remove_unit.unit);
 
-        // Nicht das Ziel wird geprueft, sondern der, der handelt: geschossen und
-        // benutzt wird auf ein Feld, und was dort steht, gehoert gerade nicht dem
-        // Absender -- sonst haette ein Schuss wenig Sinn.
-        case RAD_COMMAND_TYPE_SHOOT:
-            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.shoot.unit);
-
-        case RAD_COMMAND_TYPE_USE:
-            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.use.unit);
+        // Nicht das Ziel wird geprueft, sondern der, der handelt: angegriffen
+        // wird ein Feld, und was dort steht, gehoert gerade nicht dem Absender --
+        // sonst haette ein Angriff wenig Sinn. Dazu, ob die Einheit in diesem Zug
+        // noch angreifen darf.
+        case RAD_COMMAND_TYPE_ATTACK:
+            return RAD_ControlCheckAttack(control, command->header.user, &command->command.attack);
 
         // Die ganze Regel des Aufstellens und nicht nur der Besitz: der Absender
         // soll erfahren, warum es nicht geht -- und das Spiel meldet es nicht
@@ -387,6 +346,10 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
         case RAD_COMMAND_TYPE_REMOVE_TILE:
         case RAD_COMMAND_TYPE_END_TURN:
             break;
+
+        // Benutzt wird ein Feld wie beim Angriff: geprueft wird, wer benutzt.
+        case RAD_COMMAND_TYPE_USE:
+            return RAD_ControlCheckUnitOwner(control, command->header.user, command->command.use.unit);
 
         // Unerreichbar: aus dem Codec kommt kein Kommando ohne Art.
         case RAD_COMMAND_TYPE_NONE:
@@ -433,5 +396,55 @@ static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_Use
         case RAD_GAME_ERROR_NO_GROUND:       return RAD_CONTROL_ERROR_NO_GROUND;
         case RAD_GAME_ERROR_OCCUPIED:        return RAD_CONTROL_ERROR_TARGET_OCCUPIED;
         default:                             return RAD_CONTROL_ERROR_NOT_EXECUTED;
+    }
+}
+
+///
+/// Ziehen: erst der Besitz, dann ob die Einheit in diesem Zug noch ziehen darf
+/// (RAD_GameCheckMoveUnit).
+///
+static RAD_ControlResult_t RAD_ControlCheckMove(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandMoveUnit_t *move)
+{
+    const RAD_ControlResult_t owner = RAD_ControlCheckUnitOwner(control, user, move->unit);
+    if(owner != RAD_CONTROL_OK)
+    {
+        return owner;
+    }
+
+    return RAD_ControlFromUnitActionResult(RAD_GameCheckMoveUnit(control->game, move->unit));
+}
+
+///
+/// Angreifen: erst der Besitz, dann ob die Einheit in diesem Zug noch angreifen
+/// darf (RAD_GameCheckAttack).
+///
+static RAD_ControlResult_t RAD_ControlCheckAttack(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandAttack_t *attack)
+{
+    const RAD_ControlResult_t owner = RAD_ControlCheckUnitOwner(control, user, attack->unit);
+    if(owner != RAD_CONTROL_OK)
+    {
+        return owner;
+    }
+
+    return RAD_ControlFromUnitActionResult(RAD_GameCheckAttack(control->game, attack->unit, attack->x, attack->y));
+}
+
+///
+/// Die Ergebnisse von RAD_GameCheckMoveUnit und RAD_GameCheckAttack, abgebildet
+/// auf Antworten, die ueber die Strecke gehen.
+///
+static RAD_ControlResult_t RAD_ControlFromUnitActionResult(RAD_GameResult_t result)
+{
+    switch(result)
+    {
+        case RAD_GAME_OK:                           return RAD_CONTROL_OK;
+        case RAD_GAME_ERROR_NO_UNIT:                return RAD_CONTROL_ERROR_NO_SUCH_UNIT;
+        case RAD_GAME_ERROR_UNIT_NOT_DEPLOYED:      return RAD_CONTROL_ERROR_UNIT_NOT_DEPLOYED;
+        case RAD_GAME_ERROR_UNIT_JUST_DEPLOYED:     return RAD_CONTROL_ERROR_UNIT_JUST_DEPLOYED;
+        case RAD_GAME_ERROR_UNIT_ALREADY_MOVED:     return RAD_CONTROL_ERROR_UNIT_ALREADY_MOVED;
+        case RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED:  return RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED;
+        case RAD_GAME_ERROR_OUT_OF_BOUNDS:          return RAD_CONTROL_ERROR_OUT_OF_BOUNDS;
+        case RAD_GAME_ERROR_TARGET_OUT_OF_RANGE:    return RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE;
+        default:                                    return RAD_CONTROL_ERROR_NOT_EXECUTED;
     }
 }

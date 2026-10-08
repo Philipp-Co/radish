@@ -27,9 +27,13 @@ add_library(radish_game STATIC
 
     src/model/world.c
     src/model/turn.c
+    src/model/unit_pool.c
+    src/model/reserve.c
+    src/model/player.c
 
     src/control/events/event_manager.c
     src/control/execute/unit.c
+    src/control/start_game.c
 
     src/serialization/jsmn_impl.c
     src/serialization/json_reader.c

@@ -1,14 +1,14 @@
 #include <unity.h>
 #include <string.h>
 
-#include <radish/server/control/game_start.h>
+#include <radish/game/control/start_game.h>
 
 ///
-/// Die Spielstart-Datei (control/game_start.h): wer spielt, und mit welcher Armee
+/// Die Spielstart-Datei (control/start_game.h): wer spielt, und mit welcher Armee
 /// -- jede Einheit mit allen Werten.
 ///
 /// Geladen wird meist aus einem String. Der letzte Test liest ueber
-/// RAD_ControlLoadGameStart das gueltige Beispiel der Schema-Tests
+/// RAD_LoadGameStart das gueltige Beispiel der Schema-Tests
 /// (game/test/schema/spielstart/valid/) -- so passen Schema und Leser zusammen.
 ///
 
@@ -35,21 +35,21 @@
 #define ZWEI_SPIELER(erster) \
     "{\"spieldaten\":[" erster "," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]}"
 
-/// Ein Spielstart ist zu gross fuer den Stapel (game_start.h) -- einer fuer alle
+/// Ein Spielstart ist zu gross fuer den Stapel (start_game.h) -- einer fuer alle
 /// Tests, frisch vor jedem.
-static RAD_ControlGameStart_t *start;
+static RAD_GameStart_t *start;
 
-static RAD_ControlGameStartResult_t lade(const char *json)
+static RAD_GameStartResult_t lade(const char *json)
 {
-    RAD_ControlDestroyGameStart(&start);
-    start = RAD_ControlCreateGameStart();
+    RAD_DestroyGameStart(&start);
+    start = RAD_CreateGameStart();
     TEST_ASSERT_NOT_NULL(start);
-    return RAD_ControlParseGameStart(json, strlen(json), start);
+    return RAD_ParseGameStart(json, strlen(json), start);
 }
 
 void test_spielstart_liest_beide_spieler(void)
 {
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK, lade(
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(
         "{\"spieldaten\":["
         SPIELER("test-user", "aB3xK9pQ", EINHEIT_1 "," EINHEIT_2) ","
         SPIELER("test-user-2", "Zz1Yy2Xx", EINHEIT_1)
@@ -63,7 +63,7 @@ void test_spielstart_liest_beide_spieler(void)
     TEST_ASSERT_EQUAL_STRING("test-user-2", start->players[1].name);
     TEST_ASSERT_EQUAL_INT(1, start->players[1].number_of_units);
 
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 }
 
 ///
@@ -72,7 +72,7 @@ void test_spielstart_liest_beide_spieler(void)
 ///
 void test_spielstart_liest_die_werte_der_einheiten(void)
 {
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK, lade(ZWEI_SPIELER(
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(
         SPIELER("a", "aaaaaaaa",
             "{\"typ\":\"Transporter\",\"bewegung\":12,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
             "\"entitaeten\":["
@@ -112,15 +112,15 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
     TEST_ASSERT_EQUAL_INT(48, weapon->max_range);
     TEST_ASSERT_EQUAL_INT(3, weapon->penetration);
 
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 }
 
 ///
-/// Unbekannte Schluessel werden uebergangen (control/game_start.h), auf jeder Ebene.
+/// Unbekannte Schluessel werden uebergangen (control/start_game.h), auf jeder Ebene.
 ///
 void test_spielstart_uebergeht_unbekannte_schluessel(void)
 {
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK, lade(
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(
         "{\"neu\":1,\"spieldaten\":["
         "{\"rang\":3,\"name\":\"a\",\"kennung\":\"aaaaaaaa\","
         " \"armee\":{\"farbe\":\"rot\",\"name\":\"x\",\"einheiten\":["
@@ -134,7 +134,7 @@ void test_spielstart_uebergeht_unbekannte_schluessel(void)
     TEST_ASSERT_EQUAL_STRING("a", start->players[0].name);
     TEST_ASSERT_EQUAL_STRING("S", start->players[0].units[0].members[0].profile);
 
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 }
 
 void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
@@ -197,16 +197,16 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
 
     for(size_t i=0;i < sizeof(fehlerhaft) / sizeof(fehlerhaft[0]); ++i)
     {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(i == 0 ? RAD_CONTROL_GAME_START_ERROR_SYNTAX : RAD_CONTROL_GAME_START_ERROR_SCHEMA,
+        TEST_ASSERT_EQUAL_INT_MESSAGE(i == 0 ? RAD_GAME_START_ERROR_SYNTAX : RAD_GAME_START_ERROR_SCHEMA,
                                       lade(fehlerhaft[i]), fehlerhaft[i]);
     }
 
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 }
 
 ///
 /// Was das Schema zulaesst, die festen Felder des Spiels aber nicht halten: eine
-/// eigene Absage (RAD_CONTROL_GAME_START_ERROR_LIMIT), nichts wird gekuerzt.
+/// eigene Absage (RAD_GAME_START_ERROR_LIMIT), nichts wird gekuerzt.
 ///
 void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void)
 {
@@ -215,37 +215,37 @@ void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void)
     // Ein Name mit 31 Zeichen geht gerade noch.
     #define NAME_31 "abcdefghijklmnopqrstuvwxyz01234"
 
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT(NAME_31, MITGLIED(NAME_31, WAFFE(NAME_31, "standard")))))));
 
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT(NAME_32, MITGLIED("S", ""))))));
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED(NAME_32, ""))))));
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED("S", WAFFE(NAME_32, "standard")))))));
 
     // Fuenf Waffen, eine mehr als RAD_UNIT_MAX_WEAPONS.
     #define W WAFFE("G", "standard")
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED("S", W "," W "," W "," W "," W))))));
 
     // Elf Mitglieder, eines mehr als RAD_UNIT_MAX_MEMBERS.
     #define M MITGLIED("S", "")
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", M "," M "," M "," M "," M "," M "," M "," M "," M "," M "," M)))));
 
-    // 33 Einheiten, eine mehr als RAD_CONTROL_GAME_START_MAX_UNITS.
+    // 33 Einheiten, eine mehr als RAD_GAME_START_MAX_UNITS.
     #define E EINHEIT_1
     #define E4 E "," E "," E "," E
     #define E16 E4 "," E4 "," E4 "," E4
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", E16 "," E16))));
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_MAX_UNITS, start->players[0].number_of_units);
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_LIMIT,
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_MAX_UNITS, start->players[0].number_of_units);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", E16 "," E16 "," E))));
 
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 }
 
 ///
@@ -253,32 +253,32 @@ void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void)
 ///
 void test_spielstart_fehler_laesst_stand_unberuehrt(void)
 {
-    RAD_ControlGameStart_t *vorher = RAD_ControlCreateGameStart();
+    RAD_GameStart_t *vorher = RAD_CreateGameStart();
     TEST_ASSERT_NOT_NULL(vorher);
     strcpy(vorher->players[0].name, "vorher");
 
     const char *json = "{\"spieldaten\":[" SPIELER("neu", "aaaaaaaa", EINHEIT_1) "]}";
-    TEST_ASSERT_NOT_EQUAL_INT(RAD_CONTROL_GAME_START_OK, RAD_ControlParseGameStart(json, strlen(json), vorher));
+    TEST_ASSERT_NOT_EQUAL_INT(RAD_GAME_START_OK, RAD_ParseGameStart(json, strlen(json), vorher));
 
     TEST_ASSERT_EQUAL_STRING("vorher", vorher->players[0].name);
 
-    RAD_ControlDestroyGameStart(&vorher);
+    RAD_DestroyGameStart(&vorher);
     TEST_ASSERT_NULL(vorher);
 }
 
 void test_spielstart_fehlende_datei(void)
 {
-    RAD_ControlGameStart_t *gelesen = RAD_ControlCreateGameStart();
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_ERROR_NOT_FOUND,
-        RAD_ControlLoadGameStart("/gibt/es/nicht/spielstart.json", gelesen));
-    RAD_ControlDestroyGameStart(&gelesen);
+    RAD_GameStart_t *gelesen = RAD_CreateGameStart();
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_NOT_FOUND,
+        RAD_LoadGameStart("/gibt/es/nicht/spielstart.json", gelesen));
+    RAD_DestroyGameStart(&gelesen);
 }
 
 void test_spielstart_aus_datei(void)
 {
-    RAD_ControlGameStart_t *gelesen = RAD_ControlCreateGameStart();
-    TEST_ASSERT_EQUAL_INT(RAD_CONTROL_GAME_START_OK,
-        RAD_ControlLoadGameStart(RAD_SCHEMA_EXAMPLES_DIR "/spielstart/valid/zwei_spieler.json", gelesen));
+    RAD_GameStart_t *gelesen = RAD_CreateGameStart();
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK,
+        RAD_LoadGameStart(RAD_SCHEMA_EXAMPLES_DIR "/spielstart/valid/zwei_spieler.json", gelesen));
 
     TEST_ASSERT_EQUAL_STRING("test-user", gelesen->players[0].name);
     TEST_ASSERT_EQUAL_STRING("Erste Kompanie", gelesen->players[0].army_name);
@@ -298,29 +298,29 @@ void test_spielstart_aus_datei(void)
     TEST_ASSERT_EQUAL_INT(2, transporter->transport_capacity);
     TEST_ASSERT_EQUAL_INT(0, transporter->members[0].number_of_weapons);
 
-    RAD_ControlDestroyGameStart(&gelesen);
+    RAD_DestroyGameStart(&gelesen);
 }
 
 ///
-/// Kennung und Id (game_start.h): gepackt, umkehrbar, und nie RAD_USER_NONE fuer
+/// Kennung und Id (start_game.h): gepackt, umkehrbar, und nie RAD_USER_NONE fuer
 /// eine gueltige Kennung.
 ///
 void test_spielstart_kennung_wird_zur_id(void)
 {
-    TEST_ASSERT_EQUAL_UINT64(0x614233784B397051ull, RAD_ControlUserIdFromIdentifier("aB3xK9pQ"));
-    TEST_ASSERT_EQUAL_UINT64(0x3030303030303030ull, RAD_ControlUserIdFromIdentifier("00000000"));
+    TEST_ASSERT_EQUAL_UINT64(0x614233784B397051ull, RAD_UserIdFromIdentifier("aB3xK9pQ"));
+    TEST_ASSERT_EQUAL_UINT64(0x3030303030303030ull, RAD_UserIdFromIdentifier("00000000"));
 
-    char zurueck[RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH + 1];
-    TEST_ASSERT_TRUE(RAD_ControlIdentifierFromUserId(RAD_ControlUserIdFromIdentifier("Zz1Yy2Xx"), zurueck));
+    char zurueck[RAD_GAME_START_IDENTIFIER_LENGTH + 1];
+    TEST_ASSERT_TRUE(RAD_IdentifierFromUserId(RAD_UserIdFromIdentifier("Zz1Yy2Xx"), zurueck));
     TEST_ASSERT_EQUAL_STRING("Zz1Yy2Xx", zurueck);
 
     // Keine Kennung: zu kurz, zu lang, falsche Zeichen, NULL.
-    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlUserIdFromIdentifier("aaaa"));
-    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlUserIdFromIdentifier("aaaaaaaaa"));
-    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlUserIdFromIdentifier("aaaa aaa"));
-    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlUserIdFromIdentifier(NULL));
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_UserIdFromIdentifier("aaaa"));
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_UserIdFromIdentifier("aaaaaaaaa"));
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_UserIdFromIdentifier("aaaa aaa"));
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_UserIdFromIdentifier(NULL));
 
     // Und keine Id: 0x1, wie ihn der Client heute fest sendet, ist keine Kennung.
-    TEST_ASSERT_FALSE(RAD_ControlIdentifierFromUserId((RAD_UserId_t)0x1, zurueck));
+    TEST_ASSERT_FALSE(RAD_IdentifierFromUserId((RAD_UserId_t)0x1, zurueck));
     TEST_ASSERT_EQUAL_STRING("", zurueck);
 }

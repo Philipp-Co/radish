@@ -76,6 +76,96 @@ RAD_NetCodecResult_t RAD_NetEncodeMoveRequest(const RAD_NetMoveRequest_t *reques
     return RAD_NET_CODEC_OK;
 }
 
+RAD_NetCodecResult_t RAD_NetEncodeDeployRequest(const RAD_NetDeployRequest_t *request,
+                                                 uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length)
+{
+    NetDeployCommand deploy_command = NET_DEPLOY_COMMAND__INIT;
+    // Ungekuerzt: der Absender ist die gepackte Kennung (net_codec.h).
+    deploy_command.user_id = (uint64_t)request->user;
+    deploy_command.unit_id = (uint32_t)request->entity;
+    deploy_command.x = (uint32_t)request->position.x;
+    deploy_command.y = (uint32_t)request->position.y;
+
+    NetCommandRequest command_request = NET_COMMAND_REQUEST__INIT;
+    command_request.id = (uint32_t)request->sequence;
+    command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_DEPLOY;
+    command_request.deploy = &deploy_command;
+
+    NetUserRequest user_request = NET_USER_REQUEST__INIT;
+    user_request.data_case = NET_USER_REQUEST__DATA_COMMAND_REQUEST;
+    user_request.command_request = &command_request;
+
+    const size_t packed_size = net_user_request__get_packed_size(&user_request);
+    if(packed_size > buffer_size)
+    {
+        return RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    *out_length = net_user_request__pack(&user_request, buffer);
+    return RAD_NET_CODEC_OK;
+}
+
+RAD_NetCodecResult_t RAD_NetEncodeAttackRequest(const RAD_NetAttackRequest_t *request,
+                                                 uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length)
+{
+    NetAttackCommand attack_command = NET_ATTACK_COMMAND__INIT;
+    // Ungekuerzt: der Absender ist die gepackte Kennung (net_codec.h).
+    attack_command.user_id = (uint64_t)request->user;
+    attack_command.unit_id = (uint32_t)request->entity;
+    attack_command.x = (uint32_t)request->target.x;
+    attack_command.y = (uint32_t)request->target.y;
+
+    NetCommandRequest command_request = NET_COMMAND_REQUEST__INIT;
+    command_request.id = (uint32_t)request->sequence;
+    command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_ATTACK;
+    command_request.attack = &attack_command;
+
+    NetUserRequest user_request = NET_USER_REQUEST__INIT;
+    user_request.data_case = NET_USER_REQUEST__DATA_COMMAND_REQUEST;
+    user_request.command_request = &command_request;
+
+    const size_t packed_size = net_user_request__get_packed_size(&user_request);
+    if(packed_size > buffer_size)
+    {
+        return RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    *out_length = net_user_request__pack(&user_request, buffer);
+    return RAD_NET_CODEC_OK;
+}
+
+RAD_NetCodecResult_t RAD_NetEncodeEndTurnRequest(const RAD_NetEndTurnRequest_t *request,
+                                                  uint8_t *buffer,
+                                                  size_t buffer_size,
+                                                  size_t *out_length)
+{
+    NetEndTurnCommand end_turn_command = NET_END_TURN_COMMAND__INIT;
+    // Ungekuerzt: der Absender ist die gepackte Kennung (net_codec.h).
+    end_turn_command.user_id = (uint64_t)request->user;
+
+    NetCommandRequest command_request = NET_COMMAND_REQUEST__INIT;
+    command_request.id = (uint32_t)request->sequence;
+    command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_END_TURN;
+    command_request.end_turn = &end_turn_command;
+
+    NetUserRequest user_request = NET_USER_REQUEST__INIT;
+    user_request.data_case = NET_USER_REQUEST__DATA_COMMAND_REQUEST;
+    user_request.command_request = &command_request;
+
+    const size_t packed_size = net_user_request__get_packed_size(&user_request);
+    if(packed_size > buffer_size)
+    {
+        return RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    *out_length = net_user_request__pack(&user_request, buffer);
+    return RAD_NET_CODEC_OK;
+}
+
 RAD_NetCodecResult_t RAD_NetEncodeDiscover(uint32_t x,
                                             uint32_t y,
                                             uint32_t w,
@@ -125,8 +215,99 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverReserve(uint8_t *buffer,
     return RAD_NET_CODEC_OK;
 }
 
+RAD_NetCodecResult_t RAD_NetEncodeDiscoverUnits(uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length)
+{
+    // "reserved" bleibt 0 und wird damit gar nicht geschrieben (discover.proto).
+    NetDiscoverUnitsRequest units = NET_DISCOVER_UNITS_REQUEST__INIT;
+
+    NetUserRequest user_request = NET_USER_REQUEST__INIT;
+    user_request.data_case = NET_USER_REQUEST__DATA_DISCOVER_UNITS_REQUEST;
+    user_request.discover_units_request = &units;
+
+    const size_t packed_size = net_user_request__get_packed_size(&user_request);
+    if(packed_size > buffer_size)
+    {
+        return RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL;
+    }
+
+    *out_length = net_user_request__pack(&user_request, buffer);
+    return RAD_NET_CODEC_OK;
+}
+
 static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile);
+static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *unit);
 static RAD_NetCodecResult_t RAD_NetDispatchTiles(RAD_NetEventManager_t *events, const NetTilesEvent *tiles_event);
+
+///
+/// Die Antwort auf ein Deployment: wie die auf einen Zug, nur mit Einheit und
+/// Feld statt eines Weges.
+///
+static RAD_NetCodecResult_t RAD_NetDispatchDeployResponse(RAD_NetEventManager_t *events,
+                                                           const NetCommandResponse *command_response,
+                                                           const NetDeployCommand *deploy)
+{
+    RAD_NetDeployResponse_t response;
+    memset(&response, 0, sizeof(response));
+
+    // Sequenznummer und Absender wie beim Zug (RAD_NetDispatchCommandResponse).
+    response.sequence = (RAD_NetSequence_t)command_response->command->id;
+    response.user = (RAD_NetUserId_t)deploy->user_id;
+    response.success = command_response->success;
+    response.entity = (RAD_NetEntityId_t)deploy->unit_id;
+    response.position.x = (int16_t)deploy->x;
+    response.position.y = (int16_t)deploy->y;
+
+    RAD_NetEventManagerPublishDeployResponse(events, &response);
+    return RAD_NET_CODEC_OK;
+}
+
+///
+/// Die Antwort auf einen Angriff: wie die auf ein Deployment, dazu der Grund,
+/// falls der Server ihn abgelehnt hat.
+///
+static RAD_NetCodecResult_t RAD_NetDispatchAttackResponse(RAD_NetEventManager_t *events,
+                                                           const NetCommandResponse *command_response,
+                                                           const NetAttackCommand *attack)
+{
+    RAD_NetAttackResponse_t response;
+    memset(&response, 0, sizeof(response));
+
+    response.sequence = (RAD_NetSequence_t)command_response->command->id;
+    response.user = (RAD_NetUserId_t)attack->user_id;
+    response.success = command_response->success;
+    response.entity = (RAD_NetEntityId_t)attack->unit_id;
+    response.target.x = (int16_t)attack->x;
+    response.target.y = (int16_t)attack->y;
+    if(command_response->description != NULL)
+    {
+        // Gekuerzt, wenn sie zu lang ist; memset oben sorgt fuer die Null.
+        strncpy(response.description, command_response->description, sizeof(response.description) - 1);
+    }
+
+    RAD_NetEventManagerPublishAttackResponse(events, &response);
+    return RAD_NET_CODEC_OK;
+}
+
+///
+/// Die Antwort auf ein Abgeben: nur Kopf und Erfolg.
+///
+static RAD_NetCodecResult_t RAD_NetDispatchEndTurnResponse(RAD_NetEventManager_t *events,
+                                                            const NetCommandResponse *command_response,
+                                                            const NetEndTurnCommand *end_turn)
+{
+    RAD_NetEndTurnResponse_t response;
+    memset(&response, 0, sizeof(response));
+
+    // Sequenznummer und Absender wie beim Zug (RAD_NetDispatchCommandResponse).
+    response.sequence = (RAD_NetSequence_t)command_response->command->id;
+    response.user = (RAD_NetUserId_t)end_turn->user_id;
+    response.success = command_response->success;
+
+    RAD_NetEventManagerPublishEndTurnResponse(events, &response);
+    return RAD_NET_CODEC_OK;
+}
 
 static RAD_NetCodecResult_t RAD_NetDispatchCommandResponse(RAD_NetEventManager_t *events, const NetCommandResponse *command_response)
 {
@@ -139,9 +320,20 @@ static RAD_NetCodecResult_t RAD_NetDispatchCommandResponse(RAD_NetEventManager_t
 
     const NetCommandRequest *request = command_response->command;
 
-    // Nur der Zug ist im Client abgebildet -- ein shoot-Zweig oder gar keiner
-    // (commands_case NOT_SET) laesst sich nicht in eine
-    // RAD_NetCommandResponse_t uebersetzen (net_codec.h).
+    // Zug, Deployment, Abgeben und Angriff sind im Client abgebildet -- eine
+    // Antwort ganz ohne Zweig (commands_case NOT_SET) nicht (net_codec.h).
+    if((request->commands_case == NET_COMMAND_REQUEST__COMMANDS_DEPLOY) && (request->deploy != NULL))
+    {
+        return RAD_NetDispatchDeployResponse(events, command_response, request->deploy);
+    }
+    if((request->commands_case == NET_COMMAND_REQUEST__COMMANDS_END_TURN) && (request->end_turn != NULL))
+    {
+        return RAD_NetDispatchEndTurnResponse(events, command_response, request->end_turn);
+    }
+    if((request->commands_case == NET_COMMAND_REQUEST__COMMANDS_ATTACK) && (request->attack != NULL))
+    {
+        return RAD_NetDispatchAttackResponse(events, command_response, request->attack);
+    }
     if((request->commands_case != NET_COMMAND_REQUEST__COMMANDS_MOVE) ||
        (request->move == NULL))
     {
@@ -232,21 +424,62 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             {
                 return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
             }
-            const NetUnit *unit = game_event->reserve_unit->unit;
 
             RAD_NetReserveUnit_t reserve_unit;
-            memset(&reserve_unit, 0, sizeof(reserve_unit));
-            reserve_unit.unit = (RAD_NetEntityId_t)unit->unit_id;
-            reserve_unit.owner = (RAD_NetUserId_t)unit->owner_id;
-            reserve_unit.number_of_members = unit->number_of_members;
-            // Gekuerzt, wenn er laenger ist: angezeigt wird er nur (net_types.h).
-            // protobuf-c laesst ein leeres string-Feld nie NULL, sondern "".
-            if(unit->name != NULL)
+            const RAD_NetCodecResult_t result = RAD_NetFillUnit(&reserve_unit, game_event->reserve_unit->unit);
+            if(result != RAD_NET_CODEC_OK)
             {
-                strncpy(reserve_unit.name, unit->name, sizeof(reserve_unit.name) - 1);
+                return result;
             }
 
             RAD_NetEventManagerPublishReserveUnit(events, &reserve_unit);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT_DEPLOYED:
+        {
+            const NetUnitDeployedEvent *unit_deployed = game_event->unit_deployed;
+            if((unit_deployed == NULL) || (unit_deployed->unit == NULL))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            // Ein Feld, das in keine Position (int16) passt, gibt es in keiner
+            // Welt, die der Client halten kann -- der Server lehnt es beim
+            // Aufstellen genauso ab.
+            if((unit_deployed->x > INT16_MAX) || (unit_deployed->y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            RAD_NetUnitDeployed_t deployed;
+            const RAD_NetCodecResult_t result = RAD_NetFillUnit(&deployed.unit, unit_deployed->unit);
+            if(result != RAD_NET_CODEC_OK)
+            {
+                return result;
+            }
+            deployed.position.x = (int16_t)unit_deployed->x;
+            deployed.position.y = (int16_t)unit_deployed->y;
+
+            RAD_NetEventManagerPublishUnitDeployed(events, &deployed);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT:
+        {
+            if((game_event->unit == NULL) || (game_event->unit->unit == NULL))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            RAD_NetUnit_t net_unit;
+            const RAD_NetCodecResult_t result = RAD_NetFillUnit(&net_unit, game_event->unit->unit);
+            if(result != RAD_NET_CODEC_OK)
+            {
+                return result;
+            }
+
+            RAD_NetEventManagerPublishUnit(events, &net_unit);
             return RAD_NET_CODEC_OK;
         }
 
@@ -254,6 +487,88 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
         default:
             return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
     }
+}
+
+///
+/// Kopiert einen Namen aus der Nachricht nach "out" (RAD_NET_UNIT_NAME_MAX).
+/// Gekuerzt, wenn er laenger ist: angezeigt wird er nur (net_types.h).
+/// protobuf-c laesst ein leeres string-Feld nie NULL, sondern "" -- abgefangen
+/// wird es trotzdem.
+///
+static void RAD_NetCopyName(char *out, const char *name)
+{
+    memset(out, 0, RAD_NET_UNIT_NAME_MAX);
+    if(name != NULL)
+    {
+        strncpy(out, name, RAD_NET_UNIT_NAME_MAX - 1);
+    }
+}
+
+///
+/// NetUnit (game.proto) -> RAD_NetUnit_t (io/net_types.h), vollstaendig, fuer
+/// alle drei Ereignisse, die eine Einheit tragen.
+///
+/// Mehr Mitglieder oder Waffen, als die Einheit im Spiel haben kann
+/// (RAD_NET_UNIT_MEMBERS_MAX, RAD_NET_MEMBER_WEAPONS_MAX), schickt kein Server,
+/// der dieses Protokoll spricht: RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE, und
+/// "out" ist unbrauchbar.
+///
+static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *unit)
+{
+    memset(out, 0, sizeof(*out));
+
+    if(unit->n_members > RAD_NET_UNIT_MEMBERS_MAX)
+    {
+        return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+    }
+
+    out->unit = (RAD_NetEntityId_t)unit->unit_id;
+    out->owner = (RAD_NetUserId_t)unit->owner_id;
+    RAD_NetCopyName(out->name, unit->name);
+    out->movement = unit->movement;
+    out->transport_capacity = unit->transport_capacity;
+    out->can_capture = unit->can_capture;
+    out->deployed = unit->deployed;
+    out->moved = unit->moved;
+    out->attacked = unit->attacked;
+
+    for(size_t m = 0; m < unit->n_members; ++m)
+    {
+        const NetUnitMember *member = unit->members[m];
+        if((member == NULL) || (member->n_weapons > RAD_NET_MEMBER_WEAPONS_MAX))
+        {
+            return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+        }
+
+        RAD_NetUnitMember_t *net_member = &out->members[m];
+        RAD_NetCopyName(net_member->profile, member->profile);
+        net_member->health = member->health;
+        net_member->armor = member->armor;
+        net_member->strength = member->strength;
+        net_member->accuracy = member->accuracy;
+
+        for(size_t w = 0; w < member->n_weapons; ++w)
+        {
+            const NetWeapon *weapon = member->weapons[w];
+            if(weapon == NULL)
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            RAD_NetWeapon_t *net_weapon = &net_member->weapons[w];
+            RAD_NetCopyName(net_weapon->name, weapon->name);
+            net_weapon->weapon_class = weapon->weapon_class;
+            net_weapon->shots = weapon->shots;
+            net_weapon->strength = weapon->strength;
+            net_weapon->min_range = weapon->min_range;
+            net_weapon->max_range = weapon->max_range;
+            net_weapon->penetration = weapon->penetration;
+        }
+        net_member->number_of_weapons = (uint32_t)member->n_weapons;
+    }
+    out->number_of_members = (uint32_t)unit->n_members;
+
+    return RAD_NET_CODEC_OK;
 }
 
 ///

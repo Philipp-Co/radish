@@ -70,14 +70,6 @@ typedef void (*RAD_OnUnitMoved_t)(void *user_argument, const RAD_Unit_t *unit, c
 typedef struct
 {
     int16_t x;
-    int16_t y;
-} RAD_UnitShoot_t;
-
-typedef void (*RAD_OnUnitShoot_t)(void *user_argument, const RAD_Unit_t *unit, const RAD_UnitShoot_t *shoot);
-
-typedef struct
-{
-    int16_t x;
     int16_t y; 
 } RAD_Use_t;
 
@@ -88,6 +80,23 @@ typedef struct
     RAD_OnUnitDestroyed_t destroyed;
     RAD_OnUnitMoved_t moved;
 } RAD_EventsUnitChangedCallback_t;
+
+///
+/// Der Zugwechsel: ein neuer Zug beginnt, oder niemand ist mehr dran.
+/// "current_user" ist, wer jetzt dran ist, RAD_USER_NONE fuer niemand.
+///
+/// Gemeldet wird er vom Spiel (player.c), nicht vom Zug (turn.h) -- der ist Regel
+/// und kennt keine Abonnenten. Jedes erfolgreiche Abgeben meldet ihn, auch wenn
+/// derselbe wieder dran ist: es ist ein neuer Zug. Beitritt und Austritt melden
+/// ihn nur, wenn sich dadurch aendert, wer dran ist.
+///
+typedef void (*RAD_OnTurnChanged_t)(void *user_argument, RAD_UserId_t current_user);
+
+typedef struct
+{
+    void *user_argument;
+    RAD_OnTurnChanged_t changed;
+} RAD_EventsTurnCallback_t;
 
 ///
 /// Die Zeigereignisse: was der Benutzer mit der Maus tut, nicht was im Spiel
@@ -140,6 +149,9 @@ void RAD_EventManagerSubscribeToUnitEvents(RAD_EventManager_t *manager, RAD_Even
 void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
 void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
 void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
+
+void RAD_EventManagerSubscribeToTurnEvents(RAD_EventManager_t *manager, RAD_EventsTurnCallback_t callbacks);
+void RAD_EventManagerPublishTurnChanged(RAD_EventManager_t *manager, RAD_UserId_t current_user);
 
 void RAD_EventManagerSubscribeToMouseEvents(RAD_EventManager_t *manager, RAD_EventsMouseCallbacks_t callbacks);
 void RAD_EventManagerPublishMouseMoved(RAD_EventManager_t *manager, int32_t new_x, int32_t new_y, int32_t old_x, int32_t old_y);

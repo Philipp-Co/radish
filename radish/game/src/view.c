@@ -69,10 +69,9 @@ int32_t RAD_GameNumberOfUnits(const RAD_Game_t *game)
         return 0;
     }
 
-    // Der mitgefuehrte Zaehler und keine eigene Schleife: die Welt haelt ihn bei
-    // jedem Setzen und Entfernen fort, und RAD_WorldIsConsistent prueft ihn gegen
-    // die belegten Plaetze. Ihn hier nachzuzaehlen waere ein zweites Buch.
-    return game->world.number_of_units;
+    // Der Zaehler des Pools und keine eigene Schleife: ihn hier nachzuzaehlen
+    // waere ein zweites Buch.
+    return RAD_UnitPoolNumberOfUnits(game->unit_pool);
 }
 
 bool RAD_GameUnitAt(const RAD_Game_t *game, int32_t index, RAD_Unit_t *output)
@@ -87,29 +86,14 @@ bool RAD_GameUnitAt(const RAD_Game_t *game, int32_t index, RAD_Unit_t *output)
         return false;
     }
 
-    // Der Pool kann Luecken haben, der Index ist dicht: durchlaufen und die belegten
-    // Plaetze zaehlen, bis der gesuchte erreicht ist. Dasselbe Verfahren wie
-    // RAD_GameUserUnitAt in player.c, und aus demselben Grund -- bei hoechstens
-    // RAD_MAX_UNITS Plaetzen ist jede Beschleunigung teurer als die Suche.
-    int32_t seen = 0;
-    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
+    // Dicht ueber die belegten Plaetze, in der Reihenfolge des Pools -- solange
+    // nichts aus ihm entfernt wird, und das tut das Spiel nie, ist das die
+    // Reihenfolge der Ids (unit_pool.h).
+    const RAD_Unit_t *unit = RAD_UnitPoolUnitAt(game->unit_pool, index);
+    if(unit == NULL)
     {
-        const RAD_Unit_t *unit = &game->world.units[i];
-        if(unit->id == RAD_UNIT_NONE)
-        {
-            continue;
-        }
-
-        if(seen == index)
-        {
-            *output = *unit;
-            return true;
-        }
-        seen++;
+        return false;
     }
-
-    // Nicht zu erreichen, solange "number_of_units" mit den belegten Plaetzen
-    // uebereinstimmt -- der Index wurde oben dagegen geprueft. Laeuft der Zaehler
-    // dennoch vor, ist false die ehrliche Antwort und kein halb gefuelltes output.
-    return false;
+    *output = *unit;
+    return true;
 }

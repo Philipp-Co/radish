@@ -31,13 +31,11 @@
 /// nur RAD_Command_t/RAD_CommandResponse_t aus game/ und die eigene
 /// RAD_NetCodecResult_t.
 ///
-/// **Abgebildet sind move_unit und deploy_unit.** protobuf/command.proto kennt
-/// dazu NetShootCommand, und das passt nicht zu RAD_CommandShoot_t -- das
-/// Kommando zielt auf ein Feld, die Nachricht auf eine Einheit (wie beim Client,
-/// net_codec.h dort). Eine Nachricht mit einer anderen Kommandoart liest
-/// RAD_ParseCommandFromMessage deshalb nicht, und
-/// RAD_SerializeCommandResponseToMessage packt eine Antwort auf eine solche
-/// Nachricht ebenfalls nicht -- beide liefern
+/// **Abgebildet sind move_unit, deploy_unit, end_turn und attack** -- alles, was
+/// protobuf/command.proto kennt. Eine Nachricht ohne Kommando liest
+/// RAD_ParseCommandFromMessage nicht, und RAD_SerializeCommandResponseToMessage
+/// packt keine Antwort auf eine Kommandoart, die command.proto nicht kennt
+/// (remove_unit, create_tile, remove_tile, use) -- beide liefern
 /// RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE.
 ///
 /// Das Modul kennt zucchini nicht. Es bekommt einen Bytebereich und schreibt in
@@ -64,9 +62,9 @@ typedef enum
     RAD_NET_CODEC_OK = 0,
 
     /// Die Kommandoart ist im aktuellen command.proto nicht abgebildet (siehe
-    /// oben): beim Lesen ein eingebettetes NetCommandRequest mit shoot-Zweig
-    /// oder ganz ohne gesetzten Zweig (commands_case NOT_SET), beim Schreiben
-    /// eine Antwort auf ein anderes Kommando als move_unit oder deploy_unit.
+    /// oben): beim Lesen ein eingebettetes NetCommandRequest ganz ohne gesetzten
+    /// Zweig (commands_case NOT_SET), beim Schreiben eine Antwort auf ein anderes
+    /// Kommando als move_unit, deploy_unit, end_turn oder attack.
     RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE,
 
     /// Die Anzahl der Felder eines Pfades liegt nicht in [2, RAD_PATH_MAX_STEPS]
@@ -185,20 +183,56 @@ RAD_NetCodecResult_t RAD_ParseDiscoverFromMessage(const uint8_t *message, uint16
 RAD_NetCodecResult_t RAD_ParseDiscoverReserveFromMessage(const uint8_t *message, uint16_t size);
 
 ///
-/// Eine Einheit der Reserve als eigene Nachricht (NetServerMessage -> NetEvent ->
-/// NetGameEvent mit reserve_unit, protobuf/game.proto): Id, Besitzer, Name des
-/// Einheitentyps und die Zahl ihrer Mitglieder. Ob sie wirklich in der Reserve
-/// steht, entscheidet der Aufrufer -- dieses Modul deutet keinen Zustand.
+/// Erkennt die Anfrage nach allen Einheiten der Spieler (NetUserRequest mit
+/// gesetztem discover_units_request, protobuf/discover.proto), wie
+/// RAD_ParseDiscoverReserveFromMessage die nach den Reserven.
 ///
-/// Eine Einheit passt immer: ihr Name ist hoechstens RAD_UNIT_NAME_MAX - 1 Zeichen
-/// lang, die Nachricht damit weit unter einem Ringpuffer-Platz. Wie bei den
-/// uebrigen Ereignissen RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "capacity"
-/// trotzdem nicht reicht.
+RAD_NetCodecResult_t RAD_ParseDiscoverUnitsFromMessage(const uint8_t *message, uint16_t size);
+
+///
+/// Eine Einheit der Reserve als eigene Nachricht (NetServerMessage -> NetEvent ->
+/// NetGameEvent mit reserve_unit, protobuf/game.proto): die ganze Einheit --
+/// Id, Besitzer, Name, ihre Werte und alle Mitglieder mit ihren Waffen. Ob sie
+/// wirklich in der Reserve steht, entscheidet der Aufrufer -- dieses Modul
+/// deutet keinen Zustand.
+///
+/// **Eine volle Einheit passt nicht immer** in einen Ringpuffer-Platz (game.proto
+/// NetUnit); dass sie es tut, stellt der Server sicher, wenn er Einheiten
+/// aufnimmt. Reicht "capacity" nicht, wie bei den uebrigen Ereignissen
+/// RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL -- es wird nichts geschrieben.
 ///
 RAD_NetCodecResult_t RAD_SerializeReserveUnitEventToMessage(const RAD_Unit_t *unit,
                                                               uint8_t *out_message,
                                                               uint16_t capacity,
                                                               uint16_t *out_size);
+
+///
+/// Eine Einheit als eigene Nachricht (NetServerMessage -> NetEvent ->
+/// NetGameEvent mit unit, protobuf/game.proto): dieselbe Einheit wie bei der
+/// Reserve, ohne zu sagen, wo sie steht. Wem sie gehoert, prueft dieses Modul
+/// nicht. Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitEventToMessage(const RAD_Unit_t *unit,
+                                                      uint8_t *out_message,
+                                                      uint16_t capacity,
+                                                      uint16_t *out_size);
+
+///
+/// Eine Einheit, die jetzt auf dem Feld (x, y) steht (NetServerMessage -> NetEvent
+/// -> NetGameEvent mit unit_deployed, protobuf/game.proto): die Einheit wie bei
+/// der Reserve, dazu das Feld. Geschickt wird es, wenn das Spiel meldet, dass eine
+/// Figur aufgestellt wurde (RAD_OnUnitSpawned_t) -- ob das stimmt, prueft dieses
+/// Modul nicht.
+///
+/// x und y liegen in der Welt und sind damit nie negativ; sie gehen als uint32
+/// hinaus wie bei den Feldern. Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitDeployedEventToMessage(const RAD_Unit_t *unit,
+                                                               int32_t x,
+                                                               int32_t y,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size);
 
 ///
 /// Schreibt eine Antwort als ausgehende Nachricht (NetServerMessage mit

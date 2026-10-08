@@ -24,6 +24,24 @@
 bool RAD_IoNetRequestMove(RAD_IoNetSession_t *session, const RAD_NetMoveRequest_t *request);
 
 ///
+/// Ein Deployment (deploy.c), wie der Zug: false, wenn es sich nicht packen
+/// liess; dann ist nichts verschickt.
+///
+bool RAD_IoNetRequestDeploy(RAD_IoNetSession_t *session, const RAD_NetDeployRequest_t *request);
+
+///
+/// Ein Angriff auf ein Feld (attack.c), wie das Deployment: false, wenn er sich
+/// nicht packen liess; dann ist nichts verschickt.
+///
+bool RAD_IoNetRequestAttack(RAD_IoNetSession_t *session, const RAD_NetAttackRequest_t *request);
+
+///
+/// Das Abgeben des Zuges (end_turn.c), wie das Deployment: false, wenn es sich
+/// nicht packen liess; dann ist nichts verschickt.
+///
+bool RAD_IoNetRequestEndTurn(RAD_IoNetSession_t *session, const RAD_NetEndTurnRequest_t *request);
+
+///
 /// Der Ausschnitt (x, y) mit Breite "w" und Hoehe "h" (discover.c).
 ///
 void RAD_IoNetRequestDiscover(RAD_IoNetSession_t *session, uint32_t x, uint32_t y, uint32_t w, uint32_t h);
@@ -34,5 +52,12 @@ void RAD_IoNetRequestDiscover(RAD_IoNetSession_t *session, uint32_t x, uint32_t 
 /// Session: fuer die Antwort ist nichts festzuhalten.
 ///
 void RAD_IoNetRequestDiscoverReserve(void);
+
+///
+/// Alle Einheiten, die einem Spieler gehoeren (discover_units.c,
+/// protobuf/discover.proto), wie die Reserven: eine Nachricht je Einheit
+/// (RAD_IoNetOnUnit), ohne Session.
+///
+void RAD_IoNetRequestDiscoverUnits(void);
 
 #endif

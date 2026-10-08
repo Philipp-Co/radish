@@ -22,12 +22,16 @@ void RAD_IoNetOnCommandResponse(void *user_argument, const RAD_NetCommandRespons
     }
 
     // Der Server schickt die geaenderten Felder nicht als Tile-Ereignis mit --
-    // einen bestaetigten Zug traegt der Client deshalb selbst nach, bevor der
-    // User-Input davon erfaehrt.
-    if(response->success)
+    // einen bestaetigten Zug traegt der Client deshalb selbst nach. Unter zwei
+    // Feldern ist kein Weg beschrieben (net_types.h).
+    const RAD_NetPath_t *path = &response->path;
+    if(response->success && (path->number_of_steps >= 2))
     {
-        RAD_ClientWorldMoveEntity(context->world, response->entity, &response->path);
+        const RAD_NetPosition_t from = path->steps_to[0];
+        const RAD_NetPosition_t to = path->steps_to[path->number_of_steps - 1];
+        RAD_ClientWorldMoveEntity(context->world,
+                                  response->entity,
+                                  (RAD_ClientPosition_t){ .x = from.x, .y = from.y },
+                                  (RAD_ClientPosition_t){ .x = to.x, .y = to.y });
     }
-
-    RAD_IoUserInputOnCommandResponseReceived(context->user_input, response);
 }

@@ -4,9 +4,16 @@
 #include <radish/game/game.h>
 #include <radish/game/control/events/event_manager.h>
 
+///
+/// Wer die Ereignisse des Spiels bekommt, je Gruppe ein Abonnent
+/// (control/events/event_manager.h). Alle Gruppen werden abonniert, also muessen
+/// in allen alle Zeiger gefuellt sein -- der Event-Manager prueft nicht auf NULL.
+///
 typedef struct
 {
-   RAD_EventsTileChangedCallback_t tile_changed; 
+   RAD_EventsTileChangedCallback_t tile_changed;
+   RAD_EventsUnitChangedCallback_t unit_changed;
+   RAD_EventsTurnCallback_t turn_changed;
 } RAD_EventCallbacks_t;
 
 ///

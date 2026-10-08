@@ -165,6 +165,21 @@ void RAD_IsoMapScreenBounds(const RAD_IsoMap_t *map, int32_t *min_x, int32_t *mi
     *max_y = bottom + 2 * RAD_ISO_TILE_HEIGHT;
 }
 
+bool RAD_IsoMapTileScreenCenter(const RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t *screen_x, int32_t *screen_y)
+{
+    if(x < 0 || x >= RAD_ISO_MAP_SIZE || y < 0 || y >= RAD_ISO_MAP_SIZE || !map->data[0][y][x].present)
+    {
+        return false;
+    }
+
+    // Wie RAD_RenderIsoObject: die Raute beginnt bei (screen_x, screen_y) und
+    // ist RAD_ISO_TILE_WIDTH x RAD_ISO_TILE_HEIGHT gross.
+    const RAD_IsoObject_t *object = &map->data[0][y][x];
+    *screen_x = object->screen_x - map->camera.x + RAD_ISO_TILE_WIDTH / 2;
+    *screen_y = object->screen_y - map->camera.y + RAD_ISO_TILE_HEIGHT / 2;
+    return true;
+}
+
 RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t screen_x, int32_t screen_y)
 {
     double sx, sy;

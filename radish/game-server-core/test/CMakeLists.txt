@@ -8,25 +8,24 @@
 # Der Server ist ein Programm und keine Bibliothek -- es gibt kein Ziel, gegen
 # das sich linken liesse. Ein Test nimmt deshalb die Quellen, die er prueft,
 # selbst mit, und sieht das Include-Verzeichnis des Servers (src/include/).
-# Das sind control/game_start.c, das an jsmn haengt, und control/execute.c, das
-# das Spiel steuert -- beide zusammen mit radish_game, denn ein Spielstart traegt
-# Einheiten des Spiels (radish/game/model/unit/unit.h).
+# Das ist vor allem control/execute.c, das das Spiel steuert -- zusammen mit
+# radish_game, das auch die Spielstart-Datei liest (radish/game/control/
+# start_game.h); deren Tests liegen deshalb unter game/test/control/start_game/.
 
 set(RAD_SERVER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 add_executable(test_server_control
     control/main.c
-    control/test_game_start.c
     control/test_start_game.c
     control/test_deploy.c
-    ${RAD_SERVER_SOURCE_DIR}/control/game_start.c
     ${RAD_SERVER_SOURCE_DIR}/control/execute.c
+    ${RAD_SERVER_SOURCE_DIR}/control/loader.c
 )
 target_include_directories(test_server_control PRIVATE ${RAD_SERVER_SOURCE_DIR}/include)
-target_link_libraries(test_server_control PRIVATE radish_game unity::framework jsmn::jsmn)
+target_link_libraries(test_server_control PRIVATE radish_game unity::framework)
 
-# Die Beispiele der Schema-Tests, fuer den Test, der die gueltige Spielstart-Datei
-# liest -- dieselbe Datei, die check-jsonschema prueft (game/test/CMakeLists.txt).
+# Die Beispiele der Schema-Tests, fuer den Test, der den Spielstart aus der Datei
+# einrichtet -- dieselbe Datei, die check-jsonschema prueft (game/test/CMakeLists.txt).
 target_compile_definitions(test_server_control PRIVATE
     RAD_SCHEMA_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../game/test/schema")
 

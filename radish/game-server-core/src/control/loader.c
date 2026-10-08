@@ -112,6 +112,8 @@ static RAD_ControlGame_t RAD_ControlCreateEmptyGame(RAD_EventCallbacks_t *callba
     // Anlegen auf und meldet dabei jedes Feld. Wer erst danach abonniert, hat den
     // Aufbau verpasst -- und kennt nur die Felder, die sich spaeter aendern.
     RAD_EventManagerSubscribeToTileEvents(created.event_manager, callbacks->tile_changed);
+    RAD_EventManagerSubscribeToUnitEvents(created.event_manager, callbacks->unit_changed);
+    RAD_EventManagerSubscribeToTurnEvents(created.event_manager, callbacks->turn_changed);
 
     // RAD_USER_NONE: der Server sitzt an keinem Client. Kommandos, die er selbst
     // erzeugt, haetten keinen Absender -- wer mitspielt, fuehrt die Steuerung,

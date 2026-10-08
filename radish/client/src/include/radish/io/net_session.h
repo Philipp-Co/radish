@@ -61,6 +61,13 @@ typedef struct
     double last_send_time_ms;
     RAD_NetSequence_t awaiting_sequence;
 
+    ///
+    /// Die Sequenznummer des naechsten Kommandos (io/net_types.h). Wer ein
+    /// Kommando verschickt, nimmt sie und zaehlt weiter
+    /// (RAD_ControlDeployUnit). Beginnt bei 1.
+    ///
+    RAD_NetSequence_t next_sequence;
+
     RAD_IoNetDiscoverRequest_t last_discover_request;
 } RAD_IoNetSession_t;
 

@@ -88,7 +88,22 @@ typedef enum
     RAD_GAME_ERROR_NO_GROUND,
 
     /// Auf dem Feld steht schon eine Einheit.
-    RAD_GAME_ERROR_OCCUPIED
+    RAD_GAME_ERROR_OCCUPIED,
+
+    /// Die Einheit steht nicht auf dem Feld -- noch in der Reserve, oder zerstoert.
+    RAD_GAME_ERROR_UNIT_NOT_DEPLOYED,
+
+    /// Die Einheit ist in diesem Zug erst aufgestellt worden (RAD_Unit_t.turn).
+    RAD_GAME_ERROR_UNIT_JUST_DEPLOYED,
+
+    /// Die Einheit ist in diesem Zug schon gezogen (RAD_Unit_t.turn).
+    RAD_GAME_ERROR_UNIT_ALREADY_MOVED,
+
+    /// Die Einheit hat in diesem Zug schon angegriffen (RAD_Unit_t.turn).
+    RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED,
+
+    /// Keine Waffe der Einheit reicht bis zum Ziel (RAD_GameCheckAttack).
+    RAD_GAME_ERROR_TARGET_OUT_OF_RANGE
 } RAD_GameResult_t;
 
 ///
@@ -148,23 +163,22 @@ RAD_UserId_t RAD_GamePlayerAt(const RAD_Game_t *game, int32_t index);
 /// Wer dran ist; RAD_USER_NONE, solange niemand mitspielt.
 ///
 /// Beides geht an den Zug (turn.h). Wer mehr wissen will -- die ganze
-/// Reihenfolge, den Vorrat an Aktionspunkten --, fragt ihn ueber "game->turn"
-/// direkt; nach aussen gereicht wird hier nur, was auch der Server braucht.
+/// Reihenfolge --, fragt ihn ueber "game->turn" direkt; nach aussen gereicht wird hier nur, was auch der Server braucht.
 ///
 RAD_UserId_t RAD_GameCurrentUser(const RAD_Game_t *game);
 bool RAD_GameIsUsersTurn(const RAD_Game_t *game, RAD_UserId_t user);
 
 ///
-/// Beendet den Zug und gibt ihn an den naechsten in der Reihe weiter; dessen
-/// Aktionspunkte fangen von vorne an.
+/// Beendet den Zug und gibt ihn an den naechsten in der Reihe weiter. Was die
+/// Einheiten im Zug getan haben, ist danach vergessen: jede darf wieder ziehen
+/// und angreifen (RAD_GameUnitCanMove, RAD_GameUnitCanAttack).
 ///
 /// Mit dem Benutzer als Argument, obwohl das Spiel schon weiss, wer dran ist: nur
 /// so laesst sich ein Kommando abweisen, das jemand schickt, der nicht an der
 /// Reihe ist (RAD_GAME_ERROR_NOT_YOUR_TURN). Ein Aufruf ohne diese Angabe waere
 /// die Aufforderung, blind weiterzuschalten.
 ///
-/// Ist nur einer da, ist danach wieder er dran -- mit vollem Vorrat, es ist ja
-/// ein neuer Zug.
+/// Ist nur einer da, ist danach wieder er dran -- es ist ja ein neuer Zug.
 ///
 /// Der erste beendete Zug schliesst die Aufstellung: danach nimmt das Spiel keine
 /// Einheiten mehr in die Reserve auf (RAD_GameAddUnit).
@@ -266,6 +280,51 @@ RAD_GameResult_t RAD_GameAddUnit(RAD_Game_t *game, RAD_UserId_t owner, const RAD
 RAD_GameResult_t RAD_GameCheckDeployUnit(const RAD_Game_t *game, RAD_UserId_t user, RAD_UnitId_t unit, int32_t x, int32_t y);
 
 ///
+/// Darf die Einheit "unit" in diesem Zug noch ziehen? Die Regel hinter
+/// RAD_COMMAND_TYPE_MOVE_UNIT, soweit sie an der Einheit haengt (RAD_Unit_t.turn):
+/// der Server fragt sie, bevor er das Kommando annimmt, und das Spiel noch einmal,
+/// bevor es schreibt.
+///
+///     RAD_GAME_ERROR_NO_UNIT               die Einheit gibt es nicht
+///     RAD_GAME_ERROR_UNIT_NOT_DEPLOYED     sie steht nicht auf dem Feld
+///     RAD_GAME_ERROR_UNIT_JUST_DEPLOYED    sie ist in diesem Zug aufgestellt worden
+///     RAD_GAME_ERROR_UNIT_ALREADY_MOVED    sie ist in diesem Zug schon gezogen
+///
+/// Besitz und Zug prueft sie nicht -- das sind eigene Fragen
+/// (RAD_GameMayControlUnit, RAD_GameIsUsersTurn), und der Server stellt sie vorher.
+/// Ob der Weg begehbar ist, entscheidet sich beim Ausfuehren.
+///
+RAD_GameResult_t RAD_GameCheckMoveUnit(const RAD_Game_t *game, RAD_UnitId_t unit);
+
+///
+/// Darf die Einheit "unit" in diesem Zug noch das Feld (x, y) angreifen? Die Regel
+/// hinter RAD_COMMAND_TYPE_ATTACK, wie RAD_GameCheckMoveUnit:
+///
+///     RAD_GAME_ERROR_NO_UNIT                die Einheit gibt es nicht
+///     RAD_GAME_ERROR_UNIT_NOT_DEPLOYED      sie steht nicht auf dem Feld
+///     RAD_GAME_ERROR_UNIT_JUST_DEPLOYED     sie ist in diesem Zug aufgestellt worden
+///     RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED  sie hat in diesem Zug schon angegriffen
+///     RAD_GAME_ERROR_OUT_OF_BOUNDS          (x, y) liegt ausserhalb der Welt
+///     RAD_GAME_ERROR_TARGET_OUT_OF_RANGE    keine ihrer Waffen reicht bis (x, y)
+///
+/// **Die Reichweite:** die Entfernung zum Ziel zaehlt in Feldern waagerecht plus
+/// senkrecht, wie ein Weg ueber die vier Nachbarn. Wenigstens eine Waffe
+/// eines ihrer Mitglieder muss sie abdecken, von min_range (0: ohne
+/// Mindestweite) bis max_range (RAD_Weapon_t). Das Feld der Einheit selbst ist
+/// nie ein Ziel. Ein leeres Feld ist ein gueltiges Ziel; einen Kampf gibt es
+/// noch nicht.
+///
+RAD_GameResult_t RAD_GameCheckAttack(const RAD_Game_t *game, RAD_UnitId_t unit, int32_t x, int32_t y);
+
+///
+/// Kurzform fuer Anzeigen: true, wenn die Einheit in diesem Zug noch ziehen bzw.
+/// angreifen darf, soweit es an ihr haengt -- RAD_GameCheckMoveUnit liefert
+/// RAD_GAME_OK bzw. RAD_GameCheckAttack auf ein Feld in der Welt wuerde es.
+///
+bool RAD_GameUnitCanMove(const RAD_Game_t *game, RAD_UnitId_t unit);
+bool RAD_GameUnitCanAttack(const RAD_Game_t *game, RAD_UnitId_t unit);
+
+///
 /// **Den Zustand lesen: das steht bei den Typen, nicht hier.**
 ///
 ///     tile.h      RAD_GameNumberOfTiles, RAD_GameTileAt
@@ -298,10 +357,14 @@ RAD_GameResult_t RAD_GameCheckDeployUnit(const RAD_Game_t *game, RAD_UserId_t us
 /// die Einheit wirklich aufgestellt werden kann, ist eine Frage an den Zustand und
 /// entscheidet sich beim Ausfuehren (RAD_GameCheckDeployUnit).
 ///
+/// RAD_GameAttack laesst eine Einheit das Feld (x, y) angreifen, mit denselben
+/// Ablehnungen wie RAD_GameDeployUnit. Ob sie das darf, entscheidet sich beim
+/// Ausfuehren (RAD_GameCheckAttack).
+///
 bool RAD_GameDeployUnit(RAD_Game_t *game, RAD_UnitId_t unit, int16_t x, int16_t y, RAD_Command_t *output);
 bool RAD_GameDestroyUnit(RAD_Game_t *game, RAD_UnitId_t id, RAD_Command_t *output);
 bool RAD_GameMoveUnit(RAD_Game_t *game, RAD_UnitId_t id, const RAD_Path_t *path, RAD_Command_t *output);
-bool RAD_GameShoot(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output);
+bool RAD_GameAttack(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output);
 
 void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command);
 void RAD_GameRollbackLastCommand(RAD_Game_t *game);

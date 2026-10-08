@@ -37,6 +37,12 @@ void RAD_DestroyTextView(RAD_TextView_t **text_view);
 bool RAD_TextViewSetText(RAD_TextView_t *text_view, const char *text);
 
 ///
+/// Verschiebt die TextView: ihre obere linke Ecke kommt nach (x, y), die
+/// Groesse bleibt. Der Text muss dafuer nicht neu gerendert werden.
+///
+void RAD_TextViewSetPosition(RAD_TextView_t *text_view, int32_t x, int32_t y);
+
+///
 /// Farbe des Textes.
 ///
 void RAD_TextViewSetColor(RAD_TextView_t *text_view, SDL_Color color);

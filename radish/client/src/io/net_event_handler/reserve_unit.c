@@ -1,4 +1,4 @@
-#include <radish/io/net_event_handler.h>
+#include "common.h"
 
 #include <stdio.h>
 
@@ -8,8 +8,8 @@
 /// die eigene Spieler-Id (own_player_id); solange die nicht da ist, bleibt es
 /// offen.
 ///
-/// Ihre Mitglieder schickt der Server noch nicht mit, nur deren Anzahl -- die
-/// Einheit kommt deshalb ohne Mitglieder in die Welt.
+/// Die Einheit kommt vollstaendig, mit Mitgliedern und Waffen
+/// (RAD_IoNetUnitToClient).
 ///
 void RAD_IoNetOnReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit)
 {
@@ -28,7 +28,7 @@ void RAD_IoNetOnReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *uni
            whose);
 
     RAD_ClientUnit_t client_unit;
-    RAD_ClientUnitInit(&client_unit, unit->unit, unit->owner, unit->name);
+    RAD_IoNetUnitToClient(unit, &client_unit);
 
     if(!RAD_ClientWorldAddReserveUnit(context->world, &client_unit))
     {

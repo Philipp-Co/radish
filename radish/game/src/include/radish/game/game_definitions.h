@@ -33,16 +33,5 @@
 ///
 #define RAD_MAX_PLAYERS 8
 
-///
-/// Was ein Mitspieler in einer Runde tun kann, gezaehlt in Aktionspunkten. Jeder
-/// hat zwei, jede Runde neu; was ein einzelnes Kommando davon kostet, steht nicht
-/// hier, sondern bei der Regel, die es ausfuehrt.
-///
-/// Neben RAD_MAX_PLAYERS und der Groesse der Welt, weil es dieselbe Art
-/// Festlegung ist: eine Zahl, die das Spiel ausmacht und an keinem Programm
-/// haengt, das es haelt.
-///
-#define RAD_ACTION_POINTS_PER_TURN 2
-
 
 #endif

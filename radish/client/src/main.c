@@ -12,9 +12,8 @@
 #include <radish/io/net_request.h>
 #include <radish/io/net_session.h>
 #include <radish/events/event_manager.h>
-#include <radish/view/user_input.h>
+#include <radish/model/focus.h>
 #include <radish/model/world.h>
-#include <radish/rendering/game_events.h>
 #include <radish/view/view.h>
 
 #define WINDOW_WIDTH (SCREEN_WIDTH)
@@ -40,14 +39,18 @@ static ZucConnectionState connection_state = ZUC_STATE_CONNECTING;
 
 static RAD_IsoMap_t *map = NULL;
 
-static RAD_IoUserInput_t RAD_user_input;
-
 
 ///
 /// Was der Client von der Welt weiss (model/world.h), gefuellt aus dem, was der
 /// Server schickt.
 ///
 static RAD_ClientWorld_t world;
+
+///
+/// Was gerade im Fokus steht (model/focus.h). Schreibt die IsoMapView, liest
+/// die TerrainInfoView; anfangs nichts.
+///
+static RAD_ClientFocus_t focus = { .tile = NULL };
 
 ///
 /// Verteilt, was der Server ueber die Verbindung schickt
@@ -62,6 +65,7 @@ static RAD_NetEventManager_t *net_event_manager;
 ///
 static RAD_IoNetSession_t net_session = {
     .own_player_id = RAD_NET_USER_NONE,
+    .next_sequence = 1,
     .last_discover_request = { .sent = false, .x = 0, .y = 0, .w = 0, .h = 0 }
 };
 
@@ -89,14 +93,7 @@ void RAD_ClientSetPlayerId(const char *identifier)
     }
 
     net_session.own_player_id = id;
-    // Die Kommandos tragen sie mit, gelesen wird sie dort nicht (io/net_session.h).
-    RAD_user_input.user = id;
     printf("Spieler-Id 0x%llx (%s)\n", (unsigned long long)id, identifier);
-}
-
-static bool RAD_IoUserinputSendCommandCallback(const RAD_NetMoveRequest_t *request)
-{
-    return RAD_IoNetRequestMove(&net_session, request);
 }
 
 ///
@@ -138,6 +135,12 @@ void zuc_on_connection_state(int state)
     {
         return;
     }
+
+    // Zuerst alle Einheiten der Spieler, gleich wo sie stehen: ein Feld aus der
+    // Discover-Antwort stellt seine Einheit nur auf, wenn die Welt sie schon kennt
+    // (RAD_ClientWorldApplyTile). Das setzt voraus, dass der Server die Anfragen
+    // in der Reihenfolge beantwortet, in der sie hinausgehen.
+    RAD_IoNetRequestDiscoverUnits();
 
     int32_t x = 0, y = 0, w = 0, h = 0;
     RAD_IsoMapVisibleArea(map, WINDOW_WIDTH, WINDOW_HEIGHT, &x, &y, &w, &h);
@@ -189,11 +192,13 @@ int main(void)
     }
 
     net_event_context.world = &world;
-    net_event_context.user_input = &RAD_user_input;
 
     RAD_NetEventManagerSubscribeToCommandResponseEvents(net_event_manager, (RAD_NetEventsCommandResponseCallback_t){
         .user_argument = &net_event_context,
-        .received = RAD_IoNetOnCommandResponse
+        .received = RAD_IoNetOnCommandResponse,
+        .deploy_received = RAD_IoNetOnDeployResponse,
+        .end_turn_received = RAD_IoNetOnEndTurnResponse,
+        .attack_received = RAD_IoNetOnAttackResponse
     });
     RAD_NetEventManagerSubscribeToGameEvents(net_event_manager, (RAD_NetEventsGameCallback_t){
         .user_argument = &net_event_context,
@@ -203,7 +208,9 @@ int main(void)
         .players = RAD_IoNetOnPlayers,
         .world_size = RAD_IoNetOnWorldSize,
         .tiles = RAD_IoNetOnTiles,
-        .reserve_unit = RAD_IoNetOnReserveUnit
+        .reserve_unit = RAD_IoNetOnReserveUnit,
+        .unit_deployed = RAD_IoNetOnUnitDeployed,
+        .unit = RAD_IoNetOnUnit
     });
     RAD_NetEventManagerSubscribeToTileEvents(net_event_manager, (RAD_NetEventsTileCallback_t){
         .user_argument = &net_event_context,
@@ -212,21 +219,7 @@ int main(void)
         .changed = RAD_IoNetOnTileChanged
     });
 
-    // Vor der RootView: sie ruft ihn bei jedem Linksklick auf.
-    RAD_user_input = RAD_CreateIoUserInputState(&world, net_session.own_player_id, RAD_IoUserinputSendCommandCallback);
-
-    RAD_IoUserinputMoveActionCallbacks_t move_event_callbacks = {
-        .started=RAD_RenderingOnMoveActionStarted,
-        .waypoint_added=RAD_RenderingOnMoveActionWaypointAdded,
-        .waypoint_rejected=RAD_RenderingOnMoveActionWaypointRejected,
-        .accepted=RAD_RenderingOnMoveActionAccepted,
-        .action_requested=RAD_RenderingOnMoveActionRequested,
-        .response_received=RAD_RenderingOnMoveActionResponseReceived,
-        .finished=RAD_RenderingOnMoveActionFinished
-    };
-    RAD_IoUserinputSubscribeToMoveActionEvents(&RAD_user_input, map, move_event_callbacks);
-
-    view = RAD_CreateView("Zucchini Client", WINDOW_WIDTH, WINDOW_HEIGHT, FONT_PATH, FONT_SIZE, map, &RAD_user_input, &world);
+    view = RAD_CreateView("Zucchini Client", WINDOW_WIDTH, WINDOW_HEIGHT, FONT_PATH, FONT_SIZE, map, &net_session, &world, &focus);
     if(view == NULL)
     {
         printf("Keine View -- Abbruch.\n");

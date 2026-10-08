@@ -195,7 +195,7 @@ RAD_SerializeResult_t RAD_DeserializeWorldDefinitionFromJson(RAD_Game_t *game, c
         return RAD_SERIALIZE_ERROR_SCHEMA;
     }
 
-    if(game->world.number_of_units != 0)
+    if(RAD_UnitPoolNumberOfUnits(game->unit_pool) != 0)
     {
         return RAD_SERIALIZE_ERROR_WORLD_OCCUPIED;
     }

@@ -16,15 +16,14 @@ add_executable(client
     src/main.c
     src/rendering/iso_object.c
     src/rendering/iso_map.c
-    src/rendering/game_events/move.c
     
-    src/view/user_input.c
     src/io/net_codec.c
     src/io/camera_control.c
     src/io/net_transport.c
 
     src/io/net_event_handler/common.c
     src/io/net_event_handler/command_response.c
+    src/io/net_event_handler/deploy_response.c
     src/io/net_event_handler/game_created.c
     src/io/net_event_handler/game_finished.c
     src/io/net_event_handler/current_player.c
@@ -32,18 +31,33 @@ add_executable(client
     src/io/net_event_handler/world_size.c
     src/io/net_event_handler/tiles.c
     src/io/net_event_handler/reserve_unit.c
+    src/io/net_event_handler/unit_deployed.c
+    src/io/net_event_handler/unit.c
+    src/io/net_event_handler/end_turn_response.c
+    src/io/net_event_handler/attack_response.c
     src/io/net_event_handler/tile_created.c
     src/io/net_event_handler/tile_removed.c
     src/io/net_event_handler/tile_changed.c
 
     src/io/net_request/move.c
+    src/io/net_request/deploy.c
+    src/io/net_request/end_turn.c
+    src/io/net_request/attack.c
     src/io/net_request/discover.c
     src/io/net_request/discover_reserve.c
+    src/io/net_request/discover_units.c
 
     src/events/event_manager.c
 
+    src/control/terrain.c
+    src/control/deploy_unit.c
+    src/control/move_unit.c
+    src/control/attack_unit.c
+    src/control/end_turn.c
+
     src/model/world.c
     src/model/unit.c
+    src/model/unit_repository.c
     src/model/tile.c
     src/model/reserve.c
     src/model/events/observable.c
@@ -57,6 +71,12 @@ add_executable(client
     src/view/labeled_bar_view.c
     src/view/weapon_view.c
     src/view/entity_view.c
+    src/view/context_menu/context_menu_view.c
+    src/view/context_menu/context_menu_item.c
+    src/view/context_menu/context_menu_state_machine.c
+    src/view/unit_deployment_view.c
+    src/view/debug/debug_view.c
+    src/view/end_turn_view.c
 )
 
 target_include_directories(client PRIVATE

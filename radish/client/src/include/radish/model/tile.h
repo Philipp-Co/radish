@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <radish/io/net_types.h>
 #include <radish/model/events/observable.h>
 #include <radish/model/unit.h>
 
@@ -11,8 +10,11 @@
 /// Was der Client von einem Feld weiss -- und nur das.
 ///
 /// **Ein Abbild, keine Simulation**, wie Welt und Einheit (model/world.h,
-/// model/unit.h): gefuellt wird es aus dem, was der Server schickt
-/// (RAD_NetTile_t); Regeln wendet es keine an.
+/// model/unit.h): gefuellt wird es aus dem, was der Server schickt; Regeln
+/// wendet es keine an.
+///
+/// **Unabhaengig von der Verbindung**, wie die Einheit: das Feld hat eigene
+/// Typen, uebersetzt wird beim Befuellen (RAD_ClientWorldApplyTile).
 ///
 /// **Die Einheit steht als Zeiger darin.** Sie gehoert nicht dem Feld, sondern
 /// dem, der die Einheiten haelt; das Feld zeigt nur auf sie. Der Zeiger gilt
@@ -26,6 +28,19 @@
 /// **Nicht per Zuweisung ersetzen**, aus demselben Grund wie bei der Einheit:
 /// "*a = *b" ueberschriebe die Beobachter.
 ///
+
+///
+/// Was fuer ein Feld es ist. Dieselben Typen wie im Spiel und auf der
+/// Verbindung; was der Client nicht kennt, ist UNKNOWN.
+///
+typedef enum
+{
+    RAD_CLIENT_TILE_TYPE_UNKNOWN = 0,
+    RAD_CLIENT_TILE_TYPE_GROUND,
+    RAD_CLIENT_TILE_TYPE_WATER,
+    RAD_CLIENT_TILE_TYPE_VOID
+} RAD_ClientTileType_t;
+
 typedef struct
 {
     ///
@@ -35,7 +50,7 @@ typedef struct
     int32_t x;
     int32_t y;
 
-    RAD_NetTileType_t type;
+    RAD_ClientTileType_t type;
 
     /// Die Einheit auf diesem Feld, NULL, wenn es frei ist.
     RAD_ClientUnit_t *unit;
@@ -64,15 +79,15 @@ typedef struct
 } RAD_ClientTileObserver_t;
 
 ///
-/// Uebernimmt das Feld "net", wie es der Server schickt, nach "tile" -- es
-/// ersetzt, was dort vorher stand, ausser den Beobachtern -- setzt die Einheit
-/// auf "unit" und meldet "changed".
+/// Setzt das ganze Feld -- Position, Typ und Einheit, alles ausser den
+/// Beobachtern -- und meldet "changed". Fuer ein Feld, wie es der Server
+/// schickt.
 ///
 /// **Die Einheit sucht das Feld nicht selbst.** Der Server nennt sie nur mit
-/// ihrer Id (net->entity_id); die passende Einheit schlaegt der Aufrufer nach,
-/// der die Einheiten haelt. NULL fuer ein freies Feld.
+/// ihrer Id; die passende Einheit schlaegt der Aufrufer nach, der die
+/// Einheiten haelt. NULL fuer ein freies Feld.
 ///
-void RAD_ClientTileFromNet(RAD_ClientTile_t *tile, const RAD_NetTile_t *net, RAD_ClientUnit_t *unit);
+void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit);
 
 ///
 /// Setzt die Einheit auf "unit", NULL fuer frei, und meldet "changed" -- nur,
@@ -85,6 +100,12 @@ void RAD_ClientTileSetUnit(RAD_ClientTile_t *tile, RAD_ClientUnit_t *unit);
 /// Feld verwirft; an den Daten aendert es nichts.
 ///
 void RAD_ClientTileRemove(RAD_ClientTile_t *tile);
+
+///
+/// Name eines Typs fuers Log: "ground", "water", "void", "unbekannt". Immer ein
+/// gueltiger Zeiger.
+///
+const char* RAD_ClientTileTypeText(RAD_ClientTileType_t type);
 
 ///
 /// Ob auf dem Feld eine Einheit steht.

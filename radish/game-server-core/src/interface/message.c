@@ -12,6 +12,8 @@
 
 static RAD_NetCodecResult_t RAD_ParseMoveCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
 static RAD_NetCodecResult_t RAD_ParseDeployCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
+static RAD_NetCodecResult_t RAD_ParseEndTurnCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
+static RAD_NetCodecResult_t RAD_ParseAttackCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command);
 
 
 const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result)
@@ -72,9 +74,9 @@ RAD_NetCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uint16_
 
     const NetCommandRequest *command_request = request->command_request;
 
-    // Abgebildet sind move und deploy -- ein shoot-Zweig oder gar keiner
-    // (commands_case NOT_SET) ist keine Nachricht, die sich in ein RAD_Command_t
-    // uebersetzen liesse (message.h). "out_command" bleibt dann unberuehrt.
+    // Abgebildet sind move, deploy, end_turn und attack -- eine Nachricht ganz
+    // ohne Zweig (commands_case NOT_SET) laesst sich in kein RAD_Command_t
+    // uebersetzen (message.h). "out_command" bleibt dann unberuehrt.
     RAD_Command_t parsed;
     memset(&parsed, 0, sizeof(parsed));
 
@@ -86,6 +88,14 @@ RAD_NetCodecResult_t RAD_ParseCommandFromMessage(const uint8_t *message, uint16_
     else if((command_request->commands_case == NET_COMMAND_REQUEST__COMMANDS_DEPLOY) && (command_request->deploy != NULL))
     {
         result = RAD_ParseDeployCommand(command_request, &parsed);
+    }
+    else if((command_request->commands_case == NET_COMMAND_REQUEST__COMMANDS_END_TURN) && (command_request->end_turn != NULL))
+    {
+        result = RAD_ParseEndTurnCommand(command_request, &parsed);
+    }
+    else if((command_request->commands_case == NET_COMMAND_REQUEST__COMMANDS_ATTACK) && (command_request->attack != NULL))
+    {
+        result = RAD_ParseAttackCommand(command_request, &parsed);
     }
 
     if(result == RAD_NET_CODEC_OK)
@@ -151,6 +161,43 @@ static RAD_NetCodecResult_t RAD_ParseDeployCommand(const NetCommandRequest *comm
     out_command->command.deploy_unit.unit = (RAD_UnitId_t)deploy->unit_id;
     out_command->command.deploy_unit.x = (int16_t)deploy->x;
     out_command->command.deploy_unit.y = (int16_t)deploy->y;
+
+    return RAD_NET_CODEC_OK;
+}
+
+///
+/// Der end_turn-Zweig: nur der Kopf, eine Nutzlast hat das Kommando nicht
+/// (RAD_COMMAND_TYPE_END_TURN, command.h).
+///
+static RAD_NetCodecResult_t RAD_ParseEndTurnCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command)
+{
+    out_command->header.type = RAD_COMMAND_TYPE_END_TURN;
+    out_command->header.sequence = (RAD_CommandSequence_t)command_request->id;
+    out_command->header.user = (RAD_UserId_t)command_request->end_turn->user_id;
+
+    return RAD_NET_CODEC_OK;
+}
+
+///
+/// Der attack-Zweig. Das Zielfeld wie beim deploy-Zweig: was nicht in int16
+/// passt, ist keines dieser Welt.
+///
+static RAD_NetCodecResult_t RAD_ParseAttackCommand(const NetCommandRequest *command_request, RAD_Command_t *out_command)
+{
+    const NetAttackCommand *attack = command_request->attack;
+
+    if((attack->x > (uint32_t)INT16_MAX) || (attack->y > (uint32_t)INT16_MAX))
+    {
+        return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+    }
+
+    out_command->header.type = RAD_COMMAND_TYPE_ATTACK;
+    out_command->header.sequence = (RAD_CommandSequence_t)command_request->id;
+    out_command->header.user = (RAD_UserId_t)attack->user_id;
+
+    out_command->command.attack.unit = (RAD_UnitId_t)attack->unit_id;
+    out_command->command.attack.x = (int16_t)attack->x;
+    out_command->command.attack.y = (int16_t)attack->y;
 
     return RAD_NET_CODEC_OK;
 }
@@ -258,21 +305,157 @@ RAD_NetCodecResult_t RAD_ParseDiscoverReserveFromMessage(const uint8_t *message,
     return reserve ? RAD_NET_CODEC_OK : RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
 }
 
+RAD_NetCodecResult_t RAD_ParseDiscoverUnitsFromMessage(const uint8_t *message, uint16_t size)
+{
+    NetUserRequest *request = net_user_request__unpack(NULL, size, message);
+    if(request == NULL)
+    {
+        return RAD_NET_CODEC_ERROR_DECODE_FAILED;
+    }
+
+    const bool units = (request->data_case == NET_USER_REQUEST__DATA_DISCOVER_UNITS_REQUEST)
+                       && (request->discover_units_request != NULL);
+
+    net_user_request__free_unpacked(request, NULL);
+    return units ? RAD_NET_CODEC_OK : RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+}
+
+///
+/// Eine NetUnit samt allem, worauf sie zeigt. protobuf-c packt ueber Zeiger: die
+/// Mitglieder und Waffen muessen leben, bis gepackt ist, und stehen deshalb hier
+/// und nicht in RAD_NetUnitFromUnit. Der Aufrufer legt sie auf seinen Stapel.
+///
+typedef struct
+{
+    NetUnit unit;
+    NetUnitMember members[RAD_UNIT_MAX_MEMBERS];
+    NetUnitMember *member_pointers[RAD_UNIT_MAX_MEMBERS];
+    NetWeapon weapons[RAD_UNIT_MAX_MEMBERS][RAD_UNIT_MAX_WEAPONS];
+    NetWeapon *weapon_pointers[RAD_UNIT_MAX_MEMBERS][RAD_UNIT_MAX_WEAPONS];
+} RAD_NetUnitStorage_t;
+
+/// Eine Anzahl aus dem Spiel, auf [0, maximum] begrenzt -- mehr Platz ist in
+/// RAD_NetUnitStorage_t nicht.
+static size_t RAD_NetClampCount(int32_t count, int32_t maximum)
+{
+    return (size_t)((count < 0) ? 0 : (count > maximum) ? maximum : count);
+}
+
+/// Ein Wert aus dem Spiel fuer ein uint32-Feld. Negativ ist keiner; kaeme doch
+/// einer, wird er 0 statt riesig.
+static uint32_t RAD_NetUnsigned(int16_t value)
+{
+    return (value < 0) ? 0u : (uint32_t)value;
+}
+
+///
+/// RAD_Unit_t -> NetUnit, vollstaendig, fuer die Reserve, die Einheiten und das
+/// Aufstellen. "storage->unit" ist danach die NetUnit; sie zeigt auf die Namen in
+/// "unit" und auf den Rest von "storage" und gilt nur, solange beide leben.
+///
+static void RAD_NetUnitFromUnit(const RAD_Unit_t *unit, RAD_NetUnitStorage_t *storage)
+{
+    NetUnit *net_unit = &storage->unit;
+    net_unit__init(net_unit);
+    net_unit->unit_id = (uint32_t)unit->id;
+    net_unit->owner_id = (uint64_t)unit->owner;
+    // Wie bei "description" in der Antwort: protobuf-c will einen String und nimmt
+    // ihn nur zum Lesen; der Cast nimmt die Konstanz weg, die es nicht kennt.
+    net_unit->name = (char *)unit->name;
+    net_unit->number_of_members = (uint32_t)unit->number_of_members;
+    net_unit->movement = RAD_NetUnsigned(unit->movement);
+    net_unit->transport_capacity = RAD_NetUnsigned(unit->transport_capacity);
+    net_unit->can_capture = unit->can_capture;
+    net_unit->deployed = unit->turn.deployed;
+    net_unit->moved = unit->turn.moved;
+    net_unit->attacked = unit->turn.attacked;
+
+    const size_t number_of_members = RAD_NetClampCount(unit->number_of_members, RAD_UNIT_MAX_MEMBERS);
+    for(size_t m = 0; m < number_of_members; ++m)
+    {
+        const RAD_UnitMember_t *member = &unit->members[m];
+        NetUnitMember *net_member = &storage->members[m];
+        net_unit_member__init(net_member);
+        net_member->profile = (char *)member->profile;
+        net_member->health = RAD_NetUnsigned(member->health);
+        net_member->armor = RAD_NetUnsigned(member->armor);
+        net_member->strength = RAD_NetUnsigned(member->strength);
+        net_member->accuracy = RAD_NetUnsigned(member->accuracy);
+
+        const size_t number_of_weapons = RAD_NetClampCount(member->number_of_weapons, RAD_UNIT_MAX_WEAPONS);
+        for(size_t w = 0; w < number_of_weapons; ++w)
+        {
+            const RAD_Weapon_t *weapon = &member->weapons[w];
+            NetWeapon *net_weapon = &storage->weapons[m][w];
+            net_weapon__init(net_weapon);
+            net_weapon->name = (char *)weapon->name;
+            net_weapon->weapon_class = (uint32_t)weapon->weapon_class;
+            net_weapon->shots = RAD_NetUnsigned(weapon->shots);
+            net_weapon->strength = RAD_NetUnsigned(weapon->strength);
+            net_weapon->min_range = RAD_NetUnsigned(weapon->min_range);
+            net_weapon->max_range = RAD_NetUnsigned(weapon->max_range);
+            net_weapon->penetration = RAD_NetUnsigned(weapon->penetration);
+            storage->weapon_pointers[m][w] = net_weapon;
+        }
+        net_member->n_weapons = number_of_weapons;
+        net_member->weapons = storage->weapon_pointers[m];
+
+        storage->member_pointers[m] = net_member;
+    }
+    net_unit->n_members = number_of_members;
+    net_unit->members = storage->member_pointers;
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitEventToMessage(const RAD_Unit_t *unit,
+                                                      uint8_t *out_message,
+                                                      uint16_t capacity,
+                                                      uint16_t *out_size)
+{
+    RAD_NetUnitStorage_t storage;
+    RAD_NetUnitFromUnit(unit, &storage);
+
+    NetUnitEvent unit_event = NET_UNIT_EVENT__INIT;
+    unit_event.unit = &storage.unit;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT;
+    game_event.unit = &unit_event;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitDeployedEventToMessage(const RAD_Unit_t *unit,
+                                                               int32_t x,
+                                                               int32_t y,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size)
+{
+    RAD_NetUnitStorage_t storage;
+    RAD_NetUnitFromUnit(unit, &storage);
+
+    NetUnitDeployedEvent unit_deployed = NET_UNIT_DEPLOYED_EVENT__INIT;
+    unit_deployed.unit = &storage.unit;
+    unit_deployed.x = (uint32_t)x;
+    unit_deployed.y = (uint32_t)y;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_DEPLOYED;
+    game_event.unit_deployed = &unit_deployed;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
 RAD_NetCodecResult_t RAD_SerializeReserveUnitEventToMessage(const RAD_Unit_t *unit,
                                                               uint8_t *out_message,
                                                               uint16_t capacity,
                                                               uint16_t *out_size)
 {
-    NetUnit net_unit = NET_UNIT__INIT;
-    net_unit.unit_id = (uint32_t)unit->id;
-    net_unit.owner_id = (uint64_t)unit->owner;
-    // Wie bei "description" in der Antwort: protobuf-c will einen String und nimmt
-    // ihn nur zum Lesen; der Cast nimmt die Konstanz weg, die es nicht kennt.
-    net_unit.name = (char *)unit->name;
-    net_unit.number_of_members = (uint32_t)unit->number_of_members;
+    RAD_NetUnitStorage_t storage;
+    RAD_NetUnitFromUnit(unit, &storage);
 
     NetReserveUnitEvent reserve_unit = NET_RESERVE_UNIT_EVENT__INIT;
-    reserve_unit.unit = &net_unit;
+    reserve_unit.unit = &storage.unit;
 
     NetGameEvent game_event = NET_GAME_EVENT__INIT;
     game_event.event_case = NET_GAME_EVENT__EVENT_RESERVE_UNIT;
@@ -370,6 +553,8 @@ RAD_NetCodecResult_t RAD_SerializeCommandResponseToMessage(const RAD_CommandResp
     NetMoveCommandStep *step_pointers[RAD_PATH_MAX_STEPS];
     NetMoveCommand move_command = NET_MOVE_COMMAND__INIT;
     NetDeployCommand deploy_command = NET_DEPLOY_COMMAND__INIT;
+    NetEndTurnCommand end_turn_command = NET_END_TURN_COMMAND__INIT;
+    NetAttackCommand attack_command = NET_ATTACK_COMMAND__INIT;
 
     switch(response->command.header.type)
     {
@@ -394,7 +579,7 @@ RAD_NetCodecResult_t RAD_SerializeCommandResponseToMessage(const RAD_CommandResp
                 step_pointers[i] = &steps[i];
             }
 
-            // Ungekuerzt: der Absender ist die gepackte Kennung (game_start.h).
+            // Ungekuerzt: der Absender ist die gepackte Kennung (start_game.h).
             move_command.user_id = (uint64_t)response->command.header.user;
             move_command.unit_id = (uint32_t)move->unit;
             move_command.n_steps = (size_t)number_of_steps;
@@ -416,6 +601,29 @@ RAD_NetCodecResult_t RAD_SerializeCommandResponseToMessage(const RAD_CommandResp
 
             command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_DEPLOY;
             command_request.deploy = &deploy_command;
+            break;
+        }
+
+        case RAD_COMMAND_TYPE_END_TURN:
+        {
+            end_turn_command.user_id = (uint64_t)response->command.header.user;
+
+            command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_END_TURN;
+            command_request.end_turn = &end_turn_command;
+            break;
+        }
+
+        case RAD_COMMAND_TYPE_ATTACK:
+        {
+            const RAD_CommandAttack_t *attack = &response->command.command.attack;
+
+            attack_command.user_id = (uint64_t)response->command.header.user;
+            attack_command.unit_id = (uint32_t)attack->unit;
+            attack_command.x = (uint32_t)attack->x;
+            attack_command.y = (uint32_t)attack->y;
+
+            command_request.commands_case = NET_COMMAND_REQUEST__COMMANDS_ATTACK;
+            command_request.attack = &attack_command;
             break;
         }
 

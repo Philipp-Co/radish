@@ -103,6 +103,42 @@ typedef struct
 } RAD_NetMoveRequest_t;
 
 ///
+/// Ein Deployment, wie es hinausgeht (command.proto NetDeployCommand in einem
+/// NetCommandRequest): die Einheit "entity" aus der Reserve des Absenders auf
+/// das Feld "position", in Weltkoordinaten.
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t position;
+} RAD_NetDeployRequest_t;
+
+///
+/// Ein Angriff, wie er hinausgeht (command.proto NetAttackCommand in einem
+/// NetCommandRequest): die Einheit "entity" des Absenders greift das Feld
+/// "target" an, in Weltkoordinaten. Auch ein leeres Feld ist ein Ziel.
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t target;
+} RAD_NetAttackRequest_t;
+
+///
+/// Das Abgeben des Zuges, wie es hinausgeht (command.proto NetEndTurnCommand in
+/// einem NetCommandRequest). Ohne Nutzlast: wer abgibt, ist der Absender.
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+} RAD_NetEndTurnRequest_t;
+
+///
 /// Platz fuer den Namen einer Einheit samt abschliessender Null -- derselbe wie im
 /// Spiel (RAD_UNIT_NAME_MAX). Ein laengerer Name aus der Nachricht wird gekuerzt:
 /// der Client zeigt ihn nur an.
@@ -110,17 +146,89 @@ typedef struct
 #define RAD_NET_UNIT_NAME_MAX 32
 
 ///
-/// Eine Einheit in der Reserve (game.proto NetReserveUnitEvent, eine Nachricht je
-/// Einheit): dem Spiel bekannt, auf dem Feld noch nicht. "owner" ist die
-/// oeffentliche Spieler-Id ihres Besitzers.
+/// Hoechstzahl der Mitglieder einer Einheit und der Waffen eines Mitglieds --
+/// dieselben wie im Spiel (RAD_UNIT_MAX_MEMBERS, RAD_UNIT_MAX_WEAPONS). Eine
+/// Nachricht mit mehr liest der Codec nicht (net_codec.h).
+///
+#define RAD_NET_UNIT_MEMBERS_MAX 10
+#define RAD_NET_MEMBER_WEAPONS_MAX 4
+
+///
+/// Eine Waffe eines Mitglieds (game.proto NetWeapon). "weapon_class" wie im
+/// Spiel: 0 standard, 1 heavy, 2 super heavy.
+///
+typedef struct
+{
+    char name[RAD_NET_UNIT_NAME_MAX];
+    uint32_t weapon_class;
+    uint32_t shots;
+    uint32_t strength;
+    uint32_t min_range;
+    uint32_t max_range;
+    uint32_t penetration;
+} RAD_NetWeapon_t;
+
+///
+/// Ein Mitglied einer Einheit (game.proto NetUnitMember).
+///
+typedef struct
+{
+    char profile[RAD_NET_UNIT_NAME_MAX];
+    uint32_t health;
+    uint32_t armor;
+    uint32_t strength;
+    uint32_t accuracy;
+    RAD_NetWeapon_t weapons[RAD_NET_MEMBER_WEAPONS_MAX];
+    uint32_t number_of_weapons;
+} RAD_NetUnitMember_t;
+
+///
+/// Eine Einheit, vollstaendig (game.proto NetUnit): wer sie ist, wem sie
+/// gehoert -- "owner" ist die oeffentliche Spieler-Id --, ihre Werte und alle
+/// Mitglieder mit ihren Waffen. Wo sie steht, sagt sie nicht.
+///
+/// So kommt sie als Antwort auf eine Einheiten-Anfrage (NetUnitEvent), und so
+/// steckt sie in RAD_NetReserveUnit_t und RAD_NetUnitDeployed_t.
+/// "number_of_members" ist die Zahl der Mitglieder in "members" -- nicht das
+/// gleichnamige Feld der Nachricht, das daneben ueberzaehlig ist.
 ///
 typedef struct
 {
     RAD_NetEntityId_t unit;
     RAD_NetUserId_t owner;
     char name[RAD_NET_UNIT_NAME_MAX];
+    uint32_t movement;
+    uint32_t transport_capacity;
+    bool can_capture;
+    RAD_NetUnitMember_t members[RAD_NET_UNIT_MEMBERS_MAX];
     uint32_t number_of_members;
-} RAD_NetReserveUnit_t;
+
+    /// Was sie im laufenden Zug schon getan hat (NetUnit.deployed, moved,
+    /// attacked): aufgestellt, gezogen, angegriffen.
+    bool deployed;
+    bool moved;
+    bool attacked;
+} RAD_NetUnit_t;
+
+///
+/// Eine Einheit in der Reserve (game.proto NetReserveUnitEvent, eine Nachricht je
+/// Einheit): dem Spiel bekannt, auf dem Feld noch nicht. Die Nachricht ist nur
+/// die Einheit selbst.
+///
+typedef RAD_NetUnit_t RAD_NetReserveUnit_t;
+
+///
+/// Eine Einheit, die jetzt auf dem Feld "position" steht (game.proto
+/// NetUnitDeployedEvent). Der Server schickt es jedem Client, sobald eine
+/// Einheit aufgestellt wurde, noch vor der Antwort auf das Kommando -- und mit
+/// der ganzen Einheit, damit auch ein Client sie aufstellen kann, der die Reserve
+/// nicht kennt.
+///
+typedef struct
+{
+    RAD_NetUnit_t unit;
+    RAD_NetPosition_t position;
+} RAD_NetUnitDeployed_t;
 
 ///
 /// Die Antwort des Servers auf einen Zug (command.proto NetCommandResponse). Der
@@ -135,6 +243,58 @@ typedef struct
     RAD_NetEntityId_t entity;
     RAD_NetPath_t path;
 } RAD_NetCommandResponse_t;
+
+///
+/// Die Antwort des Servers auf ein Deployment (command.proto NetCommandResponse
+/// mit NetDeployCommand), wie RAD_NetCommandResponse_t fuer einen Zug: der
+/// Server wiederholt darin das Kommando, "success" sagt, ob er die Einheit
+/// "entity" auf "position" gestellt hat. Er schickt sie jedem Client, nicht nur
+/// dem, der deployt hat -- "user" nennt den.
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+    bool success;
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t position;
+} RAD_NetDeployResponse_t;
+
+///
+/// Platz fuer die Beschreibung in einer Antwort (command.proto
+/// NetCommandResponse.description) samt abschliessender Null. Eine laengere
+/// wird gekuerzt -- sie ist nur zum Anzeigen.
+///
+#define RAD_NET_DESCRIPTION_MAX 96
+
+///
+/// Die Antwort des Servers auf einen Angriff (command.proto NetCommandResponse
+/// mit NetAttackCommand), wie RAD_NetDeployResponse_t: an jeden Client, "user"
+/// nennt den, der angegriffen hat; "success" sagt, ob der Server den Angriff
+/// angenommen hat, "description" sonst den Grund.
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+    bool success;
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t target;
+    char description[RAD_NET_DESCRIPTION_MAX];
+} RAD_NetAttackResponse_t;
+
+///
+/// Die Antwort des Servers auf ein Abgeben (command.proto NetCommandResponse
+/// mit NetEndTurnCommand), wie RAD_NetDeployResponse_t: an jeden Client, "user"
+/// nennt den, der abgegeben hat. Wer danach dran ist, steht nicht darin -- das
+/// kommt vorher als eigenes Ereignis (game.proto NetCurrentPlayerEvent).
+///
+typedef struct
+{
+    RAD_NetSequence_t sequence;
+    RAD_NetUserId_t user;
+    bool success;
+} RAD_NetEndTurnResponse_t;
 
 ///
 /// Wire-Typ eines Tiles (tile.proto NetTileType). Die Wire-Werte sind eine eigene

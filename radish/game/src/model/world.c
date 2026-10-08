@@ -3,16 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 
-static RAD_UnitId_t RAD_WorldFindFreeUnitSlot(RAD_World_t *world);
 static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t previous_type, int32_t previous_z, const RAD_Tile_t *tile);
 static bool RAD_WorldUnitValuesFit(const RAD_Unit_t *unit, int32_t min_members);
 static bool RAD_WorldNameFits(const char name[RAD_UNIT_NAME_MAX]);
 
-void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager)
+void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager, RAD_UnitPool_t *units)
 {
     world->width = RAD_WORLD_WIDTH;
     world->height = RAD_WORLD_HEIGHT;
-    world->number_of_units = 0;
+    world->units = units;
     world->event_manager = event_manager;
 }
 
@@ -64,19 +63,7 @@ bool RAD_ResetWorldToSize(RAD_World_t *world, int32_t width, int32_t height)
         }
     }
 
-    for(int32_t i=0;i < RAD_MAX_UNITS; ++i)
-    {
-        world->units[i] = (RAD_Unit_t){
-            .id = RAD_UNIT_NONE,
-            .type = RAD_UNIT_TYPE_NONE,
-            .owner = RAD_USER_NONE,
-            .x = -1,
-            .y = -1
-        };
-    }
-
-    world->number_of_units = 0;
-
+    // Der Pool bleibt, wie er ist (world.h).
     return true;
 }
 
@@ -96,17 +83,7 @@ RAD_Tile_t* RAD_WorldTileAt(RAD_World_t *world, int32_t x, int32_t y)
 
 RAD_Unit_t* RAD_WorldUnitById(RAD_World_t *world, RAD_UnitId_t id)
 {
-    if(id < 0 || id >= RAD_MAX_UNITS)
-    {
-        return NULL;
-    }
-
-    RAD_Unit_t *unit = &world->units[id];
-    if(unit->id == RAD_UNIT_NONE)
-    {
-        return NULL;
-    }
-    return unit;
+    return RAD_UnitPoolUnitById(world->units, id);
 }
 
 RAD_Unit_t* RAD_WorldUnitAt(RAD_World_t *world, int32_t x, int32_t y)
@@ -247,16 +224,17 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
         return RAD_UNIT_NONE;
     }
 
-    const RAD_UnitId_t id = RAD_WorldFindFreeUnitSlot(world);
-    if(id == RAD_UNIT_NONE)
+    // Der Pool legt an und vergibt die Id; NULL heisst, er ist voll.
+    RAD_Unit_t *unit = RAD_UnitPoolAddUnit(world->units);
+    if(unit == NULL)
     {
         return RAD_UNIT_NONE;
     }
+    const RAD_UnitId_t id = unit->id;
 
     // Die Werte als Ganzes und danach das, was die Welt vergibt. So kommt aus
     // "values" nichts durch, was sie selbst fuehrt -- auch kein Zustand und keine
     // Bedingung, die der Aufrufer zufaellig gesetzt hat.
-    RAD_Unit_t *unit = &world->units[id];
     *unit = *values;
     unit->id = id;
     unit->state = RAD_UNIT_STATE_RESERVE;
@@ -265,43 +243,39 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
     unit->y = -1;
     unit->conditions.burning = 0;
     unit->conditions.poisoned = 0;
-
-    world->number_of_units++;
+    unit->turn.deployed = 0;
+    unit->turn.moved = 0;
+    unit->turn.attacked = 0;
 
     return id;
 }
 
 RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y)
 {
-    const RAD_UnitId_t id = RAD_WorldFindFreeUnitSlot(world);
-    if(id == RAD_UNIT_NONE)
-    {
-        return RAD_UNIT_NONE;
-    }
-
+    // Erst das Feld, dann der Pool: eine abgelehnte Figur belegt keinen Platz.
     RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
     if((tile == NULL) || (tile->unit != RAD_UNIT_NONE))
     {
         return RAD_UNIT_NONE;
     }
 
-    // Der ganze Platz wird geschrieben, nicht nur die Felder, die diese Funktion
-    // kennt: eine neue Figur faengt herrenlos an, gleich wem die vorige in diesem
-    // Slot gehoert hat. Wer sie zuordnen will, tut das danach.
-    world->units[id] = (RAD_Unit_t){
-        .id = id,
-        .type = type,
-        .state = RAD_UNIT_STATE_DEPLOYED,
-        .owner = RAD_USER_NONE,
-        .x = x,
-        .y = y
-    };
-    tile->unit = id;
-    world->number_of_units++;
+    RAD_Unit_t *unit = RAD_UnitPoolAddUnit(world->units);
+    if(unit == NULL)
+    {
+        return RAD_UNIT_NONE;
+    }
 
-    RAD_EventManagerPublishUnitSpawned(world->event_manager, &world->units[id], x, y);
+    // Eine neue Figur faengt herrenlos an (so legt der Pool sie an). Wer sie
+    // zuordnen will, tut das danach.
+    unit->type = type;
+    unit->state = RAD_UNIT_STATE_DEPLOYED;
+    unit->x = x;
+    unit->y = y;
+    tile->unit = unit->id;
 
-    return id;
+    RAD_EventManagerPublishUnitSpawned(world->event_manager, unit, x, y);
+
+    return unit->id;
 }
 
 bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y)
@@ -399,9 +373,8 @@ void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id)
     const int16_t x = unit->x;
     const int16_t y = unit->y;
 
-    // Der Slot bleibt belegt und die Einheit mit ihm, samt Besitzer und Werten: die
-    // Id ist der Array-Index und wird nicht neu vergeben (unit.h). Nur das Feld
-    // wird frei.
+    // Die Einheit bleibt im Pool, samt Besitzer und Werten -- nur das Feld wird
+    // frei (world.h).
     if(was_deployed)
     {
         RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
@@ -426,18 +399,8 @@ void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id)
 
 RAD_UserId_t RAD_WorldUnitOwner(const RAD_World_t *world, RAD_UnitId_t id)
 {
-    if(id < 0 || id >= RAD_MAX_UNITS)
-    {
-        return RAD_USER_NONE;
-    }
-
-    const RAD_Unit_t *unit = &world->units[id];
-    if(unit->id == RAD_UNIT_NONE)
-    {
-        return RAD_USER_NONE;
-    }
-
-    return unit->owner;
+    const RAD_Unit_t *unit = RAD_UnitPoolUnitById(world->units, id);
+    return (unit == NULL) ? RAD_USER_NONE : unit->owner;
 }
 
 bool RAD_WorldSetUnitOwner(RAD_World_t *world, RAD_UnitId_t id, RAD_UserId_t owner)
@@ -454,28 +417,10 @@ bool RAD_WorldSetUnitOwner(RAD_World_t *world, RAD_UnitId_t id, RAD_UserId_t own
 
 bool RAD_WorldIsConsistent(const RAD_World_t *world)
 {
-    int32_t live_units = 0;
-
-    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
+    const int32_t number_of_units = RAD_UnitPoolNumberOfUnits(world->units);
+    for(int32_t i=0;i < number_of_units; ++i)
     {
-        const RAD_Unit_t *unit = &world->units[i];
-        if(unit->id == RAD_UNIT_NONE)
-        {
-            // Ein freier Platz gehoert niemandem. Traegt er einen Besitzer, hat
-            // jemand in den Pool geschrieben, ohne ueber die Welt zu gehen.
-            if(unit->owner != RAD_USER_NONE)
-            {
-                return false;
-            }
-            continue;
-        }
-        live_units++;
-
-        // Die Id ist der Slot-Index; alles andere waere ein verschobener Pool.
-        if(unit->id != i)
-        {
-            return false;
-        }
+        const RAD_Unit_t *unit = RAD_UnitPoolUnitAt(world->units, i);
         if(!RAD_WorldUnitValuesFit(unit, 0))
         {
             return false;
@@ -510,11 +455,6 @@ bool RAD_WorldIsConsistent(const RAD_World_t *world)
         }
     }
 
-    if(live_units != world->number_of_units)
-    {
-        return false;
-    }
-
     if(world->width < 1 || world->width > RAD_WORLD_WIDTH || world->height < 1 || world->height > RAD_WORLD_HEIGHT)
     {
         return false;
@@ -533,15 +473,11 @@ bool RAD_WorldIsConsistent(const RAD_World_t *world)
             {
                 continue;
             }
-            if(tile->unit < 0 || tile->unit >= RAD_MAX_UNITS)
-            {
-                return false;
-            }
-
             // Und die Einheit muss genau hier stehen -- auf dem Feld und nicht in
-            // der Reserve oder zerstoert.
-            const RAD_Unit_t *unit = &world->units[tile->unit];
-            if(unit->id != tile->unit || unit->state != RAD_UNIT_STATE_DEPLOYED || unit->x != x || unit->y != y)
+            // der Reserve oder zerstoert. Eine Id, die der Pool nicht kennt, ist
+            // ein Verweis ins Leere.
+            const RAD_Unit_t *unit = RAD_UnitPoolUnitById(world->units, tile->unit);
+            if(unit == NULL || unit->state != RAD_UNIT_STATE_DEPLOYED || unit->x != x || unit->y != y)
             {
                 return false;
             }
@@ -549,18 +485,6 @@ bool RAD_WorldIsConsistent(const RAD_World_t *world)
     }
 
     return true;
-}
-
-static RAD_UnitId_t RAD_WorldFindFreeUnitSlot(RAD_World_t *world)
-{
-    for(RAD_UnitId_t i=0;i < RAD_MAX_UNITS; ++i)
-    {
-        if(world->units[i].id == RAD_UNIT_NONE)
-        {
-            return i;
-        }
-    }
-    return RAD_UNIT_NONE;
 }
 
 ///

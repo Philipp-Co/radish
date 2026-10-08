@@ -54,17 +54,17 @@ typedef enum
     RAD_COMMAND_TYPE_REMOVE_UNIT = 3,
     RAD_COMMAND_TYPE_CREATE_TILE = 4,
     RAD_COMMAND_TYPE_REMOVE_TILE = 5,
-    RAD_COMMAND_TYPE_SHOOT = 6,
+    ///
+    /// Eine Einheit greift ein Feld an (RAD_CommandAttack_t). Frueher "Shoot";
+    /// der Wert ist derselbe geblieben.
+    ///
+    RAD_COMMAND_TYPE_ATTACK = 6,
     RAD_COMMAND_TYPE_USE = 7,
 
     ///
     /// Der Absender gibt seinen Zug ab. Als einzige Art ohne Nutzlast: wer ihn
     /// beendet, steht im Kopf, und mehr ist nicht zu sagen. Es gibt deshalb auch
     /// keine Struktur dafuer in der Union unten.
-    ///
-    /// Ein Zug endet auch von selbst, sobald die Aktionspunkte aufgebraucht sind
-    /// (RAD_ControlExecuteCommand im Server). Dieses Kommando ist der andere Weg:
-    /// abgeben, was man nicht mehr braucht.
     ///
     RAD_COMMAND_TYPE_END_TURN = 8,
 
@@ -208,19 +208,22 @@ typedef struct
 } RAD_CommandRemoveTile_t;
 
 ///
-/// Schiesst auf ein Tile.
+/// Eine Einheit greift ein Feld an.
 ///
 /// Das Ziel ist ein Feld und keine Figur: getroffen wird, was dort steht, und ob
 /// dort etwas steht, entscheidet sich beim Ausfuehren und nicht beim Zielen. Ein
-/// Schuss ins Leere ist damit ein moegliches Kommando und kein fehlerhaftes --
+/// Angriff ins Leere ist damit ein moegliches Kommando und kein fehlerhaftes --
 /// dieselbe Ueberlegung wie beim absoluten Ziel von move_unit.
+///
+/// Womit angegriffen wird, steht nicht darin: das ist Sache der Kampfregel, die
+/// die Waffen der Einheit kennt.
 ///
 typedef struct
 {
     ///
-    /// Wer schiesst. Der Absender im Kopf sagt, in wessen Namen -- diese Id sagt,
-    /// mit welcher seiner Figuren; ein Benutzer kann mehrere fuehren, und ohne
-    /// die Angabe waere nicht entschieden, welche handelt.
+    /// Wer angreift. Der Absender im Kopf sagt, in wessen Namen -- diese Id
+    /// sagt, mit welcher seiner Figuren; ein Benutzer kann mehrere fuehren, und
+    /// ohne die Angabe waere nicht entschieden, welche handelt.
     ///
     /// Damit ist es auch die Figur, an der die Berechtigung haengt: sie muss dem
     /// Absender gehoeren, so wie bei move_unit.
@@ -229,21 +232,13 @@ typedef struct
 
     int16_t x;
     int16_t y;
-
-    ///
-    /// Womit geschossen wird -- eine Nummer, keine Aufzaehlung. Waffen gibt es im
-    /// Spiel noch nicht; bis es sie gibt, ist das eine Zahl, die der Codec
-    /// durchreicht, ohne sie zu deuten, so wie die Uuid des Absenders. Wer sie
-    /// ausgibt und was 0 heisst, entscheidet, wer das Kommando ausfuehrt.
-    ///
-    uint8_t weapon;
-} RAD_CommandShoot_t;
+} RAD_CommandAttack_t;
 
 ///
 /// Benutzt, was auf einem Tile steht -- eine Tuer, einen Schalter, was dort
 /// aufliegt.
 ///
-/// Wie beim Schuss ist das Ziel ein Feld: was dort benutzt wird, weiss das
+/// Wie beim Angriff ist das Ziel ein Feld: was dort benutzt wird, weiss das
 /// Kommando nicht. Wer benutzt, steht dagegen darin -- aus demselben Grund wie
 /// dort.
 ///
@@ -254,7 +249,7 @@ typedef struct
 ///
 typedef struct
 {
-    /// Wer benutzt; muss dem Absender gehoeren, wie bei shoot.
+    /// Wer benutzt; muss dem Absender gehoeren, wie bei attack.
     RAD_UnitId_t unit;
 
     int16_t x;
@@ -270,7 +265,7 @@ typedef struct
         RAD_CommandRemoveUnit_t remove_unit;
         RAD_CommandCreateTile_t create_tile;
         RAD_CommandRemoveTile_t remove_tile;
-        RAD_CommandShoot_t shoot;
+        RAD_CommandAttack_t attack;
         RAD_CommandUse_t use;
         RAD_CommandDeployUnit_t deploy_unit;
     } command;

@@ -5,7 +5,8 @@
 #include <radish/game/model/unit/unit.h>
 #include <radish/game/model/tile/tile.h>
 #include <radish/server/control/execute.h>
-#include <radish/server/control/game_start.h>
+#include <radish/game/control/start_game.h>
+#include <radish/server/control/loader.h>
 
 ///
 /// Das Aufstellen durch die Steuerung (RAD_ControlExecuteCommand mit
@@ -13,9 +14,46 @@
 /// der Antwort steht, warum es nicht ging.
 ///
 
-static RAD_EventManager_t *events;
+/// Das Spiel kommt aus dem Loader, wie im Server -- damit ist auch geprueft, dass
+/// er die Einheiten-Ereignisse abonniert. "game" ist nur ein kuerzerer Name.
+static RAD_ControlGame_t loaded;
 static RAD_Game_t *game;
 static RAD_Control_t control;
+
+/// Was das Spiel als aufgestellt gemeldet hat (aufgestellt), seit aufbauen.
+static int32_t gemeldet;
+static RAD_Unit_t gemeldete_einheit;
+static int32_t gemeldet_x;
+static int32_t gemeldet_y;
+
+static void aufgestellt(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    (void)user_argument;
+    gemeldet++;
+    gemeldete_einheit = *unit;
+    gemeldet_x = x;
+    gemeldet_y = y;
+}
+
+static void einheit_ohne_belang(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    (void)user_argument; (void)unit; (void)x; (void)y;
+}
+
+static void zug_ohne_belang(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
+{
+    (void)user_argument; (void)unit; (void)path; (void)result;
+}
+
+static void zugwechsel_ohne_belang(void *user_argument, RAD_UserId_t current_user)
+{
+    (void)user_argument; (void)current_user;
+}
+
+static void feld_ohne_belang(void *user_argument, const RAD_Tile_t *tile)
+{
+    (void)user_argument; (void)tile;
+}
 
 static RAD_UserId_t host;
 static RAD_UserId_t gast;
@@ -26,39 +64,62 @@ static RAD_UnitId_t fremde;
 
 static void aufbauen(void)
 {
-    events = RAD_CreateEventManager();
-    TEST_ASSERT_NOT_NULL(events);
-    game = RAD_CreateGame(events, RAD_USER_NONE);
+    RAD_EventCallbacks_t callbacks = {
+        .tile_changed = {
+            .user_argument = NULL,
+            .added = feld_ohne_belang,
+            .removed = feld_ohne_belang,
+            .changed = feld_ohne_belang
+        },
+        .unit_changed = {
+            .user_argument = NULL,
+            .spawned = aufgestellt,
+            .destroyed = einheit_ohne_belang,
+            .moved = zug_ohne_belang
+        },
+        .turn_changed = {
+            .user_argument = NULL,
+            .changed = zugwechsel_ohne_belang
+        }
+    };
+    loaded = RAD_ControlCreateGame(NULL, &callbacks);
+    game = loaded.game;
     TEST_ASSERT_NOT_NULL(game);
     control = RAD_CreateControl(game);
     TEST_ASSERT_NOT_NULL(control);
 
-    RAD_ControlGameStart_t *start = RAD_ControlCreateGameStart();
+    RAD_GameStart_t *start = RAD_CreateGameStart();
     TEST_ASSERT_NOT_NULL(start);
     strcpy(start->players[0].identifier, "aB3xK9pQ");
     strcpy(start->players[1].identifier, "Zz1Yy2Xx");
-    for(int32_t p=0;p < RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    for(int32_t p=0;p < RAD_GAME_START_NUMBER_OF_PLAYERS; ++p)
     {
         RAD_Unit_t *unit = &start->players[p].units[0];
         strcpy(unit->name, "Trupp");
         unit->number_of_members = 1;
         strcpy(unit->members[0].profile, "Soldat");
+        // Eine Waffe, die 4 Felder weit reicht -- fuer die Angriffe unten.
+        unit->members[0].number_of_weapons = 1;
+        unit->members[0].weapons[0].max_range = 4;
         start->players[p].number_of_units = 1;
     }
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_ControlStartGame(control, start));
-    RAD_ControlDestroyGameStart(&start);
+    RAD_DestroyGameStart(&start);
 
-    host = RAD_ControlUserIdFromIdentifier("aB3xK9pQ");
-    gast = RAD_ControlUserIdFromIdentifier("Zz1Yy2Xx");
+    host = RAD_UserIdFromIdentifier("aB3xK9pQ");
+    gast = RAD_UserIdFromIdentifier("Zz1Yy2Xx");
     eigene = RAD_GameUserUnitAt(game, host, 0);
     fremde = RAD_GameUserUnitAt(game, gast, 0);
+
+    // Was der Spielstart meldet, zaehlt nicht: gezaehlt wird ab hier.
+    gemeldet = 0;
 }
 
 static void abbauen(void)
 {
     RAD_DestroyControl(&control);
-    RAD_DestroyGame(&game);
-    RAD_DestroyEventManager(&events);
+    RAD_ControlDestroyGame(&loaded);
+    game = NULL;
 }
 
 static RAD_Command_t aufstellen(RAD_UserId_t user, RAD_UnitId_t unit, int16_t x, int16_t y)
@@ -182,6 +243,122 @@ void test_deploy_steuerung_zeigt_die_einheiten(void)
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, unit.state);
     TEST_ASSERT_TRUE(RAD_ControlUnitAt(control, 1, &unit));
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, unit.state);
+
+    abbauen();
+}
+
+///
+/// Was der Server als NetUnitDeployedEvent hinausschickt: genau eine Meldung je
+/// Aufstellen, mit der Einheit im neuen Zustand und ihrem Feld -- und keine fuer
+/// ein abgelehntes Kommando.
+///
+void test_deploy_meldet_die_aufgestellte_einheit(void)
+{
+    aufbauen();
+
+    RAD_Command_t command = aufstellen(host, eigene, -1, 4);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_OUT_OF_BOUNDS, RAD_ControlExecuteCommand(control, &command).value);
+    command = aufstellen(host, fremde, 4, 4);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_NOT_OWNED, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(0, gemeldet);
+
+    command = aufstellen(host, eigene, 4, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
+
+    TEST_ASSERT_EQUAL_INT(1, gemeldet);
+    TEST_ASSERT_EQUAL_INT(eigene, gemeldete_einheit.id);
+    TEST_ASSERT_EQUAL_UINT64(host, gemeldete_einheit.owner);
+    TEST_ASSERT_EQUAL_STRING("Trupp", gemeldete_einheit.name);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, gemeldete_einheit.state);
+    TEST_ASSERT_EQUAL_INT(4, gemeldet_x);
+    TEST_ASSERT_EQUAL_INT(5, gemeldet_y);
+
+    // Ein zweites Mal geht nicht -- und meldet nichts.
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_NOT_IN_RESERVE, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(1, gemeldet);
+
+    abbauen();
+}
+
+static RAD_Command_t ziehen(RAD_UserId_t user, RAD_UnitId_t unit, int16_t von_x, int16_t von_y, int16_t nach_x, int16_t nach_y)
+{
+    RAD_Command_t command;
+    memset(&command, 0, sizeof(command));
+    command.header.type = RAD_COMMAND_TYPE_MOVE_UNIT;
+    command.header.sequence = 1;
+    command.header.user = user;
+    command.command.move_unit.unit = unit;
+    command.command.move_unit.path.steps_to[0].x = von_x;
+    command.command.move_unit.path.steps_to[0].y = von_y;
+    command.command.move_unit.path.steps_to[1].x = nach_x;
+    command.command.move_unit.path.steps_to[1].y = nach_y;
+    command.command.move_unit.path.number_of_steps = 2;
+    return command;
+}
+
+static RAD_Command_t angreifen(RAD_UserId_t user, RAD_UnitId_t unit, int16_t x, int16_t y)
+{
+    RAD_Command_t command;
+    memset(&command, 0, sizeof(command));
+    command.header.type = RAD_COMMAND_TYPE_ATTACK;
+    command.header.sequence = 1;
+    command.header.user = user;
+    command.command.attack.unit = unit;
+    command.command.attack.x = x;
+    command.command.attack.y = y;
+    return command;
+}
+
+///
+/// Ziehen und Angreifen durch die Steuerung: im Zug des Aufstellens keins von
+/// beiden, danach je einmal -- und in der Antwort steht, warum es nicht ging
+/// (RAD_GameCheckMoveUnit, RAD_GameCheckAttack).
+///
+void test_ziehen_und_angreifen_ueber_die_steuerung_nennt_den_grund(void)
+{
+    aufbauen();
+
+    RAD_Command_t command = aufstellen(host, eigene, 2, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
+
+    // Eine fremde Einheit fasst der Host nicht an -- der Besitz kommt zuerst.
+    command = ziehen(host, fremde, 0, 0, 1, 0);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_NOT_OWNED, RAD_ControlExecuteCommand(control, &command).value);
+    command = angreifen(host, fremde, 4, 4);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_NOT_OWNED, RAD_ControlExecuteCommand(control, &command).value);
+
+    // Im Zug des Aufstellens weder ziehen noch angreifen.
+    command = ziehen(host, eigene, 2, 3, 3, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_UNIT_JUST_DEPLOYED, RAD_ControlExecuteCommand(control, &command).value);
+    command = angreifen(host, eigene, 4, 4);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_UNIT_JUST_DEPLOYED, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(2, einheit(eigene).x);
+
+    // Eine Runde weiter ist der Host wieder dran.
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, host));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, gast));
+
+    command = ziehen(host, eigene, 2, 3, 3, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(3, einheit(eigene).x);
+    command = ziehen(host, eigene, 3, 3, 4, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_UNIT_ALREADY_MOVED, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(3, einheit(eigene).x);
+
+    // Ein Ziel ausserhalb der Welt oder der Reichweite zaehlt nicht; danach greift
+    // sie einmal an. Sie steht auf (3, 3), ihre Waffe reicht 4 Felder.
+    command = angreifen(host, eigene, -1, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_OUT_OF_BOUNDS, RAD_ControlExecuteCommand(control, &command).value);
+    command = angreifen(host, eigene, 7, 7);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE, RAD_ControlExecuteCommand(control, &command).value);
+    command = angreifen(host, eigene, 5, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
+    command = angreifen(host, eigene, 5, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED, RAD_ControlExecuteCommand(control, &command).value);
+
+    // Der Text, der ueber die Strecke geht.
+    TEST_ASSERT_EQUAL_STRING("Einheit hat in diesem Zug schon angegriffen",
+                             RAD_ControlResultText(RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED));
 
     abbauen();
 }

@@ -2,8 +2,8 @@
 #define __RAD_MODEL_RESERVE_H__
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <radish/io/net_types.h>
 #include <radish/model/events/observable.h>
 #include <radish/model/unit.h>
 
@@ -14,25 +14,28 @@
 #define RAD_CLIENT_RESERVE_UNITS_MAX 64
 
 ///
-/// Die Einheiten eines Spielers, die dem Spiel bekannt sind, aber auf keinem Feld
+/// Welche Einheiten eines Spielers dem Spiel bekannt sind, aber auf keinem Feld
 /// stehen. Die Welt haelt eine je Spieler (model/world.h) und vergibt sie an die
 /// Besitzer.
 ///
-/// **Die Einheiten bleiben an ihrem Platz.** Eine Einheit wird ersetzt, aber nie
-/// verschoben -- ein Zeiger auf sie (RAD_ClientTile_t.unit, ein Beobachter der
-/// Einheit) bleibt gueltig, solange die Welt nicht neu initialisiert wird.
+/// **Nur Ids, keine Einheiten.** Die Reserve haelt eine Liste von Ids; die
+/// Einheiten selbst stehen im Unit-Repository der Welt
+/// (model/unit_repository.h), dort schlaegt nach, wer mehr als die Id braucht.
+///
+/// **Eine dichte Liste.** Eine Id kommt hinten dazu; wird eine entfernt, ruecken
+/// die folgenden nach. Kommt sie spaeter zurueck, steht sie wieder hinten.
 ///
 /// **Beobachtbar** (model/events/observable.h): eine Reserve meldet
-/// "unit_added", wenn eine Einheit neu in sie kommt, und "unit_changed", wenn
-/// eine, die schon darin steht, ersetzt wird. Die Einheit selbst meldet
-/// daneben ihr eigenes "changed".
+/// "unit_added", wenn eine Id in sie kommt, und "unit_removed", wenn eine sie
+/// verlaesst. Was sich an einer Einheit aendert, meldet die Einheit selbst.
 ///
 typedef struct
 {
-    /// Wem die Reserve gehoert, RAD_NET_USER_NONE fuer eine freie.
-    RAD_NetUserId_t owner;
+    /// Wem die Reserve gehoert, RAD_CLIENT_PLAYER_NONE fuer eine freie.
+    RAD_ClientPlayerId_t owner;
 
-    RAD_ClientUnit_t units[RAD_CLIENT_RESERVE_UNITS_MAX];
+    /// Die Ids der Einheiten darin, "number_of_units" vorne belegt.
+    RAD_ClientUnitId_t ids[RAD_CLIENT_RESERVE_UNITS_MAX];
     uint32_t number_of_units;
 
     /// Wer die Reserve beobachtet -- nur ueber RAD_ClientReserveSubscribe.
@@ -42,35 +45,57 @@ typedef struct
 typedef enum
 {
     RAD_CLIENT_RESERVE_EVENT_UNIT_ADDED = 0,
-    RAD_CLIENT_RESERVE_EVENT_UNIT_CHANGED
+    RAD_CLIENT_RESERVE_EVENT_UNIT_REMOVED
 } RAD_ClientReserveEvent_t;
 
 ///
 /// Ein Beobachter einer Reserve. "reserve" ist die beobachtete Reserve selbst,
-/// "unit" die Einheit darin, um die es geht. Ein NULL-Callback heisst: dieses
-/// Ereignis nicht.
+/// "id" die Einheit, um die es geht. Ein NULL-Callback heisst: dieses Ereignis
+/// nicht.
+///
+/// Bei "unit_removed" steht "id" schon nicht mehr in der Reserve.
 ///
 typedef struct
 {
     void *user_argument;
-    void (*unit_added)(void *user_argument, const RAD_ClientReserve_t *reserve, const RAD_ClientUnit_t *unit);
-    void (*unit_changed)(void *user_argument, const RAD_ClientReserve_t *reserve, const RAD_ClientUnit_t *unit);
+    void (*unit_added)(void *user_argument, const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
+    void (*unit_removed)(void *user_argument, const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
 } RAD_ClientReserveObserver_t;
 
 ///
-/// Legt "unit" in die Reserve -- **ohne auf den Besitzer zu sehen**, den
-/// vergleicht die Welt. Steht eine Einheit mit derselben Id schon darin, wird sie
-/// an ihrem Platz ersetzt (RAD_ClientUnitAssign) und "unit_changed" gemeldet,
-/// sonst kommt sie hinten dazu und "unit_added" wird gemeldet.
+/// Haengt "id" an die Reserve an und meldet "unit_added" -- **ohne auf den
+/// Besitzer zu sehen**, den vergleicht die Welt.
 ///
-/// false, wenn die Reserve voll ist -- dann bleibt alles, wie es war.
+/// Steht "id" schon darin, bleibt alles, wie es war, und true kommt zurueck.
+/// false, wenn "id" negativ ist oder die Reserve voll -- dann bleibt alles, wie
+/// es war.
 ///
-bool RAD_ClientReserveAddUnit(RAD_ClientReserve_t *reserve, const RAD_ClientUnit_t *unit);
+bool RAD_ClientReserveAddUnit(RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
 
 ///
-/// Die Einheit mit der Id "id", oder NULL, wenn keine in der Reserve so heisst.
+/// Nimmt "id" aus der Reserve und meldet "unit_removed"; die folgenden Ids
+/// ruecken nach. An der Einheit selbst aendert es nichts.
 ///
-RAD_ClientUnit_t* RAD_ClientReserveFindUnit(RAD_ClientReserve_t *reserve, RAD_NetEntityId_t id);
+/// false, wenn "id" nicht in der Reserve steht.
+///
+bool RAD_ClientReserveRemoveUnit(RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
+
+///
+/// Ob "id" in der Reserve steht.
+///
+bool RAD_ClientReserveContains(const RAD_ClientReserve_t *reserve, RAD_ClientUnitId_t id);
+
+///
+/// Wie viele Einheiten in der Reserve stehen.
+///
+uint32_t RAD_ClientReserveNumberOfUnits(const RAD_ClientReserve_t *reserve);
+
+///
+/// Die Id an Stelle "index" in [0, RAD_ClientReserveNumberOfUnits), oder
+/// RAD_CLIENT_UNIT_ID_NONE ausserhalb. Ein Index gilt nur, bis eine Einheit
+/// dazukommt oder wegfaellt.
+///
+RAD_ClientUnitId_t RAD_ClientReserveUnitAt(const RAD_ClientReserve_t *reserve, size_t index);
 
 ///
 /// Meldet "observer" an der Reserve an, bzw. den mit "user_argument" ab

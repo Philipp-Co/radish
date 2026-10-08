@@ -53,6 +53,15 @@ void RAD_IsoMapMoveEntity(RAD_IsoMap_t *map, RAD_NetEntityId_t entity, const RAD
 void RAD_ToFlatCoordinates(RAD_IsoMap_t *map, const int32_t screen_x, const int32_t screen_y, int32_t *x, int32_t *y);
 
 ///
+/// Der Mittelpunkt der Raute von Feld (x, y) auf dem Bildschirm, wie
+/// RAD_RenderIsoMap sie gerade zeichnet -- also samt Kamera. Ebene 0, wie alle
+/// Felder (RAD_IsoMapApplyTile). false, wenn das Feld ausserhalb des Rasters
+/// liegt oder noch nicht gezeichnet wird; dann bleiben "screen_x" und
+/// "screen_y" unberuehrt.
+///
+bool RAD_IsoMapTileScreenCenter(const RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t *screen_x, int32_t *screen_y);
+
+///
 /// Das Rechteck in Pixeln, das die ganze Karte beim Zeichnen belegt -- in
 /// Kamerakoordinaten, also so, wie es bei camera == (0, 0) auf dem Bildschirm
 /// laege. "max" ist der erste Pixel dahinter.

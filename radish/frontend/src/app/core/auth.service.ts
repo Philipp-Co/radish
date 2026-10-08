@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
@@ -34,6 +34,20 @@ interface TokenResponse {
 // "radish-web" ist bewusst "publicClient": true, kein Client-Secret hier).
 const TOKENS_KEY = 'radish.auth.tokens';
 const PENDING_KEY = 'radish.auth.pending';
+
+/**
+ * So lange vor dem Ablauf gilt ein Access-Token schon als abgelaufen und wird
+ * erneuert -- fuer den Timer wie fuer getValidAccessToken(). Ein Token, der
+ * beim Absenden noch eine Sekunde gilt, kommt sonst abgelaufen beim Backend an.
+ */
+const REFRESH_MARGIN_MS = 30_000;
+
+/**
+ * Wartezeit bis zum naechsten Versuch, wenn ein Refresh nicht an Keycloak
+ * scheitert, sondern am Weg dorthin (Netz weg, Keycloak-Container startet
+ * gerade neu). Solange der Refresh-Token gilt, lohnt es sich weiterzuversuchen.
+ */
+const REFRESH_RETRY_MS = 10_000;
 
 /**
  * Dekodiert den JWT-Payload (Base64url, per Definition kein valides
@@ -84,6 +98,14 @@ export class AuthService {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Der laufende Refresh, falls einer laeuft. Timer, Interceptor und
+   * getValidAccessToken() teilen ihn sich, statt jeder einen eigenen an
+   * Keycloak zu schicken -- mehrere gleichzeitige 401 fuehren so zu genau
+   * einem Refresh.
+   */
+  private refreshInFlight: Promise<string | null> | null = null;
+
+  /**
    * Liest ausschliesslich vom zuletzt bekannten expiresAt ab -- laeuft der
    * Token zwischen zwei Aenderungen von tokens() im Hintergrund ab, bleibt
    * dieser Wert bis zur naechsten Aktualisierung (Refresh oder Logout)
@@ -117,6 +139,19 @@ export class AuthService {
     if (current) {
       this.scheduleRefresh(current.expiresAt);
     }
+
+    // Ein setTimeout steht still, solange der Rechner schlaeft, und laeuft in
+    // einem Hintergrund-Tab gedrosselt -- der Timer feuert dann erst Minuten
+    // nach dem Ablauf. Kommt der Tab wieder nach vorn oder das Netz zurueck,
+    // wird deshalb sofort nachgesehen, statt auf ihn zu warten.
+    const catchUp = () => this.refreshIfDue();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        catchUp();
+      }
+    });
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('online', catchUp);
   }
 
   private loadTokens(): StoredTokens | null {
@@ -147,28 +182,79 @@ export class AuthService {
   }
 
   private scheduleRefresh(expiresAt: number): void {
+    this.scheduleRefreshIn(Math.max(expiresAt - Date.now() - REFRESH_MARGIN_MS, 0));
+  }
+
+  private scheduleRefreshIn(delayMs: number): void {
     if (this.refreshTimer !== null) {
       clearTimeout(this.refreshTimer);
     }
-    // 30s Sicherheitsabstand vor dem tatsaechlichen Ablauf, mindestens aber
-    // 5s (falls Keycloak einmal eine sehr kurze Lebensdauer konfiguriert hat).
-    const refreshInMs = Math.max(expiresAt - Date.now() - 30_000, 5_000);
     this.refreshTimer = setTimeout(() => {
-      this.refreshAccessToken().catch(() => {
-        // Refresh fehlgeschlagen (z.B. auch der Refresh-Token abgelaufen) --
-        // lokale Sitzung beenden; der authGuard schickt beim naechsten
-        // Routenwechsel zu /login.
-        this.clearTokens();
-      });
-    }, refreshInMs);
+      this.refreshTimer = null;
+      this.runScheduledRefresh();
+    }, delayMs);
   }
 
+  /**
+   * Der Refresh aus dem Timer (und beim Aufholen nach Schlaf/Hintergrund).
+   * Beendet die lokale Sitzung nur, wenn Keycloak den Refresh-Token ablehnt
+   * (400, "invalid_grant": abgelaufen oder widerrufen) -- der authGuard
+   * schickt dann beim naechsten Routenwechsel zu /login. Scheitert er am Weg
+   * dorthin, wird es spaeter noch einmal versucht.
+   */
+  private runScheduledRefresh(): void {
+    this.refreshAccessToken().catch((err: unknown) => {
+      if (err instanceof HttpErrorResponse && err.status === 400) {
+        this.clearTokens();
+        return;
+      }
+      if (this.tokens()?.refreshToken) {
+        this.scheduleRefreshIn(REFRESH_RETRY_MS);
+      }
+    });
+  }
+
+  /** Erneuert sofort, wenn der Access-Token (fast) abgelaufen ist. */
+  private refreshIfDue(): void {
+    const current = this.tokens();
+    if (current?.refreshToken && current.expiresAt - REFRESH_MARGIN_MS <= Date.now()) {
+      this.runScheduledRefresh();
+    }
+  }
+
+  /**
+   * Der Access-Token, solange er noch gilt -- sonst null. Erneuert nichts;
+   * wer einen Token fuer einen Aufruf braucht, nimmt getValidAccessToken().
+   */
   getAccessToken(): string | null {
     const current = this.tokens();
     if (!current || current.expiresAt <= Date.now()) {
       return null;
     }
     return current.accessToken;
+  }
+
+  /**
+   * Ein Access-Token, der noch mindestens REFRESH_MARGIN_MS gilt: der
+   * vorhandene, oder -- wenn er abgelaufen ist oder gleich ablaeuft -- ein
+   * frisch erneuerter. null, wenn niemand angemeldet ist oder sich der Token
+   * nicht erneuern laesst.
+   */
+  async getValidAccessToken(): Promise<string | null> {
+    const current = this.tokens();
+    if (!current) {
+      return null;
+    }
+    if (current.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
+      return current.accessToken;
+    }
+    try {
+      return await this.refreshAccessToken();
+    } catch {
+      // Der Aufrufer schickt dann ohne gueltigen Token und bekommt 401; ob
+      // die Sitzung vorbei ist, entscheidet runScheduledRefresh().
+      return this.getAccessToken();
+    }
   }
 
   /**
@@ -251,10 +337,20 @@ export class AuthService {
 
   /**
    * Erneuert den Access-Token per refresh_token-Grant (kein erneuter
-   * Redirect noetig). Wird sowohl vom Timer aus scheduleRefresh() als auch
-   * vom auth.interceptor.ts bei einer 401-Antwort aufgerufen.
+   * Redirect noetig). Wird vom Timer aus scheduleRefresh(), von
+   * getValidAccessToken() und vom auth.interceptor.ts bei einer 401-Antwort
+   * aufgerufen -- laeuft schon einer, bekommen alle dessen Ergebnis.
    */
-  async refreshAccessToken(): Promise<string | null> {
+  refreshAccessToken(): Promise<string | null> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.requestRefresh().finally(() => {
+        this.refreshInFlight = null;
+      });
+    }
+    return this.refreshInFlight;
+  }
+
+  private async requestRefresh(): Promise<string | null> {
     const current = this.tokens();
     if (!current?.refreshToken) {
       return null;
@@ -272,6 +368,11 @@ export class AuthService {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
       ),
     );
+    // Wer sich abgemeldet hat, waehrend die Anfrage unterwegs war, bleibt
+    // abgemeldet.
+    if (this.tokens() === null) {
+      return null;
+    }
     this.applyTokenResponse(response);
     return response.access_token;
   }
@@ -279,7 +380,9 @@ export class AuthService {
   private applyTokenResponse(response: TokenResponse): void {
     this.storeTokens({
       accessToken: response.access_token,
-      refreshToken: response.refresh_token ?? null,
+      // Ohne neuen Refresh-Token in der Antwort gilt der bisherige weiter --
+      // mit null waere nach diesem Refresh keiner mehr moeglich.
+      refreshToken: response.refresh_token ?? this.tokens()?.refreshToken ?? null,
       idToken: response.id_token ?? null,
       expiresAt: Date.now() + response.expires_in * 1000,
     });

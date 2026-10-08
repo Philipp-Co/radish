@@ -1,16 +1,19 @@
-#include <radish/server/control/game_start.h>
+#include <radish/game/control/start_game.h>
+#include <radish/game/model/game.h>
+#include <radish/game/model/unit_pool/unit_pool.h>
+#include <radish/game/model/player/player.h>
+#include <radish/game/model/reserve/reserve.h>
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Eine eigene, statische Kopie von jsmn: radish_game bringt seine Implementierung
-// mit (game/src/serialization/jsmn_impl.c), haelt den Parser aber privat. Mit
-// JSMN_STATIC bleiben die Funktionen in dieser Datei und stossen beim Linken nicht
-// mit denen aus radish_game zusammen. JSMN_STRICT wie dort.
-#define JSMN_STATIC
-#define JSMN_STRICT
+// Nur die Deklarationen, wie in json_reader.h: die Implementierung erzeugt
+// einmalig jsmn_impl.c, mit JSMN_STRICT. Im Server lag hier eine eigene,
+// statische Kopie, damit sie nicht mit der aus radish_game zusammenstiess --
+// innerhalb des Moduls ist es dieselbe.
+#define JSMN_HEADER
 #include <jsmn.h>
 
 ///
@@ -25,13 +28,13 @@ typedef struct
     int32_t number_of_tokens;
 } RAD_GameStartTokens_t;
 
-static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *t, int32_t index, RAD_ControlGameStartPlayer_t *player);
-static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t, int32_t index, RAD_ControlGameStartPlayer_t *player);
-static RAD_ControlGameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_t index, RAD_Unit_t *unit);
-static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int32_t index, RAD_UnitMember_t *member);
-static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *t, int32_t index, RAD_Weapon_t *weapon);
-static RAD_ControlGameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, int32_t index);
-static RAD_ControlGameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX]);
+static RAD_GameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *t, int32_t index, RAD_GameStartPlayer_t *player);
+static RAD_GameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t, int32_t index, RAD_GameStartPlayer_t *player);
+static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_t index, RAD_Unit_t *unit);
+static RAD_GameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int32_t index, RAD_UnitMember_t *member);
+static RAD_GameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *t, int32_t index, RAD_Weapon_t *weapon);
+static RAD_GameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, int32_t index);
+static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX]);
 static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
 static bool RAD_ReadBool(const RAD_GameStartTokens_t *t, int32_t index, bool *value);
 static bool RAD_IsIdentifierCharacter(char c);
@@ -42,29 +45,30 @@ static int32_t RAD_StringLength(const RAD_GameStartTokens_t *t, int32_t index);
 static bool RAD_CopyString(const RAD_GameStartTokens_t *t, int32_t index, char *out, size_t size, int32_t min_length);
 
 
-const char* RAD_ControlGameStartResultText(RAD_ControlGameStartResult_t result)
+const char* RAD_GameStartResultText(RAD_GameStartResult_t result)
 {
     switch(result)
     {
-        case RAD_CONTROL_GAME_START_OK:                   return "in Ordnung";
-        case RAD_CONTROL_GAME_START_ERROR_NOT_FOUND:      return "Datei nicht zu oeffnen";
-        case RAD_CONTROL_GAME_START_ERROR_UNREADABLE:     return "Datei nicht zu lesen";
-        case RAD_CONTROL_GAME_START_ERROR_TOO_LARGE:      return "zu gross fuer einen Spielstart";
-        case RAD_CONTROL_GAME_START_ERROR_OUT_OF_MEMORY:  return "kein Speicher fuer den Inhalt";
-        case RAD_CONTROL_GAME_START_ERROR_SYNTAX:         return "kein gueltiges JSON";
-        case RAD_CONTROL_GAME_START_ERROR_SCHEMA:         return "nicht der erwartete Aufbau";
-        case RAD_CONTROL_GAME_START_ERROR_LIMIT:          return "mehr, als das Spiel halten kann";
+        case RAD_GAME_START_OK:                   return "in Ordnung";
+        case RAD_GAME_START_ERROR_NOT_FOUND:      return "Datei nicht zu oeffnen";
+        case RAD_GAME_START_ERROR_UNREADABLE:     return "Datei nicht zu lesen";
+        case RAD_GAME_START_ERROR_TOO_LARGE:      return "zu gross fuer einen Spielstart";
+        case RAD_GAME_START_ERROR_OUT_OF_MEMORY:  return "kein Speicher fuer den Inhalt";
+        case RAD_GAME_START_ERROR_SYNTAX:         return "kein gueltiges JSON";
+        case RAD_GAME_START_ERROR_SCHEMA:         return "nicht der erwartete Aufbau";
+        case RAD_GAME_START_ERROR_LIMIT:          return "mehr, als das Spiel halten kann";
+        case RAD_GAME_START_ERROR_REJECTED:       return "vom Spiel abgelehnt";
         default:                                          return "unbekanntes Ergebnis";
     }
 }
 
-RAD_ControlGameStart_t* RAD_ControlCreateGameStart(void)
+RAD_GameStart_t* RAD_CreateGameStart(void)
 {
     // calloc und nicht malloc: ein frischer Spielstart ist leer, nicht zufaellig.
-    return calloc(1, sizeof(RAD_ControlGameStart_t));
+    return calloc(1, sizeof(RAD_GameStart_t));
 }
 
-void RAD_ControlDestroyGameStart(RAD_ControlGameStart_t **start)
+void RAD_DestroyGameStart(RAD_GameStart_t **start)
 {
     if(start == NULL)
     {
@@ -74,11 +78,11 @@ void RAD_ControlDestroyGameStart(RAD_ControlGameStart_t **start)
     *start = NULL;
 }
 
-RAD_ControlGameStartResult_t RAD_ControlLoadGameStart(const char *path, RAD_ControlGameStart_t *start)
+RAD_GameStartResult_t RAD_LoadGameStart(const char *path, RAD_GameStart_t *start)
 {
     if(path == NULL || start == NULL)
     {
-        return RAD_CONTROL_GAME_START_ERROR_NOT_FOUND;
+        return RAD_GAME_START_ERROR_NOT_FOUND;
     }
 
     // Binaermodus, wie beim Weltleser (game/src/serialization/world_file.c): nur
@@ -86,7 +90,7 @@ RAD_ControlGameStartResult_t RAD_ControlLoadGameStart(const char *path, RAD_Cont
     FILE *file = fopen(path, "rb");
     if(file == NULL)
     {
-        return RAD_CONTROL_GAME_START_ERROR_NOT_FOUND;
+        return RAD_GAME_START_ERROR_NOT_FOUND;
     }
 
     long size = -1;
@@ -97,12 +101,12 @@ RAD_ControlGameStartResult_t RAD_ControlLoadGameStart(const char *path, RAD_Cont
     if(size < 0 || 0 != fseek(file, 0, SEEK_SET))
     {
         fclose(file);
-        return RAD_CONTROL_GAME_START_ERROR_UNREADABLE;
+        return RAD_GAME_START_ERROR_UNREADABLE;
     }
-    if(size > (long)RAD_CONTROL_GAME_START_FILE_MAX)
+    if(size > (long)RAD_GAME_START_FILE_MAX)
     {
         fclose(file);
-        return RAD_CONTROL_GAME_START_ERROR_TOO_LARGE;
+        return RAD_GAME_START_ERROR_TOO_LARGE;
     }
 
     // Ein Byte mehr, damit auch eine leere Datei nicht malloc(0) anfordert --
@@ -111,27 +115,27 @@ RAD_ControlGameStartResult_t RAD_ControlLoadGameStart(const char *path, RAD_Cont
     if(json == NULL)
     {
         fclose(file);
-        return RAD_CONTROL_GAME_START_ERROR_OUT_OF_MEMORY;
+        return RAD_GAME_START_ERROR_OUT_OF_MEMORY;
     }
 
     const size_t read = fread(json, 1, (size_t)size, file);
     fclose(file);
 
-    RAD_ControlGameStartResult_t result = RAD_CONTROL_GAME_START_ERROR_UNREADABLE;
+    RAD_GameStartResult_t result = RAD_GAME_START_ERROR_UNREADABLE;
     if(read == (size_t)size)
     {
-        result = RAD_ControlParseGameStart(json, read, start);
+        result = RAD_ParseGameStart(json, read, start);
     }
 
     free(json);
     return result;
 }
 
-RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t length, RAD_ControlGameStart_t *start)
+RAD_GameStartResult_t RAD_ParseGameStart(const char *json, size_t length, RAD_GameStart_t *start)
 {
     if(json == NULL || start == NULL)
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     // Zweimal jsmn, wie in game/src/serialization/json_reader.c: der erste Lauf
@@ -141,13 +145,13 @@ RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t 
     const int counted = jsmn_parse(&parser, json, length, NULL, 0);
     if(counted < 1)
     {
-        return RAD_CONTROL_GAME_START_ERROR_SYNTAX;
+        return RAD_GAME_START_ERROR_SYNTAX;
     }
 
     jsmntok_t *tokens = malloc(sizeof(jsmntok_t) * (size_t)counted);
     if(tokens == NULL)
     {
-        return RAD_CONTROL_GAME_START_ERROR_OUT_OF_MEMORY;
+        return RAD_GAME_START_ERROR_OUT_OF_MEMORY;
     }
 
     jsmn_init(&parser);
@@ -155,7 +159,7 @@ RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t 
     if(number_of_tokens != counted)
     {
         free(tokens);
-        return RAD_CONTROL_GAME_START_ERROR_SYNTAX;
+        return RAD_GAME_START_ERROR_SYNTAX;
     }
 
     const RAD_GameStartTokens_t t = {
@@ -166,15 +170,15 @@ RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t 
 
     // Erst in einen eigenen Stand, dann nach "start": bei einem Fehler bleibt der
     // des Aufrufers, wie er war. Auf dem Heap, aus demselben Grund wie "start"
-    // selbst (game_start.h).
-    RAD_ControlGameStart_t *parsed = RAD_ControlCreateGameStart();
+    // selbst (start_game.h).
+    RAD_GameStart_t *parsed = RAD_CreateGameStart();
     if(parsed == NULL)
     {
         free(tokens);
-        return RAD_CONTROL_GAME_START_ERROR_OUT_OF_MEMORY;
+        return RAD_GAME_START_ERROR_OUT_OF_MEMORY;
     }
 
-    RAD_ControlGameStartResult_t result = RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+    RAD_GameStartResult_t result = RAD_GAME_START_ERROR_SCHEMA;
 
     if(RAD_IsType(&t, 0, JSMN_OBJECT))
     {
@@ -185,20 +189,20 @@ RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t 
             {
                 const int32_t array = key + 1;
                 if(!RAD_IsType(&t, array, JSMN_ARRAY)
-                   || tokens[array].size != RAD_CONTROL_GAME_START_NUMBER_OF_PLAYERS)
+                   || tokens[array].size != RAD_GAME_START_NUMBER_OF_PLAYERS)
                 {
-                    result = RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                    result = RAD_GAME_START_ERROR_SCHEMA;
                     break;
                 }
 
                 int32_t element = array + 1;
-                result = RAD_CONTROL_GAME_START_OK;
-                for(int32_t p=0;(result == RAD_CONTROL_GAME_START_OK) && (p < tokens[array].size); ++p)
+                result = RAD_GAME_START_OK;
+                for(int32_t p=0;(result == RAD_GAME_START_OK) && (p < tokens[array].size); ++p)
                 {
                     result = RAD_ReadPlayer(&t, element, &parsed->players[p]);
                     element = RAD_SubtreeEnd(&t, element);
                 }
-                if(result != RAD_CONTROL_GAME_START_OK)
+                if(result != RAD_GAME_START_OK)
                 {
                     break;
                 }
@@ -207,17 +211,17 @@ RAD_ControlGameStartResult_t RAD_ControlParseGameStart(const char *json, size_t 
         }
     }
 
-    if(result == RAD_CONTROL_GAME_START_OK)
+    if(result == RAD_GAME_START_OK)
     {
         *start = *parsed;
     }
 
-    RAD_ControlDestroyGameStart(&parsed);
+    RAD_DestroyGameStart(&parsed);
     free(tokens);
     return result;
 }
 
-RAD_UserId_t RAD_ControlUserIdFromIdentifier(const char *identifier)
+RAD_UserId_t RAD_UserIdFromIdentifier(const char *identifier)
 {
     if(identifier == NULL)
     {
@@ -225,10 +229,10 @@ RAD_UserId_t RAD_ControlUserIdFromIdentifier(const char *identifier)
     }
 
     RAD_UserId_t user = 0;
-    for(int32_t i=0;i < RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH; ++i)
+    for(int32_t i=0;i < RAD_GAME_START_IDENTIFIER_LENGTH; ++i)
     {
         // Ein Zeichen ausserhalb [A-Za-z0-9] -- die Null eines zu kurzen Strings
-        // eingeschlossen -- ist keine Kennung (game_start.h).
+        // eingeschlossen -- ist keine Kennung (start_game.h).
         if(!RAD_IsIdentifierCharacter(identifier[i]))
         {
             return RAD_USER_NONE;
@@ -236,19 +240,19 @@ RAD_UserId_t RAD_ControlUserIdFromIdentifier(const char *identifier)
         user = (user << 8) | (RAD_UserId_t)(unsigned char)identifier[i];
     }
 
-    if(identifier[RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH] != '\0')
+    if(identifier[RAD_GAME_START_IDENTIFIER_LENGTH] != '\0')
     {
         return RAD_USER_NONE;
     }
     return user;
 }
 
-bool RAD_ControlIdentifierFromUserId(RAD_UserId_t user, char out[RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH + 1])
+bool RAD_IdentifierFromUserId(RAD_UserId_t user, char out[RAD_GAME_START_IDENTIFIER_LENGTH + 1])
 {
-    char identifier[RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH + 1];
-    for(int32_t i=0;i < RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH; ++i)
+    char identifier[RAD_GAME_START_IDENTIFIER_LENGTH + 1];
+    for(int32_t i=0;i < RAD_GAME_START_IDENTIFIER_LENGTH; ++i)
     {
-        const int32_t shift = 8 * (RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH - 1 - i);
+        const int32_t shift = 8 * (RAD_GAME_START_IDENTIFIER_LENGTH - 1 - i);
         identifier[i] = (char)((user >> shift) & 0xFF);
         if(!RAD_IsIdentifierCharacter(identifier[i]))
         {
@@ -256,20 +260,139 @@ bool RAD_ControlIdentifierFromUserId(RAD_UserId_t user, char out[RAD_CONTROL_GAM
             return false;
         }
     }
-    identifier[RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH] = '\0';
+    identifier[RAD_GAME_START_IDENTIFIER_LENGTH] = '\0';
 
     memcpy(out, identifier, sizeof(identifier));
     return true;
 }
 
+RAD_GameResult_t RAD_StartGame(RAD_Game_t *game, const RAD_GameStart_t *start)
+{
+    if(game == NULL || start == NULL)
+    {
+        return RAD_GAME_ERROR_INVALID_UNIT;
+    }
+
+    // Genau einmal: ein Spiel mit Einheiten hat seinen Start hinter sich
+    // (start_game.h). Spieler darf es schon haben -- im Server tritt bei, wer sein
+    // erstes Kommando schickt, und das kann vor dem Start ankommen.
+    if(game->started || (RAD_UnitPoolNumberOfUnits(game->unit_pool) > 0))
+    {
+        return RAD_GAME_ERROR_STARTED;
+    }
+
+    RAD_UserId_t users[RAD_GAME_START_NUMBER_OF_PLAYERS];
+    int32_t number_of_units = 0;
+    for(int32_t p=0;p < RAD_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        users[p] = RAD_UserIdFromIdentifier(start->players[p].identifier);
+        if(users[p] == RAD_USER_NONE)
+        {
+            return RAD_GAME_ERROR_NO_USER;
+        }
+        number_of_units += start->players[p].number_of_units;
+    }
+
+    // Der Pool ist leer (oben), also ist das die ganze Frage nach dem Platz. Danach
+    // kann RAD_UnitPoolAddUnit nicht mehr scheitern -- und es entsteht keine
+    // Einheit, die gleich wieder weg muesste.
+    if(number_of_units > RAD_MAX_UNITS)
+    {
+        return RAD_GAME_ERROR_FULL;
+    }
+
+    // Wer schon mitspielte, bleibt bei einer Ablehnung drin; zurueck geht nur,
+    // wer erst mit diesem Start beigetreten ist.
+    bool joined_here[RAD_GAME_START_NUMBER_OF_PLAYERS] = { false };
+    for(int32_t p=0;p < RAD_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        joined_here[p] = !RAD_GameIsPlaying(game, users[p]);
+        const RAD_GameResult_t joined = RAD_GameAddPlayer(game, users[p]);
+        if(joined != RAD_GAME_OK)
+        {
+            for(int32_t k=0;k < p; ++k)
+            {
+                if(joined_here[k])
+                {
+                    RAD_GameRemovePlayer(game, users[k]);
+                }
+            }
+            return joined;
+        }
+    }
+
+    for(int32_t p=0;p < RAD_GAME_START_NUMBER_OF_PLAYERS; ++p)
+    {
+        const RAD_GameStartPlayer_t *from = &start->players[p];
+        RAD_Player_t *player = RAD_GameFindPlayer(game, users[p]);
+        RAD_Reserve_t *reserve = RAD_PlayerReserve(player);
+
+        for(int32_t u=0;u < from->number_of_units; ++u)
+        {
+            // Der Pool legt die Einheit an und vergibt Id, Zustand und Position;
+            // aus der Datei kommen nur die Werte. Die Kopie ueberschreibt alles,
+            // also wird danach zurueckgesetzt, was der Pool vergeben hat.
+            RAD_Unit_t *unit = RAD_UnitPoolAddUnit(game->unit_pool);
+            const RAD_Unit_t created = *unit;
+
+            *unit = from->units[u];
+            unit->id = created.id;
+            unit->state = created.state;
+            unit->x = created.x;
+            unit->y = created.y;
+            unit->owner = users[p];
+
+            // Beide Listen fassen RAD_MAX_UNITS, eine Armee hoechstens
+            // RAD_GAME_START_MAX_UNITS -- keiner der zwei Aufrufe kann scheitern.
+            RAD_PlayerAddUnit(player, unit);
+            RAD_ReserveAddUnit(reserve, unit);
+        }
+    }
+
+    return RAD_GAME_OK;
+}
+
+RAD_GameStartResult_t RAD_StartGameFromFile(RAD_Game_t *game, const char *path, RAD_GameResult_t *game_result)
+{
+    if(game_result != NULL)
+    {
+        *game_result = RAD_GAME_OK;
+    }
+
+    // Auf dem Heap: zwei Armeen mit allen Werten sind zu gross fuer einen
+    // Aufrufrahmen (start_game.h).
+    RAD_GameStart_t *start = RAD_CreateGameStart();
+    if(start == NULL)
+    {
+        return RAD_GAME_START_ERROR_OUT_OF_MEMORY;
+    }
+
+    RAD_GameStartResult_t result = RAD_LoadGameStart(path, start);
+    if(result == RAD_GAME_START_OK)
+    {
+        const RAD_GameResult_t started = RAD_StartGame(game, start);
+        if(game_result != NULL)
+        {
+            *game_result = started;
+        }
+        if(started != RAD_GAME_OK)
+        {
+            result = RAD_GAME_START_ERROR_REJECTED;
+        }
+    }
+
+    RAD_DestroyGameStart(&start);
+    return result;
+}
+
 ///
 /// Ein Spieler: Name, Kennung und Armee, alle drei Pflicht.
 ///
-static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *t, int32_t index, RAD_ControlGameStartPlayer_t *player)
+static RAD_GameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *t, int32_t index, RAD_GameStartPlayer_t *player)
 {
     if(!RAD_IsType(t, index, JSMN_OBJECT))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     bool name_found = false;
@@ -285,7 +408,7 @@ static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *
         {
             if(!RAD_CopyString(t, value, player->name, sizeof(player->name), 1))
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
             name_found = true;
         }
@@ -293,18 +416,18 @@ static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *
         {
             // Genau acht Zeichen aus [A-Za-z0-9] -- dieselbe Regel wie im Schema, und
             // die, unter der sich die Kennung in eine Id packen laesst.
-            if(RAD_StringLength(t, value) != RAD_CONTROL_GAME_START_IDENTIFIER_LENGTH
+            if(RAD_StringLength(t, value) != RAD_GAME_START_IDENTIFIER_LENGTH
                || !RAD_CopyString(t, value, player->identifier, sizeof(player->identifier), 1)
-               || RAD_ControlUserIdFromIdentifier(player->identifier) == RAD_USER_NONE)
+               || RAD_UserIdFromIdentifier(player->identifier) == RAD_USER_NONE)
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
             identifier_found = true;
         }
         else if(RAD_KeyIs(t, key, "armee"))
         {
-            const RAD_ControlGameStartResult_t result = RAD_ReadArmy(t, value, player);
-            if(result != RAD_CONTROL_GAME_START_OK)
+            const RAD_GameStartResult_t result = RAD_ReadArmy(t, value, player);
+            if(result != RAD_GAME_START_OK)
             {
                 return result;
             }
@@ -316,9 +439,9 @@ static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *
 
     if(!name_found || !identifier_found || !army_found)
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
-    return RAD_CONTROL_GAME_START_OK;
+    return RAD_GAME_START_OK;
 }
 
 ///
@@ -326,11 +449,11 @@ static RAD_ControlGameStartResult_t RAD_ReadPlayer(const RAD_GameStartTokens_t *
 /// aber nicht gebraucht und deshalb auch nicht verlangt -- wie ein unbekannter
 /// Schluessel.
 ///
-static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t, int32_t index, RAD_ControlGameStartPlayer_t *player)
+static RAD_GameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t, int32_t index, RAD_GameStartPlayer_t *player)
 {
     if(!RAD_IsType(t, index, JSMN_OBJECT))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     bool name_found = false;
@@ -345,7 +468,7 @@ static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t,
         {
             if(!RAD_CopyString(t, value, player->army_name, sizeof(player->army_name), 1))
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
             name_found = true;
         }
@@ -353,18 +476,18 @@ static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t,
         {
             if(!RAD_IsType(t, value, JSMN_ARRAY) || t->tokens[value].size < 1)
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
-            if(t->tokens[value].size > RAD_CONTROL_GAME_START_MAX_UNITS)
+            if(t->tokens[value].size > RAD_GAME_START_MAX_UNITS)
             {
-                return RAD_CONTROL_GAME_START_ERROR_LIMIT;
+                return RAD_GAME_START_ERROR_LIMIT;
             }
 
             int32_t unit = value + 1;
             for(int32_t u=0;u < t->tokens[value].size; ++u)
             {
-                const RAD_ControlGameStartResult_t result = RAD_ReadUnit(t, unit, &player->units[u]);
-                if(result != RAD_CONTROL_GAME_START_OK)
+                const RAD_GameStartResult_t result = RAD_ReadUnit(t, unit, &player->units[u]);
+                if(result != RAD_GAME_START_OK)
                 {
                     return result;
                 }
@@ -380,9 +503,9 @@ static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t,
 
     if(!name_found || !units_found)
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
-    return RAD_CONTROL_GAME_START_OK;
+    return RAD_GAME_START_OK;
 }
 
 ///
@@ -395,15 +518,15 @@ static RAD_ControlGameStartResult_t RAD_ReadArmy(const RAD_GameStartTokens_t *t,
 ///
 /// Eine Einheit: der Einheitentyp mit seinen Werten und die Mitglieder.
 ///
-static RAD_ControlGameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_t index, RAD_Unit_t *unit)
+static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_t index, RAD_Unit_t *unit)
 {
     if(!RAD_IsType(t, index, JSMN_OBJECT))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     // Leer anfangen: was nicht in der Datei steht, ist 0 und nicht der Rest einer
-    // frueheren Einheit. Id, Zustand und Position vergibt das Spiel (game_start.h).
+    // frueheren Einheit. Id, Zustand und Position vergibt das Spiel (start_game.h).
     memset(unit, 0, sizeof(*unit));
     unit->id = RAD_UNIT_NONE;
     unit->type = RAD_UNIT_TYPE_PLAYER;
@@ -418,7 +541,7 @@ static RAD_ControlGameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t,
     for(int32_t i=0;i < t->tokens[index].size; ++i)
     {
         const int32_t value = key + 1;
-        RAD_ControlGameStartResult_t result = RAD_CONTROL_GAME_START_OK;
+        RAD_GameStartResult_t result = RAD_GAME_START_OK;
 
         if(RAD_KeyIs(t, key, "typ"))
         {
@@ -427,32 +550,32 @@ static RAD_ControlGameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t,
         }
         else if(RAD_KeyIs(t, key, "bewegung"))
         {
-            result = RAD_ReadValue(t, value, &unit->movement) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &unit->movement) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(BEWEGUNG);
         }
         else if(RAD_KeyIs(t, key, "transportkapazitaet"))
         {
-            result = RAD_ReadValue(t, value, &unit->transport_capacity) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &unit->transport_capacity) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(TRANSPORT);
         }
         else if(RAD_KeyIs(t, key, "kann_ziele_einnehmen"))
         {
-            result = RAD_ReadBool(t, value, &unit->can_capture) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadBool(t, value, &unit->can_capture) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(ZIELE);
         }
         else if(RAD_KeyIs(t, key, "entitaeten"))
         {
             if(!RAD_IsType(t, value, JSMN_ARRAY) || t->tokens[value].size < 1)
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
             if(t->tokens[value].size > RAD_UNIT_MAX_MEMBERS)
             {
-                return RAD_CONTROL_GAME_START_ERROR_LIMIT;
+                return RAD_GAME_START_ERROR_LIMIT;
             }
 
             int32_t member = value + 1;
-            for(int32_t m=0;(result == RAD_CONTROL_GAME_START_OK) && (m < t->tokens[value].size); ++m)
+            for(int32_t m=0;(result == RAD_GAME_START_OK) && (m < t->tokens[value].size); ++m)
             {
                 result = RAD_ReadMember(t, member, &unit->members[m]);
                 member = RAD_SubtreeEnd(t, member);
@@ -461,25 +584,25 @@ static RAD_ControlGameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t,
             found |= RAD_FOUND(ENTITAETEN);
         }
 
-        if(result != RAD_CONTROL_GAME_START_OK)
+        if(result != RAD_GAME_START_OK)
         {
             return result;
         }
         key = RAD_SubtreeEnd(t, key);
     }
 
-    return (found == ALLE) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+    return (found == ALLE) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
 }
 
 ///
 /// Ein Mitglied -- im Schema eine "entitaet": das Profil mit seinen Werten, die
 /// Waffen und die Ausruestung.
 ///
-static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int32_t index, RAD_UnitMember_t *member)
+static RAD_GameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int32_t index, RAD_UnitMember_t *member)
 {
     if(!RAD_IsType(t, index, JSMN_OBJECT))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     enum { PROFIL, LEBEN, RUESTUNG, STAERKE, GENAUIGKEIT, WAFFEN, AUSRUESTUNG, ALLE = (1u << 7) - 1 };
@@ -489,7 +612,7 @@ static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *
     for(int32_t i=0;i < t->tokens[index].size; ++i)
     {
         const int32_t value = key + 1;
-        RAD_ControlGameStartResult_t result = RAD_CONTROL_GAME_START_OK;
+        RAD_GameStartResult_t result = RAD_GAME_START_OK;
 
         if(RAD_KeyIs(t, key, "profil"))
         {
@@ -498,22 +621,22 @@ static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *
         }
         else if(RAD_KeyIs(t, key, "leben"))
         {
-            result = RAD_ReadValue(t, value, &member->health) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &member->health) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(LEBEN);
         }
         else if(RAD_KeyIs(t, key, "ruestung"))
         {
-            result = RAD_ReadValue(t, value, &member->armor) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &member->armor) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(RUESTUNG);
         }
         else if(RAD_KeyIs(t, key, "staerke"))
         {
-            result = RAD_ReadValue(t, value, &member->strength) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &member->strength) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(STAERKE);
         }
         else if(RAD_KeyIs(t, key, "genauigkeit"))
         {
-            result = RAD_ReadValue(t, value, &member->accuracy) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &member->accuracy) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(GENAUIGKEIT);
         }
         else if(RAD_KeyIs(t, key, "waffen"))
@@ -521,15 +644,15 @@ static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *
             // Leer ist erlaubt -- ein Lastwagen traegt keine.
             if(!RAD_IsType(t, value, JSMN_ARRAY))
             {
-                return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                return RAD_GAME_START_ERROR_SCHEMA;
             }
             if(t->tokens[value].size > RAD_UNIT_MAX_WEAPONS)
             {
-                return RAD_CONTROL_GAME_START_ERROR_LIMIT;
+                return RAD_GAME_START_ERROR_LIMIT;
             }
 
             int32_t weapon = value + 1;
-            for(int32_t w=0;(result == RAD_CONTROL_GAME_START_OK) && (w < t->tokens[value].size); ++w)
+            for(int32_t w=0;(result == RAD_GAME_START_OK) && (w < t->tokens[value].size); ++w)
             {
                 result = RAD_ReadWeapon(t, weapon, &member->weapons[w]);
                 weapon = RAD_SubtreeEnd(t, weapon);
@@ -543,21 +666,21 @@ static RAD_ControlGameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *
             found |= RAD_FOUND(AUSRUESTUNG);
         }
 
-        if(result != RAD_CONTROL_GAME_START_OK)
+        if(result != RAD_GAME_START_OK)
         {
             return result;
         }
         key = RAD_SubtreeEnd(t, key);
     }
 
-    return (found == ALLE) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+    return (found == ALLE) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
 }
 
-static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *t, int32_t index, RAD_Weapon_t *weapon)
+static RAD_GameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *t, int32_t index, RAD_Weapon_t *weapon)
 {
     if(!RAD_IsType(t, index, JSMN_OBJECT))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     enum { NAME, KLASSE, SCHUESSE, STAERKE, MIN, MAX, DURCHSCHLAG, ALLE = (1u << 7) - 1 };
@@ -567,7 +690,7 @@ static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *
     for(int32_t i=0;i < t->tokens[index].size; ++i)
     {
         const int32_t value = key + 1;
-        RAD_ControlGameStartResult_t result = RAD_CONTROL_GAME_START_OK;
+        RAD_GameStartResult_t result = RAD_GAME_START_OK;
 
         if(RAD_KeyIs(t, key, "name"))
         {
@@ -584,7 +707,7 @@ static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *
                 { "super_heavy", RAD_WEAPON_CLASS_SUPER_HEAVY },
             };
 
-            result = RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_GAME_START_ERROR_SCHEMA;
             for(size_t c=0;c < sizeof(classes) / sizeof(classes[0]); ++c)
             {
                 const size_t length = strlen(classes[c].name);
@@ -592,7 +715,7 @@ static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *
                    && 0 == memcmp(t->json + t->tokens[value].start, classes[c].name, length))
                 {
                     weapon->weapon_class = classes[c].value;
-                    result = RAD_CONTROL_GAME_START_OK;
+                    result = RAD_GAME_START_OK;
                     break;
                 }
             }
@@ -600,49 +723,49 @@ static RAD_ControlGameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *
         }
         else if(RAD_KeyIs(t, key, "schuesse"))
         {
-            result = RAD_ReadValue(t, value, &weapon->shots) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &weapon->shots) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(SCHUESSE);
         }
         else if(RAD_KeyIs(t, key, "staerke"))
         {
-            result = RAD_ReadValue(t, value, &weapon->strength) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &weapon->strength) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(STAERKE);
         }
         else if(RAD_KeyIs(t, key, "min_reichweite"))
         {
-            result = RAD_ReadValue(t, value, &weapon->min_range) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &weapon->min_range) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(MIN);
         }
         else if(RAD_KeyIs(t, key, "max_reichweite"))
         {
-            result = RAD_ReadValue(t, value, &weapon->max_range) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &weapon->max_range) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(MAX);
         }
         else if(RAD_KeyIs(t, key, "durchschlag"))
         {
-            result = RAD_ReadValue(t, value, &weapon->penetration) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            result = RAD_ReadValue(t, value, &weapon->penetration) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(DURCHSCHLAG);
         }
 
-        if(result != RAD_CONTROL_GAME_START_OK)
+        if(result != RAD_GAME_START_OK)
         {
             return result;
         }
         key = RAD_SubtreeEnd(t, key);
     }
 
-    return (found == ALLE) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+    return (found == ALLE) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
 }
 
 ///
 /// Die Ausruestung: ein Array aus Objekten mit Namen. Geprueft und nicht behalten
-/// (game_start.h) -- ihr Name hat deshalb auch keine Laengengrenze.
+/// (start_game.h) -- ihr Name hat deshalb auch keine Laengengrenze.
 ///
-static RAD_ControlGameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, int32_t index)
+static RAD_GameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, int32_t index)
 {
     if(!RAD_IsType(t, index, JSMN_ARRAY))
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
 
     int32_t item = index + 1;
@@ -650,7 +773,7 @@ static RAD_ControlGameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_
     {
         if(!RAD_IsType(t, item, JSMN_OBJECT))
         {
-            return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            return RAD_GAME_START_ERROR_SCHEMA;
         }
 
         bool name_found = false;
@@ -661,7 +784,7 @@ static RAD_ControlGameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_
             {
                 if(RAD_StringLength(t, key + 1) < 1)
                 {
-                    return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+                    return RAD_GAME_START_ERROR_SCHEMA;
                 }
                 name_found = true;
             }
@@ -669,32 +792,32 @@ static RAD_ControlGameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_
         }
         if(!name_found)
         {
-            return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+            return RAD_GAME_START_ERROR_SCHEMA;
         }
 
         item = RAD_SubtreeEnd(t, item);
     }
 
-    return RAD_CONTROL_GAME_START_OK;
+    return RAD_GAME_START_OK;
 }
 
 ///
 /// Ein Name, der ins Spiel geht -- Einheitentyp, Profil, Waffe. Leer oder kein
 /// String ist ein Schemafehler, zu lang fuer RAD_UNIT_NAME_MAX eine Grenze des
-/// Spiels (RAD_CONTROL_GAME_START_ERROR_LIMIT).
+/// Spiels (RAD_GAME_START_ERROR_LIMIT).
 ///
-static RAD_ControlGameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX])
+static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX])
 {
     const int32_t length = RAD_StringLength(t, index);
     if(length < 1)
     {
-        return RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+        return RAD_GAME_START_ERROR_SCHEMA;
     }
     if(length >= RAD_UNIT_NAME_MAX)
     {
-        return RAD_CONTROL_GAME_START_ERROR_LIMIT;
+        return RAD_GAME_START_ERROR_LIMIT;
     }
-    return RAD_CopyString(t, index, out, RAD_UNIT_NAME_MAX, 1) ? RAD_CONTROL_GAME_START_OK : RAD_CONTROL_GAME_START_ERROR_SCHEMA;
+    return RAD_CopyString(t, index, out, RAD_UNIT_NAME_MAX, 1) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
 }
 
 ///

@@ -23,14 +23,9 @@
 /// RAD_NetEncodeMoveRequest ist deshalb keine hypothetische Einschraenkung,
 /// sondern wirkt auf der echten Strecke.
 ///
-/// **Nur der Zug ist beim Kommando zurzeit abgebildet.**
-/// protobuf/command.proto kennt NetMoveCommand und NetShootCommand. Shoot zielt
-/// dort auf eine Ziel-Einheit (target_unit_id) und eine Liste von Waffen, der
-/// Client waehlt aber ein Feld -- ein Feld liesse sich nicht verlustfrei in eine
-/// Einheiten-Id uebersetzen, ohne dass jemand entscheidet, wie. Der Client
-/// schickt Shoot deshalb vorerst gar nicht, und RAD_NetDispatchServerMessage
-/// liefert fuer eine Antwort mit shoot-Zweig
-/// RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE, statt etwas zu erfinden.
+/// **Beim Kommando sind Zug, Deployment, Abgeben und Angriff abgebildet** --
+/// alles, was protobuf/command.proto kennt. Der Angriff (NetAttackCommand)
+/// zielt auf ein Feld, wie der Client es waehlt.
 ///
 /// **Spiel- und Tile-Ereignisse sind dagegen vollstaendig abgebildet.**
 /// protobuf/event.proto/game.proto/tile.proto kennen keine nicht modellierten
@@ -43,8 +38,8 @@ typedef enum
     RAD_NET_CODEC_OK = 0,
 
     /// Die Kommandoart ist im Client nicht abgebildet (siehe oben): eine
-    /// Antwort, deren eingebettetes NetCommandRequest den shoot-Zweig traegt
-    /// oder gar keinen (commands_case NOT_SET).
+    /// Antwort, deren eingebettetes NetCommandRequest gar keinen Zweig traegt
+    /// (commands_case NOT_SET).
     RAD_NET_CODEC_ERROR_UNSUPPORTED_COMMAND_TYPE,
 
     /// Die Anzahl der Felder eines Pfades liegt nicht in
@@ -95,6 +90,45 @@ RAD_NetCodecResult_t RAD_NetEncodeMoveRequest(const RAD_NetMoveRequest_t *reques
                                                size_t *out_length);
 
 ///
+/// Packt ein Deployment als NetUserRequest (protobuf/message.proto, Zweig
+/// command_request mit NetDeployCommand) in "buffer", wie
+/// RAD_NetEncodeMoveRequest einen Zug: Sequenznummer auf 32 Bit gekuerzt, der
+/// Absender ungekuerzt. Die Koordinaten gehen als uint32 hinaus; eine negative
+/// wird dabei riesig, und der Server lehnt sie ab.
+///
+/// Liefert RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "buffer" zu klein ist.
+///
+RAD_NetCodecResult_t RAD_NetEncodeDeployRequest(const RAD_NetDeployRequest_t *request,
+                                                 uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length);
+
+///
+/// Packt einen Angriff als NetUserRequest (protobuf/message.proto, Zweig
+/// command_request mit NetAttackCommand) in "buffer", wie
+/// RAD_NetEncodeDeployRequest ein Deployment: das Zielfeld als uint32, eine
+/// negative Koordinate lehnt der Server ab.
+///
+/// Liefert RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "buffer" zu klein ist.
+///
+RAD_NetCodecResult_t RAD_NetEncodeAttackRequest(const RAD_NetAttackRequest_t *request,
+                                                 uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length);
+
+///
+/// Packt ein Abgeben als NetUserRequest (protobuf/message.proto, Zweig
+/// command_request mit NetEndTurnCommand) in "buffer", wie
+/// RAD_NetEncodeDeployRequest ein Deployment.
+///
+/// Liefert RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL, wenn "buffer" zu klein ist.
+///
+RAD_NetCodecResult_t RAD_NetEncodeEndTurnRequest(const RAD_NetEndTurnRequest_t *request,
+                                                  uint8_t *buffer,
+                                                  size_t buffer_size,
+                                                  size_t *out_length);
+
+///
 /// Packt eine Discover-Anfrage als NetUserRequest (protobuf/message.proto,
 /// Zweig discover_request) in "buffer": den Ausschnitt der Welt mit linker
 /// oberer Ecke (x, y), Breite "w" und Hoehe "h", in Feldern. Kein Kommando --
@@ -125,6 +159,16 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverReserve(uint8_t *buffer,
                                                    size_t *out_length);
 
 ///
+/// Packt die Anfrage nach allen Einheiten der Spieler als NetUserRequest (Zweig
+/// discover_units_request, protobuf/discover.proto), wie
+/// RAD_NetEncodeDiscoverReserve die nach den Reserven. Der Server antwortet mit
+/// einem NetUnitEvent je Einheit (RAD_NetEventManagerPublishUnit).
+///
+RAD_NetCodecResult_t RAD_NetEncodeDiscoverUnits(uint8_t *buffer,
+                                                 size_t buffer_size,
+                                                 size_t *out_length);
+
+///
 /// Liest eine NetServerMessage aus "data"/"length" (protobuf/message.proto) und
 /// veroeffentlicht sie ueber "events" (events/event_manager.h). Das ist der
 /// einzige Weg, eine eingehende Nachricht vom Server zu lesen; main.c ruft ihn
@@ -134,12 +178,16 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverReserve(uint8_t *buffer,
 /// Funktionen auf "events" auf:
 ///
 ///   command_response (nur move, siehe oben)        -> RAD_NetEventManagerPublishCommandResponse
+///   command_response mit deploy                    -> RAD_NetEventManagerPublishDeployResponse
+///   command_response mit end_turn                  -> RAD_NetEventManagerPublishEndTurnResponse
 ///   event.game.created                             -> RAD_NetEventManagerPublishGameCreated
 ///   event.game.finished                             -> RAD_NetEventManagerPublishGameFinished
 ///   event.game.current_player                       -> RAD_NetEventManagerPublishCurrentPlayer
 ///   event.game.players                              -> RAD_NetEventManagerPublishPlayers
 ///   event.game.world_size                           -> RAD_NetEventManagerPublishWorldSize
 ///   event.game.reserve_unit                         -> RAD_NetEventManagerPublishReserveUnit
+///   event.game.unit_deployed                        -> RAD_NetEventManagerPublishUnitDeployed
+///   event.game.unit                                 -> RAD_NetEventManagerPublishUnit
 ///   event.tile.created                              -> RAD_NetEventManagerPublishTileCreated
 ///   event.tile.removed                              -> RAD_NetEventManagerPublishTileRemoved
 ///   event.tile.changed                              -> RAD_NetEventManagerPublishTileChanged

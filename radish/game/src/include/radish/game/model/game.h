@@ -4,6 +4,9 @@
 #include <radish/game/model/model.h>
 #include <radish/game/model/world/world.h>
 #include <radish/game/model/turn/turn.h>
+#include <radish/game/model/player/player.h>
+#include <radish/game/model/unit_pool/unit_pool.h>
+#include <radish/game/game_definitions.h>
 #include <radish/game/user.h>
 #include <radish/game/control/events/event_manager.h>
 #include <radish/game/control/command/command.h>
@@ -48,6 +51,33 @@ struct RAD_Game
     /// wer als naechster darf.
     ///
     RAD_Turn_t turn;
+
+    ///
+    /// Die Mitspieler selbst (model/player/player.h), einer je Benutzer in der
+    /// Reihe darueber, vorne mit "number_of_players" belegt. Das Spiel besitzt
+    /// sie: angelegt beim Beitritt (RAD_GameAddPlayer), zerstoert beim Austritt
+    /// (RAD_GameRemovePlayer) und mit dem Spiel.
+    ///
+    /// Neben der Reihe und nicht statt ihr: die Reihe sagt, wer dran ist, der
+    /// Spieler traegt, was an einem Mitspieler haengt -- seine Einheitenliste
+    /// und seine Reserve. Beide gehen nur gemeinsam ueber die zwei Funktionen
+    /// oben, damit sie dieselben Benutzer kennen.
+    ///
+    RAD_Player_t *players[RAD_MAX_PLAYERS];
+    int32_t number_of_players;
+
+    ///
+    /// Der Einheitenpool (model/unit_pool/unit_pool.h): hier entstehen die
+    /// Einheiten beim Spielstart (RAD_StartGame, control/start_game.h), und auf
+    /// sie zeigen Einheitenliste und Reserve der Spieler. Das Spiel besitzt ihn,
+    /// angelegt und zerstoert mit ihm.
+    ///
+    /// Die Welt leiht ihn sich (world.units) und fuehrt darin Zustand und
+    /// Position; RAD_GameAddUnit legt ueber sie hier an. Einheitenliste und
+    /// Reserve der Spieler haelt das Spiel an jeder Stelle nach, an der eine
+    /// Einheit entsteht, aufgestellt oder zugeordnet wird (player.c, game.c).
+    ///
+    RAD_UnitPool_t *unit_pool;
 
     ///
     /// Ob schon ein Zug beendet wurde. Bis dahin ist das Spiel in der Aufstellung:
@@ -99,5 +129,12 @@ struct RAD_Game
 ///
 bool RAD_GameAddTile(RAD_Game_t *game, int32_t x, int32_t y, int32_t z, RAD_TileType_t type);
 bool RAD_GameRemoveTile(RAD_Game_t *game, int32_t x, int32_t y);
+
+///
+/// Der Spieler eines Benutzers, oder NULL, wenn er nicht mitspielt oder "game"
+/// NULL ist. Der Zeiger gehoert dem Spiel und gilt bis zum Austritt des
+/// Benutzers -- nicht selbst zerstoeren.
+///
+RAD_Player_t* RAD_GameFindPlayer(const RAD_Game_t *game, RAD_UserId_t user);
 
 #endif

@@ -6,7 +6,7 @@
 #include <radish/game/user.h>
 #include <radish/game/control/command/command.h>
 #include <radish/game/model/tile/tile.h>
-#include <radish/server/control/game_start.h>
+#include <radish/game/control/start_game.h>
 
 ///
 /// control/ -- was mit einem Kommando geschieht. Es entscheidet, ob das Kommando
@@ -93,24 +93,17 @@ typedef enum
     RAD_CONTROL_ERROR_TARGET_OCCUPIED,
 
     ///
-    /// Die beiden letzten gehoeren der Sache nach zur ersten Gruppe -- sie sagen,
-    /// dass der Absender nicht durfte, nicht dass das Spiel nicht konnte. Sie
-    /// stehen trotzdem hier: die Werte gehen ueber die Strecke, und ein Einschub
-    /// in der Mitte wuerde alles dahinter umdeuten.
+    /// Der letzte gehoert der Sache nach zur ersten Gruppe -- er sagt, dass der
+    /// Absender nicht durfte, nicht dass das Spiel nicht konnte. Er steht
+    /// trotzdem hier: neue Werte kommen hinten an, statt die dahinter umzudeuten.
     ///
 
     /// Ein anderer ist an der Reihe.
     RAD_CONTROL_ERROR_NOT_YOUR_TURN,
 
     ///
-    /// Der Absender ist dran, aber das Kommando kostet mehr Aktionspunkte, als er
-    /// noch hat.
-    ///
-    RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS,
-
-    ///
     /// Aus dem Aufstellen (RAD_COMMAND_TYPE_DEPLOY_UNIT), hinten angehaengt aus
-    /// demselben Grund wie die beiden davor. Die uebrigen Gruende dafuer haben
+    /// demselben Grund wie der davor. Die uebrigen Gruende dafuer haben
     /// schon einen Wert: NOT_OWNED, NO_SUCH_UNIT, OUT_OF_BOUNDS, TARGET_OCCUPIED.
     ///
 
@@ -118,7 +111,28 @@ typedef enum
     RAD_CONTROL_ERROR_NOT_IN_RESERVE,
 
     /// Das Zielfeld hat kein Gelaende.
-    RAD_CONTROL_ERROR_NO_GROUND
+    RAD_CONTROL_ERROR_NO_GROUND,
+
+    ///
+    /// Aus Ziehen und Angreifen (RAD_COMMAND_TYPE_MOVE_UNIT,
+    /// RAD_COMMAND_TYPE_ATTACK): was die Einheit in diesem Zug schon getan hat
+    /// (RAD_GameCheckMoveUnit, RAD_GameCheckAttack).
+    ///
+
+    /// Die Einheit ist in diesem Zug erst aufgestellt worden.
+    RAD_CONTROL_ERROR_UNIT_JUST_DEPLOYED,
+
+    /// Die Einheit ist in diesem Zug schon gezogen.
+    RAD_CONTROL_ERROR_UNIT_ALREADY_MOVED,
+
+    /// Die Einheit hat in diesem Zug schon angegriffen.
+    RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED,
+
+    /// Die Einheit steht nicht auf dem Feld -- noch in der Reserve, oder zerstoert.
+    RAD_CONTROL_ERROR_UNIT_NOT_DEPLOYED,
+
+    /// Keine Waffe der Einheit reicht bis zum Ziel des Angriffs.
+    RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE
 } RAD_ControlResult_t;
 
 ///
@@ -147,26 +161,20 @@ void RAD_DestroyControl(RAD_Control_t *control);
 RAD_ControlResult_t RAD_ControlAddUser(RAD_Control_t control, RAD_UserId_t user);
 
 ///
-/// Richtet das Spiel nach dem Spielstart ein (game_start.h): beide Spieler spielen
-/// danach mit, der Host zuerst und damit auch zuerst am Zug, und ihre Armeen
-/// stehen in der Reserve -- dem Spiel bekannt, auf dem Feld noch nicht.
+/// Richtet das Spiel nach dem Spielstart ein: beide Spieler spielen danach mit,
+/// der Host zuerst und damit auch zuerst am Zug, und ihre Armeen stehen in ihrer
+/// Reserve -- dem Spiel bekannt, auf dem Feld noch nicht.
 ///
-/// Die Id eines Spielers ist seine gepackte Kennung
-/// (RAD_ControlUserIdFromIdentifier); unter ihr gehoeren ihm seine Einheiten.
+/// Beides reicht nur durch: wie aus einer Spieldatei ein Spiel wird, steht im
+/// Spielmodul (radish/game/control/start_game.h, RAD_StartGame und
+/// RAD_StartGameFromFile), samt den Ergebnissen und der Regel "genau einmal".
+/// Ein zweites Signal fuer dieselbe Datei richtet damit keinen Schaden an.
 ///
-/// **Genau einmal.** Hat das Spiel schon Einheiten oder laeuft es schon, aendert
-/// sich nichts, und das Ergebnis ist RAD_GAME_ERROR_STARTED: ein Spiel bekommt
-/// seine Armeen einmal, und ein neuer Start ist eine neue Instanz. Ein zweites
-/// Signal fuer dieselbe Datei richtet damit keinen Schaden an.
+/// RAD_ControlStartGameFromFile ist der Weg des Servers (main.c, nach SIGUSR1);
+/// RAD_ControlStartGame nimmt einen schon gelesenen Start, fuer die Tests.
 ///
-/// Sonst das erste Ergebnis, das nicht RAD_GAME_OK ist -- RAD_GAME_ERROR_NO_USER
-/// fuer eine Kennung, die keine ist, RAD_GAME_ERROR_FULL, wenn ein Spieler nicht
-/// mehr hineinpasst. Beide werden geprueft, bevor eine Einheit eingetragen wird.
-/// Beim Eintragen selbst kann es danach nicht mehr scheitern: der Leser hat jede
-/// Einheit gegen die Grenzen des Spiels geprueft, und zwei Armeen zu je
-/// RAD_CONTROL_GAME_START_MAX_UNITS passen in einen leeren Pool.
-///
-RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_ControlGameStart_t *start);
+RAD_GameResult_t RAD_ControlStartGame(RAD_Control_t control, const RAD_GameStart_t *start);
+RAD_GameStartResult_t RAD_ControlStartGameFromFile(RAD_Control_t control, const char *path, RAD_GameResult_t *game_result);
 
 ///
 /// Nimmt einen Benutzer wieder heraus. Ein unbekannter ist kein Fehler.
@@ -294,17 +302,15 @@ bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *
 /// an, muss sie ihm gehoeren (RAD_CONTROL_ERROR_NOT_OWNED). Alles daran ist eine
 /// Frage des Protokolls und mit den Lesefunktionen des Spiels zu beantworten.
 ///
-/// **Was ein Kommando kostet, steht hier nicht mehr.** Aktionspunkte, die
-/// Preisliste und das Weiterschalten bei null waren einmal Sache dieser Datei --
-/// heute sind sie Regeln und liegen im Spiel, in demselben Durchgang, in dem es
-/// ausfuehrt. Damit gibt es keinen Zeitpunkt mehr, in dem ein Zustand geaendert und
-/// noch nicht abgerechnet ist.
+/// Bei Ziehen und Angreifen dazu, ob die Einheit das in diesem Zug noch darf
+/// (RAD_GameCheckMoveUnit, RAD_GameCheckAttack): nicht frisch aufgestellt, nicht
+/// schon gezogen bzw. angegriffen. Das ist eine Regel des Spiels; sie wird hier
+/// nur vorab gefragt, damit der Absender den Grund erfaehrt.
 ///
-/// **Der Preis dafuer: "value" sagt vorlaeufig nur, dass das Kommando angenommen
-/// wurde.** RAD_GameExecuteCommand gibt void zurueck, also kommt aus dem Spiel kein
-/// Grund heraus -- weder "zu teuer" noch "Zielfeld besetzt".
-/// RAD_CONTROL_ERROR_NOT_ENOUGH_ACTION_POINTS und
-/// RAD_CONTROL_ERROR_NOT_EXECUTED stehen deshalb ohne Absender in der Aufzaehlung.
+/// **"value" sagt sonst nur, dass das Kommando angenommen wurde.**
+/// RAD_GameExecuteCommand gibt void zurueck, also kommt aus dem Spiel beim
+/// Ausfuehren kein Grund heraus -- etwa "Zielfeld besetzt".
+/// RAD_CONTROL_ERROR_NOT_EXECUTED steht deshalb ohne Absender in der Aufzaehlung.
 /// Der Weg, sie zurueckzuholen, sind die Ereignisse: RAD_OnUnitMoved_t traegt ein
 /// "result" und den tatsaechlich gelaufenen Pfad.
 ///

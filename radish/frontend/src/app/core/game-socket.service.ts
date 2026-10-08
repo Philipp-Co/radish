@@ -62,6 +62,10 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
 export class GameSocketService {
   private readonly auth = inject(AuthService);
   private socket: WebSocket | null = null;
+  /** connect() wartet gerade auf einen gueltigen Token (siehe dort). */
+  private connecting = false;
+  /** disconnect() kam, waehrend connect() noch wartete. */
+  private disconnectRequested = false;
   private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
   private wasmEventHandler: WasmEventHandler | null = null;
   private connectionStateHandler: ConnectionStateHandler | null = null;
@@ -109,11 +113,32 @@ export class GameSocketService {
   }
 
   connect(): void {
+    if (this.connecting) {
+      // Ein disconnect() dazwischen gilt nicht mehr: es soll wieder verbunden sein.
+      this.disconnectRequested = false;
+      return;
+    }
     if (this.socket) {
       return;
     }
 
-    const token = this.auth.getAccessToken();
+    // Das Backend prueft den Token nur beim Handshake -- er muss dann aber
+    // gelten. Nach einem Hintergrund-Tab ist er womoeglich abgelaufen, deshalb
+    // getValidAccessToken(), das ihn vorher erneuert.
+    this.connecting = true;
+    this.auth
+      .getValidAccessToken()
+      .then((token) => {
+        this.connecting = false;
+        if (this.disconnectRequested) {
+          this.disconnectRequested = false;
+          return;
+        }
+        this.open(token);
+      });
+  }
+
+  private open(token: string | null): void {
     if (!token) {
       console.warn('GameSocketService: kein Access-Token vorhanden, WebSocket wird nicht geoeffnet.');
       return;
@@ -145,6 +170,11 @@ export class GameSocketService {
   }
 
   disconnect(): void {
+    // Kommt der Abbau, waehrend connect() noch auf den Token wartet, wird die
+    // Verbindung danach gar nicht erst geoeffnet.
+    if (this.connecting) {
+      this.disconnectRequested = true;
+    }
     this.stopHeartbeat();
     this.socket?.close();
     this.socket = null;

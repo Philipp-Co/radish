@@ -25,3 +25,16 @@ message NetDiscoverReserveRequest
 {
     uint32 reserved = 1;
 }
+
+// Fragt nach allen Einheiten, die einem Spieler gehoeren -- den Einheiten aller
+// Spieler, gleich ob sie in der Reserve oder auf dem Feld stehen. Der Server
+// antwortet mit einem NetUnitEvent je Einheit (game.proto), in der Reihenfolge
+// ihrer Ids, und mit nichts, wenn keine einem Spieler gehoert. Wo eine Einheit
+// steht, sagt die Antwort nicht; dafuer gibt es die Reserve-Anfrage und die
+// Felder. Ein Ende der Liste wird nicht gemeldet.
+//
+// "reserved" aus demselben Grund wie bei NetDiscoverReserveRequest.
+message NetDiscoverUnitsRequest
+{
+    uint32 reserved = 1;
+}

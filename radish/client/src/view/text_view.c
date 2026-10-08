@@ -85,6 +85,12 @@ bool RAD_TextViewSetText(RAD_TextView_t *text_view, const char *text)
     return true;
 }
 
+void RAD_TextViewSetPosition(RAD_TextView_t *text_view, int32_t x, int32_t y)
+{
+    text_view->area.x = x;
+    text_view->area.y = y;
+}
+
 void RAD_TextViewSetColor(RAD_TextView_t *text_view, SDL_Color color)
 {
     text_view->color = color;

@@ -22,12 +22,17 @@ message NetMoveCommand
     repeated NetMoveCommandStep steps = 3;
 }
 
-message NetShootCommand
+// Eine Einheit des Absenders greift das Feld (x, y) an (RAD_COMMAND_TYPE_ATTACK).
+// Das Ziel ist ein Feld und keine Einheit: getroffen wird, was dort steht, auch
+// ein leeres Feld ist ein gueltiges Ziel. Womit angegriffen wird, entscheidet die
+// Kampfregel im Spiel. x und y wie bei NetDeployCommand: Weltkoordinaten, die in
+// int16 passen. user_id wie bei NetMoveCommand: nur in der Antwort gesetzt.
+message NetAttackCommand
 {
     uint64 user_id = 1;
-    uint32 source_unit_id = 2;
-    uint32 target_unit_id = 3;
-    repeated uint32 weapon = 4;
+    uint32 unit_id = 2;
+    uint32 x = 3;
+    uint32 y = 4;
 }
 
 // Stellt eine Einheit aus der Reserve des Absenders auf das Feld (x, y)
@@ -42,14 +47,29 @@ message NetDeployCommand
     uint32 y = 4;
 }
 
+// Gibt den Zug des Absenders ab (RAD_COMMAND_TYPE_END_TURN). Traegt sonst
+// nichts: wer abgibt, steht im Kopf der Nachricht. user_id wie bei
+// NetMoveCommand: nur in der Antwort gesetzt. Wer danach dran ist, schickt der
+// Server als eigenes Ereignis (NetCurrentPlayerEvent, game.proto).
+message NetEndTurnCommand
+{
+    uint64 user_id = 1;
+}
+
 message NetCommandRequest
 {
     uint32 id = 1;
+    // 3 war NetShootCommand (Ziel eine Einheit); frei gehalten, damit eine alte
+    // Nachricht nicht als etwas anderes gelesen wird.
+    reserved 3;
+    reserved "shoot";
+
     oneof commands 
     {
         NetMoveCommand move = 2;
-        NetShootCommand shoot = 3;
         NetDeployCommand deploy = 4;
+        NetEndTurnCommand end_turn = 5;
+        NetAttackCommand attack = 6;
     }
 }
 

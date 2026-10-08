@@ -16,6 +16,9 @@ struct RAD_NetEventManager
 
 
 static void RAD_DefaultOnNetCommandResponse(void *user_argument, const RAD_NetCommandResponse_t *response);
+static void RAD_DefaultOnNetDeployResponse(void *user_argument, const RAD_NetDeployResponse_t *response);
+static void RAD_DefaultOnNetEndTurnResponse(void *user_argument, const RAD_NetEndTurnResponse_t *response);
+static void RAD_DefaultOnNetAttackResponse(void *user_argument, const RAD_NetAttackResponse_t *response);
 
 static void RAD_DefaultOnNetGameCreated(void *user_argument);
 static void RAD_DefaultOnNetGameFinished(void *user_argument);
@@ -24,6 +27,8 @@ static void RAD_DefaultOnNetPlayers(void *user_argument, const uint64_t *user_id
 static void RAD_DefaultOnNetWorldSize(void *user_argument, uint32_t width, uint32_t height);
 static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 static void RAD_DefaultOnNetReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit);
+static void RAD_DefaultOnNetUnitDeployed(void *user_argument, const RAD_NetUnitDeployed_t *deployed);
+static void RAD_DefaultOnNetUnit(void *user_argument, const RAD_NetUnit_t *unit);
 
 static void RAD_DefaultOnNetTileCreated(void *user_argument, const RAD_NetTile_t *tile);
 static void RAD_DefaultOnNetTileRemoved(void *user_argument, uint32_t x, uint32_t y);
@@ -41,7 +46,10 @@ RAD_NetEventManager_t* RAD_CreateNetEventManager(void)
     *manager = (struct RAD_NetEventManager){
         .command_response_events = {
             .user_argument = NULL,
-            .received = RAD_DefaultOnNetCommandResponse
+            .received = RAD_DefaultOnNetCommandResponse,
+            .deploy_received = RAD_DefaultOnNetDeployResponse,
+            .end_turn_received = RAD_DefaultOnNetEndTurnResponse,
+            .attack_received = RAD_DefaultOnNetAttackResponse
         },
         .game_events = {
             .user_argument = NULL,
@@ -51,7 +59,9 @@ RAD_NetEventManager_t* RAD_CreateNetEventManager(void)
             .players = RAD_DefaultOnNetPlayers,
             .world_size = RAD_DefaultOnNetWorldSize,
             .tiles = RAD_DefaultOnNetTiles,
-            .reserve_unit = RAD_DefaultOnNetReserveUnit
+            .reserve_unit = RAD_DefaultOnNetReserveUnit,
+            .unit_deployed = RAD_DefaultOnNetUnitDeployed,
+            .unit = RAD_DefaultOnNetUnit
         },
         .tile_events = {
             .user_argument = NULL,
@@ -81,7 +91,40 @@ void RAD_NetEventManagerPublishCommandResponse(RAD_NetEventManager_t *manager, c
     manager->command_response_events.received(manager->command_response_events.user_argument, response);
 }
 
+void RAD_NetEventManagerPublishDeployResponse(RAD_NetEventManager_t *manager, const RAD_NetDeployResponse_t *response)
+{
+    manager->command_response_events.deploy_received(manager->command_response_events.user_argument, response);
+}
+
+void RAD_NetEventManagerPublishEndTurnResponse(RAD_NetEventManager_t *manager, const RAD_NetEndTurnResponse_t *response)
+{
+    manager->command_response_events.end_turn_received(manager->command_response_events.user_argument, response);
+}
+
+void RAD_NetEventManagerPublishAttackResponse(RAD_NetEventManager_t *manager, const RAD_NetAttackResponse_t *response)
+{
+    manager->command_response_events.attack_received(manager->command_response_events.user_argument, response);
+}
+
 static void RAD_DefaultOnNetCommandResponse(void *user_argument, const RAD_NetCommandResponse_t *response)
+{
+    (void)user_argument;
+    (void)response;
+}
+
+static void RAD_DefaultOnNetDeployResponse(void *user_argument, const RAD_NetDeployResponse_t *response)
+{
+    (void)user_argument;
+    (void)response;
+}
+
+static void RAD_DefaultOnNetEndTurnResponse(void *user_argument, const RAD_NetEndTurnResponse_t *response)
+{
+    (void)user_argument;
+    (void)response;
+}
+
+static void RAD_DefaultOnNetAttackResponse(void *user_argument, const RAD_NetAttackResponse_t *response)
 {
     (void)user_argument;
     (void)response;
@@ -128,6 +171,16 @@ void RAD_NetEventManagerPublishReserveUnit(RAD_NetEventManager_t *manager, const
     manager->game_events.reserve_unit(manager->game_events.user_argument, unit);
 }
 
+void RAD_NetEventManagerPublishUnitDeployed(RAD_NetEventManager_t *manager, const RAD_NetUnitDeployed_t *deployed)
+{
+    manager->game_events.unit_deployed(manager->game_events.user_argument, deployed);
+}
+
+void RAD_NetEventManagerPublishUnit(RAD_NetEventManager_t *manager, const RAD_NetUnit_t *unit)
+{
+    manager->game_events.unit(manager->game_events.user_argument, unit);
+}
+
 static void RAD_DefaultOnNetGameCreated(void *user_argument)
 {
     (void)user_argument;
@@ -166,6 +219,18 @@ static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tile
 }
 
 static void RAD_DefaultOnNetReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit)
+{
+    (void)user_argument;
+    (void)unit;
+}
+
+static void RAD_DefaultOnNetUnitDeployed(void *user_argument, const RAD_NetUnitDeployed_t *deployed)
+{
+    (void)user_argument;
+    (void)deployed;
+}
+
+static void RAD_DefaultOnNetUnit(void *user_argument, const RAD_NetUnit_t *unit)
 {
     (void)user_argument;
     (void)unit;
