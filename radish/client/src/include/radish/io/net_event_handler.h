@@ -43,17 +43,23 @@ void RAD_IoNetOnEndTurnResponse(void *user_argument, const RAD_NetEndTurnRespons
 // Antwort auf einen Angriff, eigenen oder fremden (attack_response.c).
 void RAD_IoNetOnAttackResponse(void *user_argument, const RAD_NetAttackResponse_t *response);
 
-// Spielereignisse (game_created.c, game_finished.c, current_player.c, players.c,
-// world_size.c, tiles.c, reserve_unit.c, unit_deployed.c, unit.c).
+// Spielereignisse (game_created.c, game_finished.c, round.c, current_player.c, players.c,
+// world_size.c, deploy_zone.c, tiles.c, reserve_unit.c, unit_deployed.c, unit.c, unit_moved.c,
+// unit_attacked.c, unit_destroyed.c).
 void RAD_IoNetOnGameCreated(void *user_argument);
-void RAD_IoNetOnGameFinished(void *user_argument);
+void RAD_IoNetOnGameFinished(void *user_argument, const RAD_NetGameFinished_t *finished);
+void RAD_IoNetOnRound(void *user_argument, uint32_t round, uint32_t rounds);
 void RAD_IoNetOnCurrentPlayer(void *user_argument, uint64_t user_id);
 void RAD_IoNetOnPlayers(void *user_argument, const uint64_t *user_ids, size_t number_of_users);
 void RAD_IoNetOnWorldSize(void *user_argument, uint32_t width, uint32_t height);
+void RAD_IoNetOnDeployZone(void *user_argument, const RAD_NetDeployZone_t *zone);
 void RAD_IoNetOnTiles(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 void RAD_IoNetOnReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit);
 void RAD_IoNetOnUnitDeployed(void *user_argument, const RAD_NetUnitDeployed_t *deployed);
 void RAD_IoNetOnUnit(void *user_argument, const RAD_NetUnit_t *unit);
+void RAD_IoNetOnUnitMoved(void *user_argument, const RAD_NetUnitMoved_t *moved);
+void RAD_IoNetOnUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked);
+void RAD_IoNetOnUnitDestroyed(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
 
 // Tile-Ereignisse (tile_created.c, tile_removed.c, tile_changed.c).
 void RAD_IoNetOnTileCreated(void *user_argument, const RAD_NetTile_t *tile);

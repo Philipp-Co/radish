@@ -9,8 +9,9 @@
 # Vorher lag control/ in einem zweiten Ziel (radish_control): der Loader darin
 # brauchte die Serialisierung, und weil die schon das Spiel kennt, waere daraus
 # der Ring game -> serialization -> game geworden. Den Loader gibt es nicht mehr,
-# unter control/ liegen nur noch command/, events/ und execute/, und die kommen
-# mit stdint aus. Damit fiel der Grund fuer die Trennung weg.
+# und unter control/ liegen die Ereignisse, der Spielstart und je ein Modul pro
+# Kommando (deploy_unit.c, move_unit.c, attack_unit.c, end_turn.c, mit
+# unit_turn.c fuer das, was Ziehen und Angreifen teilen). Damit fiel der Grund fuer die Trennung weg.
 #
 # Aus demselben Ring heraus liegt auch serialization/ hier und nicht in einer
 # eigenen Bibliothek: der Leser der Weltdefinition schreibt in die Welt, braucht
@@ -32,8 +33,14 @@ add_library(radish_game STATIC
     src/model/player.c
 
     src/control/events/event_manager.c
-    src/control/execute/unit.c
     src/control/start_game.c
+    src/control/deploy_unit.c
+    src/control/move_unit.c
+    src/control/attack_unit.c
+    src/control/end_turn.c
+    src/control/victory.c
+    src/control/unit_turn.c
+    src/control/dice.c
 
     src/serialization/jsmn_impl.c
     src/serialization/json_reader.c

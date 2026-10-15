@@ -14,12 +14,47 @@ typedef struct
     RAD_IsoObject_t *iso_object;
 } RAD_Object_t;
 
+///
+/// Wie viele Figuren gleichzeitig ausserhalb eines Feldes stehen koennen
+/// (RAD_IsoMapAddEntity).
+///
+#define RAD_ISO_MAP_ENTITIES_MAX 8
+
+typedef enum
+{
+    RAD_ISO_RENDERABLE_OBJECT = 0,
+    RAD_ISO_RENDERABLE_ENTITY
+} RAD_IsoRenderableType_t;
+
+///
+/// Ein Eintrag der Zeichenliste (RAD_IsoMap_t.iso_objects): ein Feld oder eine
+/// Figur, die nicht auf einem Feld steht. "type" sagt, welches.
+///
 typedef struct
 {
-    RAD_IsoObject_t data [3][RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];    
-   
-    int32_t number_of_iso_objects; 
-    RAD_IsoObject_t *iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3];
+    RAD_IsoRenderableType_t type;
+    union
+    {
+        /// Gehoert der Map ("data").
+        RAD_IsoObject_t *object;
+
+        /// Gehoert dem, der sie eingetragen hat (RAD_IsoMapAddEntity).
+        RAD_IsoEntity_t *entity;
+    };
+} RAD_IsoRenderable_t;
+
+typedef struct
+{
+    RAD_IsoObject_t data [3][RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];
+
+    ///
+    /// Was RAD_RenderIsoMap zeichnet, in dieser Reihenfolge: nach Ebene und
+    /// Tiefe sortiert (hinten zuerst). Felder und Figuren ausserhalb eines
+    /// Feldes; "number_of_entities" davon sind Figuren.
+    ///
+    int32_t number_of_iso_objects;
+    int32_t number_of_entities;
+    RAD_IsoRenderable_t iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3 + RAD_ISO_MAP_ENTITIES_MAX];
 
     RAD_Camera_t camera;
 
@@ -27,6 +62,14 @@ typedef struct
 
 
 RAD_IsoMap_t* RAD_CreateIsoMap(void);
+
+///
+/// Gibt die Map frei samt den Figuren auf ihren Feldern, in allen Ebenen und
+/// Tiefen, und nullt den Zeiger des Aufrufers. Figuren, die noch in der
+/// Zeichenliste stehen (RAD_IsoMapAddEntity), bleiben beim Aufrufer -- er
+/// nimmt sie vorher heraus.
+///
+void RAD_DestroyIsoMap(RAD_IsoMap_t **map);
 RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t screen_x, int32_t srceen_y);
 void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map);
 RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, int32_t layer);
@@ -34,7 +77,10 @@ RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, in
 ///
 /// Zeichnet ein Feld, wie es im Model steht (model/tile.h) -- neu oder
 /// geaendert. Das Iso-Objekt wird beim ersten Mal angelegt und danach nur
-/// aktualisiert; die Figur darauf folgt der Einheit des Feldes. Ausserhalb des
+/// aktualisiert. Wie es aussieht, richtet sich bei jedem Aufruf nach seinem Typ
+/// (RAD_IsoTileApplyType); die Figur in RAD_ISO_UNIT_DEPTH folgt der Einheit des Feldes,
+/// Hinter- und Vordergrund bleiben unberuehrt, und ein Siegfeld
+/// wird als solches gezeichnet (RAD_IsoObject_t.victory). Ausserhalb des
 /// Rasters wird verworfen.
 ///
 /// **Alle Felder liegen auf Ebene 0.** Das Model kennt keine Hoehe, die Karte
@@ -42,13 +88,31 @@ RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, in
 ///
 void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile);
 
+///
+/// Nimmt das Feld (x, y) aus der Zeichenliste, in allen Ebenen, und gibt seine
+/// Figuren in allen Tiefen frei. Ausserhalb des Rasters wird verworfen.
+///
 void RAD_IsoMapRemoveTile(RAD_IsoMap_t *map, uint32_t x, uint32_t y);
 
 ///
-/// Haengt die Figur "entity" vom Start des Weges auf sein Ende um -- fuer einen
-/// Zug, den der Server bestaetigt hat.
+/// Traegt eine Figur ein, die nicht auf einem Feld steht -- etwa eine in
+/// Bewegung. Gezeichnet wird sie bei (entity->x, entity->y) auf Ebene
+/// entity->layer, eingereiht nach ihrer Tiefe wie die Felder. Steht sie genau so
+/// tief wie ein Feld, liegt sie darauf.
 ///
-void RAD_IsoMapMoveEntity(RAD_IsoMap_t *map, RAD_NetEntityId_t entity, const RAD_NetPath_t *path);
+/// **"entity" bleibt beim Aufrufer** und muss gueltig bleiben, bis
+/// RAD_IsoMapRemoveEntity. Er darf ihre Position jederzeit aendern; die Map
+/// sortiert vor jedem Zeichnen neu, solange Figuren eingetragen sind.
+///
+/// false, wenn schon RAD_ISO_MAP_ENTITIES_MAX eingetragen sind oder diese schon.
+///
+bool RAD_IsoMapAddEntity(RAD_IsoMap_t *map, RAD_IsoEntity_t *entity);
+
+///
+/// Nimmt die Figur aus der Zeichenliste; sie selbst bleibt beim Aufrufer. Eine
+/// nicht eingetragene bleibt still.
+///
+void RAD_IsoMapRemoveEntity(RAD_IsoMap_t *map, const RAD_IsoEntity_t *entity);
 
 void RAD_ToFlatCoordinates(RAD_IsoMap_t *map, const int32_t screen_x, const int32_t screen_y, int32_t *x, int32_t *y);
 

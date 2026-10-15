@@ -1,6 +1,7 @@
 #include <radish/view/end_turn_view.h>
 #include <radish/control/end_turn.h>
 #include <radish/view/text_view.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 
@@ -15,6 +16,14 @@
 #define RAD_END_TURN_VIEW_TEXT_OWN_TURN "Zug beenden"
 #define RAD_END_TURN_VIEW_TEXT_OTHER_TURN "Gegner am Zug"
 #define RAD_END_TURN_VIEW_TEXT_NO_TURN "Niemand am Zug"
+#define RAD_END_TURN_VIEW_TEXT_WON "Gewonnen"
+#define RAD_END_TURN_VIEW_TEXT_LOST "Verloren"
+#define RAD_END_TURN_VIEW_TEXT_DRAW "Unentschieden"
+
+///
+/// Platz fuer den ganzen Text: Runde und Zustand, oder Ausgang und Punkte.
+///
+#define RAD_END_TURN_VIEW_TEXT_MAX 64
 
 #define RAD_END_TURN_VIEW_COLOR_ENABLED ((SDL_Color){ 0, 140, 0, 255 })
 #define RAD_END_TURN_VIEW_COLOR_PRESSED ((SDL_Color){ 0, 90, 0, 255 })
@@ -30,7 +39,8 @@ typedef enum
 {
     RAD_END_TURN_VIEW_STATE_NO_TURN = 0,
     RAD_END_TURN_VIEW_STATE_OWN_TURN,
-    RAD_END_TURN_VIEW_STATE_OTHER_TURN
+    RAD_END_TURN_VIEW_STATE_OTHER_TURN,
+    RAD_END_TURN_VIEW_STATE_FINISHED
 } RAD_EndTurnViewState_t;
 
 
@@ -61,6 +71,8 @@ struct RAD_EndTurnView
     ///
     bool synced;
     RAD_EndTurnViewState_t shown_state;
+    int32_t shown_round;
+    int32_t shown_rounds;
 
     ///
     /// Ob die linke Maustaste in der Flaeche gedrueckt und noch nicht
@@ -72,6 +84,7 @@ struct RAD_EndTurnView
 
 static RAD_EndTurnViewState_t RAD_EndTurnViewState(const RAD_EndTurnView_t *end_turn_view);
 static bool RAD_EndTurnViewSync(RAD_EndTurnView_t *end_turn_view);
+static void RAD_EndTurnViewResultText(const RAD_EndTurnView_t *end_turn_view, char *text, size_t size);
 
 
 RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font,
@@ -96,6 +109,8 @@ RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, in
         .session = session,
         .synced = false,
         .shown_state = RAD_END_TURN_VIEW_STATE_NO_TURN,
+        .shown_round = 0,
+        .shown_rounds = 0,
         .pressed = false
     };
 
@@ -186,6 +201,12 @@ void RAD_UpdateEndTurnView(RAD_EndTurnView_t *end_turn_view, SDL_Renderer *rende
 ///
 static RAD_EndTurnViewState_t RAD_EndTurnViewState(const RAD_EndTurnView_t *end_turn_view)
 {
+    // Vorbei ist vorbei: dann ist niemand mehr dran, auch man selbst nicht.
+    if(RAD_ClientWorldIsFinished(end_turn_view->world))
+    {
+        return RAD_END_TURN_VIEW_STATE_FINISHED;
+    }
+
     const RAD_ClientPlayerId_t current = RAD_ClientWorldCurrentPlayer(end_turn_view->world);
     if(current == RAD_CLIENT_PLAYER_NONE)
     {
@@ -204,30 +225,56 @@ static RAD_EndTurnViewState_t RAD_EndTurnViewState(const RAD_EndTurnView_t *end_
 ///
 static bool RAD_EndTurnViewSync(RAD_EndTurnView_t *end_turn_view)
 {
+    // Der Ausgang aendert sich nicht mehr, wenn er einmal da ist: dafuer reicht der
+    // Zustand. Waehrend gespielt wird, zaehlt auch die Runde.
     const RAD_EndTurnViewState_t state = RAD_EndTurnViewState(end_turn_view);
-    if(end_turn_view->synced && state == end_turn_view->shown_state)
+    const int32_t round = RAD_ClientWorldRound(end_turn_view->world);
+    const int32_t rounds = RAD_ClientWorldNumberOfRounds(end_turn_view->world);
+    if(end_turn_view->synced && state == end_turn_view->shown_state
+       && round == end_turn_view->shown_round && rounds == end_turn_view->shown_rounds)
     {
         return true;
     }
 
-    const char *text = RAD_END_TURN_VIEW_TEXT_NO_TURN;
+    const char *turn = RAD_END_TURN_VIEW_TEXT_NO_TURN;
     SDL_Color text_color = RAD_END_TURN_VIEW_COLOR_DISABLED_TEXT;
     switch(state)
     {
         case RAD_END_TURN_VIEW_STATE_OWN_TURN:
-            text = RAD_END_TURN_VIEW_TEXT_OWN_TURN;
+            turn = RAD_END_TURN_VIEW_TEXT_OWN_TURN;
             text_color = RAD_END_TURN_VIEW_COLOR_TEXT;
             break;
         case RAD_END_TURN_VIEW_STATE_OTHER_TURN:
-            text = RAD_END_TURN_VIEW_TEXT_OTHER_TURN;
+            turn = RAD_END_TURN_VIEW_TEXT_OTHER_TURN;
+            break;
+        case RAD_END_TURN_VIEW_STATE_FINISHED:
+            text_color = RAD_END_TURN_VIEW_COLOR_TEXT;
             break;
         case RAD_END_TURN_VIEW_STATE_NO_TURN:
         default:
             break;
     }
 
+    // Vorne die Runde, solange der Server eine geschickt hat; nach dem Ende der
+    // Ausgang mit den Punkten.
+    char text[RAD_END_TURN_VIEW_TEXT_MAX];
+    if(state == RAD_END_TURN_VIEW_STATE_FINISHED)
+    {
+        RAD_EndTurnViewResultText(end_turn_view, text, sizeof(text));
+    }
+    else if(rounds > 0)
+    {
+        snprintf(text, sizeof(text), "Runde %d/%d: %s", (int)round, (int)rounds, turn);
+    }
+    else
+    {
+        snprintf(text, sizeof(text), "%s", turn);
+    }
+
     end_turn_view->synced = RAD_TextViewSetText(end_turn_view->label, text);
     end_turn_view->shown_state = state;
+    end_turn_view->shown_round = round;
+    end_turn_view->shown_rounds = rounds;
     if(!end_turn_view->synced)
     {
         return false;
@@ -242,4 +289,47 @@ static bool RAD_EndTurnViewSync(RAD_EndTurnView_t *end_turn_view)
     const int32_t left = area->x + RAD_END_TURN_VIEW_PADDING;
     RAD_TextViewSetPosition(end_turn_view->label, (centered > left) ? centered : left, end_turn_view->text_y);
     return true;
+}
+
+///
+/// Der Ausgang aus Sicht des eigenen Spielers, mit den eigenen Punkten zuerst:
+/// "Gewonnen 25:10", "Verloren 10:25", "Unentschieden 10:10". Ohne Punkte -- der
+/// Server hat keine geschickt -- nur das Wort.
+///
+static void RAD_EndTurnViewResultText(const RAD_EndTurnView_t *end_turn_view, char *text, size_t size)
+{
+    const RAD_ClientGameResult_t *result = RAD_ClientWorldResult(end_turn_view->world);
+    const RAD_ClientPlayerId_t own = (RAD_ClientPlayerId_t)end_turn_view->session->own_player_id;
+
+    const char *outcome = RAD_END_TURN_VIEW_TEXT_DRAW;
+    if(result->winner != RAD_CLIENT_PLAYER_NONE)
+    {
+        outcome = (own != RAD_CLIENT_PLAYER_NONE && result->winner == own) ? RAD_END_TURN_VIEW_TEXT_WON : RAD_END_TURN_VIEW_TEXT_LOST;
+    }
+
+    // Die eigenen Punkte und die des anderen; kennt der Client sich nicht, die
+    // Reihenfolge des Servers.
+    int32_t own_score = -1;
+    int32_t other_score = -1;
+    for(int32_t i = 0; i < result->number_of_players; ++i)
+    {
+        const bool is_own = (own != RAD_CLIENT_PLAYER_NONE) ? (result->players[i] == own) : (own_score < 0);
+        if(is_own && own_score < 0)
+        {
+            own_score = result->scores[i];
+        }
+        else if(other_score < 0)
+        {
+            other_score = result->scores[i];
+        }
+    }
+
+    if(own_score >= 0 && other_score >= 0)
+    {
+        snprintf(text, size, "%s %d:%d", outcome, (int)own_score, (int)other_score);
+    }
+    else
+    {
+        snprintf(text, size, "%s", outcome);
+    }
 }

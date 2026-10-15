@@ -13,26 +13,31 @@
 
 ///
 /// Groesse von TerrainInfoView und UnitInfoView (view/view.h): je so breit, in
-/// Pixeln, und hoechstens so hoch, in Prozent der Zeichenflaeche -- beide passen
-/// sich ihrem Inhalt an.
+/// Pixeln, und hoechstens so hoch, in Prozent der Zeichenflaeche -- ihre Hoehe
+/// passt sich dem Inhalt an. Die Breite reicht fuer den laengsten Terrain-Namen,
+/// "Befestigte Stellung", samt Cursor und Rand (view/terrain_info_view.h).
 ///
-#define RAD_VIEW_INFO_WIDTH 200
+#define RAD_VIEW_INFO_WIDTH 360
 #define RAD_VIEW_TERRAIN_INFO_MAX_HEIGHT_PERCENT 27
 #define RAD_VIEW_UNIT_INFO_MAX_HEIGHT_PERCENT 100
+
+///
+/// Beide haben eine eigene, groessere Schrift als die anderen Views.
+///
+#define RAD_VIEW_INFO_FONT_SIZE 32
 
 ///
 /// Groesse der EndTurnView (view/view.h), in Pixeln: so breit, hoechstens so
 /// breit wie die Zeichenflaeche, und so hoch.
 ///
-#define RAD_VIEW_END_TURN_WIDTH 160
+#define RAD_VIEW_END_TURN_WIDTH 260
 #define RAD_VIEW_END_TURN_HEIGHT 32
 
 ///
-/// Wie weit die Balken der UnitInfoView reichen (RAD_ViewFillUnitInfo): das
-/// Modell kennt fuer Ruestung, Staerke und die Werte einer Waffe keinen
-/// Hoechstwert, also steht hier einer fuer alle.
+/// Platz fuer eine Zeile der UnitInfoView samt abschliessender Null
+/// (RAD_ViewFillUnitInfo): eine Anzahl, "x ", ein Name aus model/unit.h.
 ///
-#define RAD_VIEW_UNIT_ATTRIBUTE_SCALE 10
+#define RAD_VIEW_UNIT_INFO_LINE_MAX (16 + RAD_CLIENT_UNIT_NAME_MAX)
 
 ///
 /// Breite der DebugView (view/view.h), in Pixeln, und wie lange jede Messung
@@ -60,7 +65,7 @@
 /// Groesse der ContextMenuView (view/view.h): Radius des Rings, in Pixeln.
 /// Ihre Eintraege legt sie selbst an (view/context_menu/context_menu_view.h).
 ///
-#define RAD_VIEW_CONTEXT_MENU_RADIUS 60
+#define RAD_VIEW_CONTEXT_MENU_RADIUS 200
 
 
 ///
@@ -112,6 +117,7 @@ struct RAD_RootView
     SDL_Window *window;
     SDL_Renderer *renderer;
     TTF_Font *font;
+    TTF_Font *info_font;
     RAD_IsoMapView_t *iso_map_view;
     RAD_TerrainInfoView_t *terrain_info_view;
     RAD_UnitInfoView_t *unit_info_view;
@@ -153,7 +159,8 @@ struct RAD_RootView
 
     ///
     /// Das Feld unter dem Mauszeiger (model/focus.h); die IsoMapView schreibt
-    /// es. Gehoert dem Aufrufer.
+    /// es, die RootView liest daraus die Einheit fuer die UnitInfoView
+    /// (RAD_ViewHoveredUnit). Gehoert dem Aufrufer.
     ///
     const RAD_ClientFocus_t *focus;
 
@@ -173,10 +180,11 @@ static void RAD_ViewHandleMouseMotion(RAD_RootView_t *view, const SDL_MouseMotio
 static void RAD_ViewHandleLeftClick(RAD_RootView_t *view);
 static bool RAD_ViewPlaceContextMenu(RAD_RootView_t *view);
 static void RAD_ViewUpdateContextMenu(RAD_RootView_t *view);
-static const RAD_ClientUnit_t* RAD_ViewSelectedUnit(const RAD_RootView_t *view);
+static const RAD_ClientUnit_t* RAD_ViewHoveredUnit(const RAD_RootView_t *view);
 static void RAD_ViewSyncUnitInfo(RAD_RootView_t *view);
 static void RAD_ViewShowUnit(RAD_RootView_t *view, const RAD_ClientUnit_t *unit);
 static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_ClientUnit_t *unit);
+static bool RAD_ViewSameLoadout(const RAD_ClientMember_t *a, const RAD_ClientMember_t *b);
 static void RAD_ViewOnShownUnitChanged(void *user_argument, const RAD_ClientUnit_t *unit);
 static void RAD_ViewOnShownUnitRemoved(void *user_argument, const RAD_ClientUnit_t *unit);
 static void RAD_ViewMeasureFps(RAD_ViewFpsMetric_t *fps, RAD_DebugView_t *debug_view);
@@ -207,6 +215,7 @@ RAD_RootView_t* RAD_CreateView(
         .window = NULL,
         .renderer = NULL,
         .font = NULL,
+        .info_font = NULL,
         .iso_map_view = NULL,
         .terrain_info_view = NULL,
         .unit_info_view = NULL,
@@ -260,7 +269,8 @@ RAD_RootView_t* RAD_CreateView(
     }
 
     view->font = TTF_OpenFont(font_path, font_size);
-    if(view->font == NULL)
+    view->info_font = TTF_OpenFont(font_path, RAD_VIEW_INFO_FONT_SIZE);
+    if(view->font == NULL || view->info_font == NULL)
     {
         printf("TTF_OpenFont %s: %s\n", font_path, TTF_GetError());
         RAD_DestroyView(&view);
@@ -291,7 +301,7 @@ RAD_RootView_t* RAD_CreateView(
         drawable_height - terrain_info_max_height,
         info_width,
         terrain_info_max_height,
-        view->font,
+        view->info_font,
         focus
     );
     const int32_t unit_info_max_height = (drawable_height * RAD_VIEW_UNIT_INFO_MAX_HEIGHT_PERCENT) / 100;
@@ -300,7 +310,7 @@ RAD_RootView_t* RAD_CreateView(
         drawable_height - unit_info_max_height,
         info_width,
         unit_info_max_height,
-        view->font
+        view->info_font
     );
     if(view->terrain_info_view == NULL || view->unit_info_view == NULL)
     {
@@ -338,7 +348,8 @@ RAD_RootView_t* RAD_CreateView(
         unit_deployment_width,
         drawable_height / 3,
         session,
-        map
+        map,
+        world
     );
     if(view->context_menu_view == NULL)
     {
@@ -417,6 +428,10 @@ void RAD_DestroyView(RAD_RootView_t **view)
     {
         TTF_CloseFont(v->font);
     }
+    if(v->info_font != NULL)
+    {
+        TTF_CloseFont(v->info_font);
+    }
     if(v->renderer != NULL)
     {
         SDL_DestroyRenderer(v->renderer);
@@ -446,9 +461,9 @@ void RAD_UpdateView(RAD_RootView_t *view)
     SDL_SetRenderDrawColor(view->renderer, 0, 0, 0, 255);
     SDL_RenderClear(view->renderer);
     RAD_UpdateIsoMapView(view->iso_map_view, view->renderer);
-    // Der Weg einer ziehenden Einheit liegt auf der Karte, unter allem anderen.
-    RAD_UpdateContextMenuViewPathOverlay(view->context_menu_view, view->renderer);
-    if(view->terrain_info_visible)
+    // Weg und Reichweite liegen auf der Karte, unter allem anderen.
+    RAD_UpdateContextMenuViewOverlay(view->context_menu_view, view->renderer);
+    if(view->terrain_info_visible && view->focus->tile != NULL)
     {
         RAD_UpdateTerrainInfoView(view->terrain_info_view, view->renderer);
     }
@@ -595,35 +610,28 @@ static bool RAD_ViewPlaceContextMenu(RAD_RootView_t *view)
 }
 
 ///
-/// Die Einheit auf dem ausgewaehlten Feld: in der ContextMenuView ist eins
-/// ausgewaehlt (RAD_ContextMenuViewSelectedTile) -- auch, waehrend der Weg
-/// einer Einheit zusammengeklickt wird --, und darauf steht eine. NULL sonst.
+/// Die Einheit auf dem Feld unter dem Mauszeiger (model/focus.h); NULL, wenn
+/// nichts im Fokus steht oder dort keine Einheit steht.
 ///
-static const RAD_ClientUnit_t* RAD_ViewSelectedUnit(const RAD_RootView_t *view)
+static const RAD_ClientUnit_t* RAD_ViewHoveredUnit(const RAD_RootView_t *view)
 {
-    int32_t tile_x = 0, tile_y = 0;
-    if(!RAD_ContextMenuViewSelectedTile(view->context_menu_view, &tile_x, &tile_y))
-    {
-        return NULL;
-    }
-
-    const RAD_ClientTile_t *tile = RAD_ClientWorldTileAt(view->world, tile_x, tile_y);
+    const RAD_ClientTile_t *tile = view->focus->tile;
     return (tile != NULL) ? tile->unit : NULL;
 }
 
 ///
-/// Bringt die UnitInfoView auf die Einheit auf dem ausgewaehlten Feld
-/// (RAD_ViewSelectedUnit). Jeden Frame vor dem Zeichnen zu rufen: zieht die
+/// Bringt die UnitInfoView auf die Einheit auf dem Feld unter dem Mauszeiger
+/// (RAD_ViewHoveredUnit). Jeden Frame vor dem Zeichnen zu rufen: zieht die
 /// Einheit weg oder kommt eine an, folgt die UnitInfoView gleich. Neu gefuellt
 /// wird sie nur, wenn es eine andere Einheit ist oder sich die gezeigte
 /// geaendert hat.
 ///
 static void RAD_ViewSyncUnitInfo(RAD_RootView_t *view)
 {
-    const RAD_ClientUnit_t *selected = RAD_ViewSelectedUnit(view);
-    if(selected != view->shown_unit)
+    const RAD_ClientUnit_t *hovered = RAD_ViewHoveredUnit(view);
+    if(hovered != view->shown_unit)
     {
-        RAD_ViewShowUnit(view, selected);
+        RAD_ViewShowUnit(view, hovered);
     }
 
     if(view->unit_info_stale && view->shown_unit != NULL)
@@ -681,14 +689,14 @@ static void RAD_ViewOnShownUnitRemoved(void *user_argument, const RAD_ClientUnit
 
 ///
 /// Fuellt "unit_info_view" mit "unit": Name, die Lebenspunkte der ganzen
-/// Einheit (RAD_ClientUnitHitPoints), ihre Bewegungsreichweite und je Profil
-/// ihrer Mitglieder eine Zeile. Was vorher dort stand, faellt weg.
+/// Einheit (RAD_ClientUnitHitPoints), ihre Bewegungsreichweite und darunter
+/// ihre Mitglieder samt Waffen. Was vorher dort stand, faellt weg.
 ///
-/// **Eine Zeile je Profil**, in der Reihenfolge, in der es zuerst vorkommt, mit
-/// der Zahl der Mitglieder dieses Profils. Die Werte sind die des ersten
-/// Mitglieds mit dem Profil. Ruestung, Staerke und die Werte der Waffen reichen
-/// bis RAD_VIEW_UNIT_ATTRIBUTE_SCALE; Widerstand kennt das Modell nicht, er
-/// bleibt leer.
+/// **Gleich ausgeruestete Mitglieder stehen zusammen**: eine buendige Zeile je
+/// Profil und Waffen (RAD_ViewSameLoadout), in der Reihenfolge, in der die
+/// Kombination zuerst vorkommt, mit der Zahl der Mitglieder -- "3x Soldat".
+/// Darunter eingerueckt je Waffe eine Zeile, eine mehrfach getragene einmal mit
+/// ihrer Zahl -- "2x Granate". Was die UnitInfoView nicht mehr fasst, faellt weg.
 ///
 static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_ClientUnit_t *unit)
 {
@@ -699,9 +707,11 @@ static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_C
     RAD_UnitInfoViewSetHitPoints(unit_info_view, current, maximum);
     RAD_UnitInfoViewSetMovementRange(unit_info_view, unit->movement);
 
-    RAD_UnitInfoViewClearEntities(unit_info_view);
+    RAD_UnitInfoViewClearLines(unit_info_view);
 
-    // Ein Profil zaehlt nur beim ersten Mitglied, das es traegt.
+    char text[RAD_VIEW_UNIT_INFO_LINE_MAX];
+
+    // Eine Kombination zaehlt nur beim ersten Mitglied, das sie traegt.
     for(uint32_t i = 0; i < unit->number_of_members; ++i)
     {
         const RAD_ClientMember_t *member = &unit->members[i];
@@ -709,7 +719,7 @@ static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_C
         bool seen = false;
         for(uint32_t k = 0; k < i && !seen; ++k)
         {
-            seen = (strcmp(unit->members[k].profile, member->profile) == 0);
+            seen = RAD_ViewSameLoadout(&unit->members[k], member);
         }
         if(seen)
         {
@@ -719,34 +729,71 @@ static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_C
         uint32_t count = 0;
         for(uint32_t k = i; k < unit->number_of_members; ++k)
         {
-            count += (strcmp(unit->members[k].profile, member->profile) == 0) ? 1 : 0;
+            count += RAD_ViewSameLoadout(&unit->members[k], member) ? 1 : 0;
         }
 
-        const size_t number_of_weapons = (member->number_of_weapons < RAD_ENTITY_VIEW_WEAPONS_MAX)
-            ? member->number_of_weapons : RAD_ENTITY_VIEW_WEAPONS_MAX;
-
-        // Mehr Zeilen, als die UnitInfoView fasst: der Rest faellt weg.
-        RAD_EntityView_t *entity = RAD_UnitInfoViewAddEntity(unit_info_view, count, number_of_weapons);
-        if(entity == NULL)
+        snprintf(text, sizeof(text), "%ux %s", (unsigned)count, member->profile);
+        if(!RAD_UnitInfoViewAddLine(unit_info_view, text, false))
         {
-            break;
+            return;
         }
 
-        RAD_EntityViewSetName(entity, member->profile);
-        RAD_EntityViewSetHitPoints(entity, member->health, member->health_max);
-        RAD_EntityViewSetArmor(entity, member->armor, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
-        RAD_EntityViewSetStrength(entity, member->strength, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
-
-        for(size_t w = 0; w < number_of_weapons; ++w)
+        // Ebenso eine Waffe nur beim ersten Mal.
+        for(uint32_t w = 0; w < member->number_of_weapons; ++w)
         {
-            const RAD_ClientWeapon_t *weapon = &member->weapons[w];
-            RAD_EntityViewSetWeaponName(entity, w, weapon->name);
-            RAD_EntityViewSetWeaponStrength(entity, w, weapon->strength, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
-            RAD_EntityViewSetWeaponPenetration(entity, w, weapon->penetration, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
-            RAD_EntityViewSetWeaponRange(entity, w, weapon->max_range, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
-            RAD_EntityViewSetWeaponNumberOfShots(entity, w, weapon->shots, RAD_VIEW_UNIT_ATTRIBUTE_SCALE);
+            const char *name = member->weapons[w].name;
+
+            bool weapon_seen = false;
+            for(uint32_t k = 0; k < w && !weapon_seen; ++k)
+            {
+                weapon_seen = (strcmp(member->weapons[k].name, name) == 0);
+            }
+            if(weapon_seen)
+            {
+                continue;
+            }
+
+            uint32_t weapon_count = 0;
+            for(uint32_t k = w; k < member->number_of_weapons; ++k)
+            {
+                weapon_count += (strcmp(member->weapons[k].name, name) == 0) ? 1 : 0;
+            }
+
+            if(weapon_count > 1)
+            {
+                snprintf(text, sizeof(text), "%ux %s", (unsigned)weapon_count, name);
+            }
+            else
+            {
+                snprintf(text, sizeof(text), "%s", name);
+            }
+            if(!RAD_UnitInfoViewAddLine(unit_info_view, text, true))
+            {
+                return;
+            }
         }
     }
+}
+
+///
+/// Ob "a" und "b" gleich ausgeruestet sind: dasselbe Profil und dieselben
+/// Waffen in derselben Reihenfolge, verglichen nach Namen.
+///
+static bool RAD_ViewSameLoadout(const RAD_ClientMember_t *a, const RAD_ClientMember_t *b)
+{
+    if(strcmp(a->profile, b->profile) != 0 || a->number_of_weapons != b->number_of_weapons)
+    {
+        return false;
+    }
+
+    for(uint32_t w = 0; w < a->number_of_weapons; ++w)
+    {
+        if(strcmp(a->weapons[w].name, b->weapons[w].name) != 0)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 ///

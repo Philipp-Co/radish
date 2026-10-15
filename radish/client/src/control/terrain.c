@@ -1,54 +1,45 @@
 #include <radish/control/terrain.h>
 
-#include <stddef.h>
-
-
-typedef struct
-{
-    const char *name;
-    int32_t movement_modifier;
-    int32_t cover;
-} RAD_ControlTerrainValues_t;
-
-///
-/// Die Werte je Typ (model/tile.h). MV und CV sind Platzhalter: das Spiel
-/// kennt noch keine (control/terrain.h).
-///
-static const RAD_ControlTerrainValues_t RAD_CONTROL_TERRAIN_VALUES[] = {
-    [RAD_CLIENT_TILE_TYPE_UNKNOWN] = { .name = "Unbekannt", .movement_modifier = 0, .cover = 0 },
-    [RAD_CLIENT_TILE_TYPE_GROUND]  = { .name = "Boden",     .movement_modifier = 0, .cover = 1 },
-    [RAD_CLIENT_TILE_TYPE_WATER]   = { .name = "Wasser",    .movement_modifier = -1, .cover = 0 },
-    [RAD_CLIENT_TILE_TYPE_VOID]    = { .name = "Leere",     .movement_modifier = 0, .cover = 0 }
-};
-
-static RAD_ControlTerrainValues_t RAD_ControlTerrainValuesOf(const RAD_ClientTile_t *tile)
-{
-    const size_t type = (size_t)tile->type;
-    if(type >= sizeof(RAD_CONTROL_TERRAIN_VALUES) / sizeof(RAD_CONTROL_TERRAIN_VALUES[0]))
-    {
-        return RAD_CONTROL_TERRAIN_VALUES[RAD_CLIENT_TILE_TYPE_UNKNOWN];
-    }
-    return RAD_CONTROL_TERRAIN_VALUES[type];
-}
 
 const char* RAD_ControlTerrainName(const RAD_ClientTile_t *tile)
 {
-    return RAD_ControlTerrainValuesOf(tile).name;
+    switch(tile->type)
+    {
+        case RAD_CLIENT_TILE_TYPE_GROUND:        return "Boden";
+        case RAD_CLIENT_TILE_TYPE_WATER_SHALLOW: return "Seichtes Wasser";
+        case RAD_CLIENT_TILE_TYPE_VOID:          return "Leere";
+        case RAD_CLIENT_TILE_TYPE_MUD:           return "Matsch";
+        case RAD_CLIENT_TILE_TYPE_MEADOW:        return "Wiese";
+        case RAD_CLIENT_TILE_TYPE_FOREST:        return "Wald";
+        case RAD_CLIENT_TILE_TYPE_WATER_DEEP:    return "Tiefes Wasser";
+        case RAD_CLIENT_TILE_TYPE_CITY:          return "Stadt";
+        case RAD_CLIENT_TILE_TYPE_ROAD:          return "Strasse";
+        case RAD_CLIENT_TILE_TYPE_FORTIFICATION: return "Befestigte Stellung";
+        case RAD_CLIENT_TILE_TYPE_UNKNOWN:       return "Unbekannt";
+    }
+    return "Unbekannt";
 }
 
 int32_t RAD_ControlTerrainMovementModifier(const RAD_ClientTile_t *tile)
 {
-    return RAD_ControlTerrainValuesOf(tile).movement_modifier;
+    return tile->terrain.movement_modifier;
 }
 
 int32_t RAD_ControlTerrainMovementCost(const RAD_ClientTile_t *tile)
 {
     // Ein Feld, das die Reichweite erhoeht, ist nicht umsonst.
-    const int32_t cost = 1 - RAD_ControlTerrainValuesOf(tile).movement_modifier;
+    const int32_t cost = 1 - tile->terrain.movement_modifier;
     return (cost > 1) ? cost : 1;
 }
 
 int32_t RAD_ControlTerrainCover(const RAD_ClientTile_t *tile)
 {
-    return RAD_ControlTerrainValuesOf(tile).cover;
+    return tile->terrain.cover;
+}
+
+bool RAD_ControlTerrainImpassable(const RAD_ClientTile_t *tile)
+{
+    // Ohne Gelaende auch dann nicht, wenn der Server es nicht als unbegehbar
+    // fuehrt -- er lehnt den Weg trotzdem ab (RAD_GameCheckMovePath).
+    return tile->terrain.impassable || (tile->type == RAD_CLIENT_TILE_TYPE_VOID);
 }

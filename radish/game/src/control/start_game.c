@@ -3,6 +3,7 @@
 #include <radish/game/model/unit_pool/unit_pool.h>
 #include <radish/game/model/player/player.h>
 #include <radish/game/model/reserve/reserve.h>
+#include <radish/game/model/world/world.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -34,8 +35,11 @@ static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_
 static RAD_GameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int32_t index, RAD_UnitMember_t *member);
 static RAD_GameStartResult_t RAD_ReadWeapon(const RAD_GameStartTokens_t *t, int32_t index, RAD_Weapon_t *weapon);
 static RAD_GameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, int32_t index);
+static RAD_GameStartResult_t RAD_ReadTerrains(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES]);
+static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES], bool seen[RAD_NUMBER_OF_TILE_TYPES]);
 static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX]);
 static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
+static bool RAD_ReadSignedValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
 static bool RAD_ReadBool(const RAD_GameStartTokens_t *t, int32_t index, bool *value);
 static bool RAD_IsIdentifierCharacter(char c);
 static int32_t RAD_SubtreeEnd(const RAD_GameStartTokens_t *t, int32_t index);
@@ -178,37 +182,43 @@ RAD_GameStartResult_t RAD_ParseGameStart(const char *json, size_t length, RAD_Ga
         return RAD_GAME_START_ERROR_OUT_OF_MEMORY;
     }
 
-    RAD_GameStartResult_t result = RAD_GAME_START_ERROR_SCHEMA;
+    // Beide Pflichtschluessel muessen da sein; ein Fehler in einem bricht ab.
+    RAD_GameStartResult_t result = RAD_IsType(&t, 0, JSMN_OBJECT) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
+    bool players_found = false;
+    bool terrain_found = false;
 
-    if(RAD_IsType(&t, 0, JSMN_OBJECT))
+    int32_t key = 1;
+    for(int32_t i=0;(result == RAD_GAME_START_OK) && (i < tokens[0].size); ++i)
     {
-        int32_t key = 1;
-        for(int32_t i=0;i < tokens[0].size; ++i)
+        if(RAD_KeyIs(&t, key, "spieldaten"))
         {
-            if(RAD_KeyIs(&t, key, "spieldaten"))
+            const int32_t array = key + 1;
+            if(!RAD_IsType(&t, array, JSMN_ARRAY)
+               || tokens[array].size != RAD_GAME_START_NUMBER_OF_PLAYERS)
             {
-                const int32_t array = key + 1;
-                if(!RAD_IsType(&t, array, JSMN_ARRAY)
-                   || tokens[array].size != RAD_GAME_START_NUMBER_OF_PLAYERS)
-                {
-                    result = RAD_GAME_START_ERROR_SCHEMA;
-                    break;
-                }
-
-                int32_t element = array + 1;
-                result = RAD_GAME_START_OK;
-                for(int32_t p=0;(result == RAD_GAME_START_OK) && (p < tokens[array].size); ++p)
-                {
-                    result = RAD_ReadPlayer(&t, element, &parsed->players[p]);
-                    element = RAD_SubtreeEnd(&t, element);
-                }
-                if(result != RAD_GAME_START_OK)
-                {
-                    break;
-                }
+                result = RAD_GAME_START_ERROR_SCHEMA;
+                break;
             }
-            key = RAD_SubtreeEnd(&t, key);
+
+            int32_t element = array + 1;
+            for(int32_t p=0;(result == RAD_GAME_START_OK) && (p < tokens[array].size); ++p)
+            {
+                result = RAD_ReadPlayer(&t, element, &parsed->players[p]);
+                element = RAD_SubtreeEnd(&t, element);
+            }
+            players_found = true;
         }
+        else if(RAD_KeyIs(&t, key, "gelaende"))
+        {
+            result = RAD_ReadTerrains(&t, key + 1, parsed->terrain);
+            terrain_found = true;
+        }
+        key = RAD_SubtreeEnd(&t, key);
+    }
+
+    if((result == RAD_GAME_START_OK) && (!players_found || !terrain_found))
+    {
+        result = RAD_GAME_START_ERROR_SCHEMA;
     }
 
     if(result == RAD_GAME_START_OK)
@@ -348,6 +358,9 @@ RAD_GameResult_t RAD_StartGame(RAD_Game_t *game, const RAD_GameStart_t *start)
             RAD_ReserveAddUnit(reserve, unit);
         }
     }
+
+    // Kann nicht scheitern, wie die Einheiten davor: jeder Typ steht in der Tabelle.
+    RAD_WorldSetTerrain(&game->world, start->terrain);
 
     return RAD_GAME_OK;
 }
@@ -605,7 +618,7 @@ static RAD_GameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int3
         return RAD_GAME_START_ERROR_SCHEMA;
     }
 
-    enum { PROFIL, LEBEN, RUESTUNG, STAERKE, GENAUIGKEIT, WAFFEN, AUSRUESTUNG, ALLE = (1u << 7) - 1 };
+    enum { PROFIL, LEBEN, RUESTUNG, WIDERSTAND, STAERKE, GENAUIGKEIT, WAFFEN, AUSRUESTUNG, ALLE = (1u << 8) - 1 };
     uint32_t found = 0;
 
     int32_t key = index + 1;
@@ -628,6 +641,11 @@ static RAD_GameStartResult_t RAD_ReadMember(const RAD_GameStartTokens_t *t, int3
         {
             result = RAD_ReadValue(t, value, &member->armor) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(RUESTUNG);
+        }
+        else if(RAD_KeyIs(t, key, "widerstand"))
+        {
+            result = RAD_ReadValue(t, value, &member->toughness) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
+            found |= RAD_FOUND(WIDERSTAND);
         }
         else if(RAD_KeyIs(t, key, "staerke"))
         {
@@ -802,6 +820,125 @@ static RAD_GameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, i
 }
 
 ///
+/// Die Namen der Tile-Typen in "gelaende", wie das Backend sie fuehrt
+/// (TerrainType.code), je mit ihrem Typ.
+///
+static const struct { const char *name; RAD_TileType_t type; } RAD_TERRAIN_NAMES[] = {
+    { "void",          RAD_TILE_TYPE_VOID },
+    { "ground",        RAD_TILE_TYPE_GROUND },
+    { "water_shallow", RAD_TILE_TYPE_WATER_SHALLOW },
+    { "mud",           RAD_TILE_TYPE_MUD },
+    { "meadow",        RAD_TILE_TYPE_MEADOW },
+    { "forest",        RAD_TILE_TYPE_FOREST },
+    { "water_deep",    RAD_TILE_TYPE_WATER_DEEP },
+    { "city",          RAD_TILE_TYPE_CITY },
+    { "road",          RAD_TILE_TYPE_ROAD },
+    { "fortification", RAD_TILE_TYPE_FORTIFICATION },
+};
+
+///
+/// "gelaende": ein Array mit einem Eintrag je Tile-Typ, jeder genau einmal.
+///
+static RAD_GameStartResult_t RAD_ReadTerrains(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES])
+{
+    if(!RAD_IsType(t, index, JSMN_ARRAY))
+    {
+        return RAD_GAME_START_ERROR_SCHEMA;
+    }
+
+    bool seen[RAD_NUMBER_OF_TILE_TYPES] = { false };
+    int32_t item = index + 1;
+    for(int32_t e=0;e < t->tokens[index].size; ++e)
+    {
+        const RAD_GameStartResult_t result = RAD_ReadTerrain(t, item, terrain, seen);
+        if(result != RAD_GAME_START_OK)
+        {
+            return result;
+        }
+        item = RAD_SubtreeEnd(t, item);
+    }
+
+    for(int32_t type=0;type < RAD_NUMBER_OF_TILE_TYPES; ++type)
+    {
+        if(!seen[type])
+        {
+            return RAD_GAME_START_ERROR_SCHEMA;
+        }
+    }
+    return RAD_GAME_START_OK;
+}
+
+///
+/// Ein Eintrag in "gelaende": der Typ und seine drei Werte, alle Pflicht. Ein
+/// Typ, der schon in "seen" steht, ist ein Schemafehler.
+///
+static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES], bool seen[RAD_NUMBER_OF_TILE_TYPES])
+{
+    if(!RAD_IsType(t, index, JSMN_OBJECT))
+    {
+        return RAD_GAME_START_ERROR_SCHEMA;
+    }
+
+    enum { TYP, BEWEGUNG, DECKUNG, UNBEGEHBAR, ALLE = (1u << 4) - 1 };
+    uint32_t found = 0;
+    int32_t type = -1;
+    RAD_Terrain_t values = { 0 };
+
+    int32_t key = index + 1;
+    for(int32_t i=0;i < t->tokens[index].size; ++i)
+    {
+        const int32_t value = key + 1;
+        bool ok = true;
+
+        if(RAD_KeyIs(t, key, "typ"))
+        {
+            ok = false;
+            for(size_t n=0;n < sizeof(RAD_TERRAIN_NAMES) / sizeof(RAD_TERRAIN_NAMES[0]); ++n)
+            {
+                const size_t length = strlen(RAD_TERRAIN_NAMES[n].name);
+                if(RAD_StringLength(t, value) == (int32_t)length
+                   && 0 == memcmp(t->json + t->tokens[value].start, RAD_TERRAIN_NAMES[n].name, length))
+                {
+                    type = (int32_t)RAD_TERRAIN_NAMES[n].type;
+                    ok = true;
+                    break;
+                }
+            }
+            found |= RAD_FOUND(TYP);
+        }
+        else if(RAD_KeyIs(t, key, "bewegung"))
+        {
+            ok = RAD_ReadSignedValue(t, value, &values.movement_modifier);
+            found |= RAD_FOUND(BEWEGUNG);
+        }
+        else if(RAD_KeyIs(t, key, "deckung"))
+        {
+            ok = RAD_ReadValue(t, value, &values.cover);
+            found |= RAD_FOUND(DECKUNG);
+        }
+        else if(RAD_KeyIs(t, key, "unbegehbar"))
+        {
+            ok = RAD_ReadBool(t, value, &values.impassable);
+            found |= RAD_FOUND(UNBEGEHBAR);
+        }
+
+        if(!ok)
+        {
+            return RAD_GAME_START_ERROR_SCHEMA;
+        }
+        key = RAD_SubtreeEnd(t, key);
+    }
+
+    if(found != ALLE || seen[type])
+    {
+        return RAD_GAME_START_ERROR_SCHEMA;
+    }
+    seen[type] = true;
+    terrain[type] = values;
+    return RAD_GAME_START_OK;
+}
+
+///
 /// Ein Name, der ins Spiel geht -- Einheitentyp, Profil, Waffe. Leer oder kein
 /// String ist ein Schemafehler, zu lang fuer RAD_UNIT_NAME_MAX eine Grenze des
 /// Spiels (RAD_GAME_START_ERROR_LIMIT).
@@ -852,6 +989,54 @@ static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t
     }
 
     if(parsed > INT16_MAX)
+    {
+        return false;
+    }
+
+    *value = (int16_t)parsed;
+    return true;
+}
+
+///
+/// Wie RAD_ReadValue, aber mit Vorzeichen: eine ganze Zahl in -32768..32767, ein
+/// "-" davor erlaubt. Fuer MV, das die Reichweite auch senkt.
+///
+static bool RAD_ReadSignedValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value)
+{
+    if(!RAD_IsType(t, index, JSMN_PRIMITIVE))
+    {
+        return false;
+    }
+
+    const char *text = t->json + t->tokens[index].start;
+    int32_t length = t->tokens[index].end - t->tokens[index].start;
+    const bool negative = (length > 0) && (text[0] == '-');
+    if(negative)
+    {
+        text++;
+        length--;
+    }
+
+    if(length < 1 || length > 5)
+    {
+        return false;
+    }
+
+    int32_t parsed = 0;
+    for(int32_t i=0;i < length; ++i)
+    {
+        if(text[i] < '0' || text[i] > '9')
+        {
+            return false;
+        }
+        parsed = parsed * 10 + (text[i] - '0');
+    }
+
+    if(negative)
+    {
+        parsed = -parsed;
+    }
+    if(parsed < INT16_MIN || parsed > INT16_MAX)
     {
         return false;
     }

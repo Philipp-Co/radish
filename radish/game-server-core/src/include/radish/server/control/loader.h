@@ -1,8 +1,10 @@
 #ifndef __RAD_CONTROL_LOADER_H__
 #define __RAD_CONTROL_LOADER_H__
 
+#include <stdbool.h>
 #include <radish/game/game.h>
 #include <radish/game/control/events/event_manager.h>
+#include <radish/server/control/execute.h>
 
 ///
 /// Wer die Ereignisse des Spiels bekommt, je Gruppe ein Abonnent
@@ -14,6 +16,7 @@ typedef struct
    RAD_EventsTileChangedCallback_t tile_changed;
    RAD_EventsUnitChangedCallback_t unit_changed;
    RAD_EventsTurnCallback_t turn_changed;
+   RAD_EventsGameCallback_t game_changed;
 } RAD_EventCallbacks_t;
 
 ///
@@ -110,5 +113,34 @@ RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, RAD_EventCallbac
 /// (RAD_DestroyControl).
 ///
 void RAD_ControlDestroyGame(RAD_ControlGame_t *game);
+
+///
+/// Setzt das Spiel des Servers zurueck: baut die Steuerung, das Spiel und seinen
+/// Event-Manager ab und legt alle drei neu an -- mit derselben Weltdefinition
+/// und denselben Callbacks wie beim Prozessstart (RAD_ControlCreateGame,
+/// RAD_CreateControl). Danach steht ein leeres Spiel da: keine Spieler, keine
+/// Einheiten, nicht beendet, ein neuer Wuerfel.
+///
+/// **Wann:** unmittelbar bevor ein neues Spiel eingerichtet wird (main.c). Das
+/// Ende eines Spiels setzt nichts zurueck -- ein beendetes Spiel bleibt mit
+/// Sieger und Punkten stehen, bis das naechste kommt. Ein Spiel laesst sich nur
+/// einmal starten (RAD_GAME_ERROR_STARTED); ohne dieses Zuruecksetzen nimmt ein
+/// Server nach seinem ersten Spiel keines mehr an.
+///
+/// "game" und "control" werden ersetzt; wer sie ueber einen Zeiger liest (die
+/// Callbacks in main.c), sieht danach die neuen. "callbacks" wird wie beim
+/// Anlegen vor dem Aufbau abonniert, sodass auch der Aufbau der Welt gemeldet
+/// wird.
+///
+/// Nicht aus einem Callback des Spiels heraus zu rufen: der laeuft mitten in
+/// einem Kommando, und das Spiel stuende dann noch auf dem Aufrufstapel.
+///
+/// false, wenn das Neuanlegen scheitert -- dann sind beide leer (NULL), und der
+/// Server hat kein Spiel mehr. Der Grund steht schon im Log.
+///
+bool RAD_ControlResetGame(RAD_ControlGame_t *game,
+                          RAD_Control_t *control,
+                          const char *world_path,
+                          RAD_EventCallbacks_t *callbacks);
 
 #endif

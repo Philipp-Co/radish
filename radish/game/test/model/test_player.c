@@ -11,7 +11,7 @@
 
 void test_player_faengt_leer_an(void)
 {
-    RAD_Player_t *player = RAD_CreatePlayer(42);
+    RAD_Player_t *player = RAD_CreatePlayer(42, RAD_PLAYER_EDGE_WEST);
     TEST_ASSERT_NOT_NULL(player);
     TEST_ASSERT_EQUAL_UINT64(42, RAD_PlayerId(player));
     TEST_ASSERT_EQUAL_INT32(0, RAD_PlayerNumberOfUnits(player));
@@ -30,13 +30,25 @@ void test_player_faengt_leer_an(void)
 
 void test_player_ohne_benutzer_gibt_es_nicht(void)
 {
-    TEST_ASSERT_NULL(RAD_CreatePlayer(RAD_USER_NONE));
+    TEST_ASSERT_NULL(RAD_CreatePlayer(RAD_USER_NONE, RAD_PLAYER_EDGE_WEST));
+}
+
+void test_player_behaelt_seine_kante(void)
+{
+    RAD_Player_t *west = RAD_CreatePlayer(7, RAD_PLAYER_EDGE_WEST);
+    RAD_Player_t *east = RAD_CreatePlayer(8, RAD_PLAYER_EDGE_EAST);
+    TEST_ASSERT_EQUAL_INT(RAD_PLAYER_EDGE_WEST, RAD_PlayerEdge(west));
+    TEST_ASSERT_EQUAL_INT(RAD_PLAYER_EDGE_EAST, RAD_PlayerEdge(east));
+    TEST_ASSERT_EQUAL_INT(RAD_PLAYER_EDGE_WEST, RAD_PlayerEdge(NULL));
+
+    RAD_DestroyPlayer(&west);
+    RAD_DestroyPlayer(&east);
 }
 
 void test_player_einheitenliste(void)
 {
     RAD_UnitPool_t *pool = RAD_CreateUnitPool();
-    RAD_Player_t *player = RAD_CreatePlayer(7);
+    RAD_Player_t *player = RAD_CreatePlayer(7, RAD_PLAYER_EDGE_WEST);
     RAD_Unit_t *a = RAD_UnitPoolAddUnit(pool);
     RAD_Unit_t *b = RAD_UnitPoolAddUnit(pool);
     RAD_Unit_t *other = RAD_UnitPoolAddUnit(pool);
@@ -73,7 +85,7 @@ void test_player_einheitenliste(void)
 void test_player_entfernen_nimmt_auch_aus_der_reserve(void)
 {
     RAD_UnitPool_t *pool = RAD_CreateUnitPool();
-    RAD_Player_t *player = RAD_CreatePlayer(7);
+    RAD_Player_t *player = RAD_CreatePlayer(7, RAD_PLAYER_EDGE_WEST);
     RAD_Reserve_t *reserve = RAD_PlayerReserve(player);
     RAD_Unit_t *unit = RAD_UnitPoolAddUnit(pool);
 
@@ -96,7 +108,7 @@ void test_player_lehnt_ab_wenn_die_liste_voll_ist(void)
 {
     RAD_UnitPool_t *pool = RAD_CreateUnitPool();
     RAD_UnitPool_t *more = RAD_CreateUnitPool();
-    RAD_Player_t *player = RAD_CreatePlayer(7);
+    RAD_Player_t *player = RAD_CreatePlayer(7, RAD_PLAYER_EDGE_WEST);
 
     for(int32_t i = 0; i < RAD_MAX_UNITS; ++i)
     {

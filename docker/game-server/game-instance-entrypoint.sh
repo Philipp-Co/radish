@@ -1,18 +1,27 @@
 #!/bin/sh
 #
 # Ein Paar zucchini_server + radish_server als eine Einheit fuer supervisord
-# (siehe supervisord.conf, Programm "game-instance-1"): stuerzt einer der
+# (siehe supervisord.conf, Programme "game-instance-1" bis "-4"): stuerzt einer der
 # beiden ab oder wird das Paar per SIGTERM beendet, gehen beide zusammen --
 # nie bleibt der eine ohne den anderen zurueck. supervisord sieht davon nur
 # dieses Skript als einen Prozess und startet bei dessen Ende beide neu
 # (autorestart=true).
 #
-# Erstes Argument: der Zucchini-Instanzname, an radish_server durchgereicht.
-# zucchini_server selbst nimmt aktuell keine Argumente entgegen und laeuft
-# immer als "zucchini" auf Port 9999 (siehe supervisord.conf) -- das Argument
-# hier wirkt sich deshalb noch nicht auf zucchini_server aus, nur auf die
-# Ringpuffer-/FIFO-Namen, die radish_server erwartet. Ohne Argument default
-# "zucchini", passend zu zucchini_servers eigenem Default.
+# Aufruf: game-instance-entrypoint.sh <name> <port> (siehe supervisord.conf,
+# je Instanz ein [program:...]-Abschnitt). Das Paar wird nur dort festgelegt
+# und von hier aus durchgereicht:
+#
+#   <name>  Name der Instanz in diesem Container -- Zucchini-Name
+#           (zucchini_server/zucchini_admin_client -n), Name fuer
+#           radish_server (Ringpuffer/FIFO), Datenverzeichnis und Pfadteil
+#           der Instanz-API (radish/game-server/instances/views.py). Muss nur
+#           in diesem Container eindeutig sein.
+#   <port>  UDP-Port von zucchini_server (-p), so auch beim Backend gemeldet.
+#           Ebenfalls je Container eindeutig, und in docker-compose.yaml
+#           nach aussen gemappt.
+#
+# Kein Default fuer beides: zucchini_server verlangt beides auch, und ein
+# stiller Default wuerde mit der naechsten Instanz zusammenstossen.
 #
 # Legt das Verzeichnis an, ueber das Django (radish/game-server/instances/
 # views.py) und radish_server die Spielstart-Datei austauschen, und raeumt es
@@ -21,23 +30,43 @@
 # schreibt radish_server selbst, sobald sein Handler fuer SIGUSR1 steht
 # (siehe radish/game-server-core/src/main.c).
 #
-# Meldet sich ausserdem beim Backend an (register_instance.py, siehe dort --
-# RADISH_GAME_SERVER_NAME ist die Kennung dafuer, unabhaengig vom
-# Zucchini-Instanznamen oben) und wieder ab, wenn das Paar endet -- egal ob
-# durch Absturz oder Signal.
+# Meldet sich ausserdem beim Backend an (register_instance.py) und wieder ab,
+# wenn das Paar endet -- egal ob durch Absturz oder Signal. Das Backend
+# braucht dafuer einen Namen, der ueber alle Container eindeutig ist
+# (GameServer.name): "<RADISH_GAME_SERVER_ID>-<name>", mit der Kennung des
+# Containers aus docker-compose.yaml.
 set -e
 
-ZUC_INSTANCE_NAME="${1:-zucchini}"
+if [ $# -ne 2 ] || [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Aufruf: $0 <name> <port>" >&2
+    exit 1
+fi
+if [ -z "$RADISH_GAME_SERVER_ID" ]; then
+    echo "RADISH_GAME_SERVER_ID ist nicht gesetzt." >&2
+    exit 1
+fi
+
+# Fuer register_instance.py -- auch fuer dessen Aufruf durch radish_server
+# beim Spielende (RADISH_GAME_FINISHED_COMMAND unten), der die Umgebung von
+# hier erbt.
+export RADISH_GAME_INSTANCE_NAME="$1"
+export RADISH_GAME_SERVER_PORT="$2"
+export RADISH_GAME_SERVER_NAME="${RADISH_GAME_SERVER_ID}-${RADISH_GAME_INSTANCE_NAME}"
 
 # Vor dem Anmelden: erst wenn die Instanz beim Backend steht, kann ein Spiel
 # auf ihr starten, und dann soll das Verzeichnis schon leer bereitstehen.
 # Derselbe Default wie RADISH_GAME_DATA_DIR in radish/game-server/config/
-# settings.py.
-GAME_DATA_DIR="${RADISH_GAME_DATA_DIR:-/run/radish}/${RADISH_GAME_SERVER_NAME}"
+# settings.py. Unter dem Namen im Container, nicht dem beim Backend: Django
+# findet das Verzeichnis ueber den Namen in der URL, und das ist dieser.
+GAME_DATA_DIR="${RADISH_GAME_DATA_DIR:-/run/radish}/${RADISH_GAME_INSTANCE_NAME}"
 mkdir -p "$GAME_DATA_DIR"
 rm -f "$GAME_DATA_DIR/spielstart.json" "$GAME_DATA_DIR/spielstart.json.tmp" "$GAME_DATA_DIR/zugang.json" "$GAME_DATA_DIR/radish_server.pid"
 export RADISH_GAME_START_PATH="$GAME_DATA_DIR/spielstart.json"
 export RADISH_GAME_PID_PATH="$GAME_DATA_DIR/radish_server.pid"
+# Mit diesem Programm meldet radish_server das Ende eines Spiels an das Backend
+# (register_instance.py game-finished, siehe dort und
+# radish/game-server-core/src/interface/game_report.h).
+export RADISH_GAME_FINISHED_COMMAND=/usr/local/bin/register_instance.py
 
 /usr/local/bin/register_instance.py register
 
@@ -47,16 +76,16 @@ export RADISH_GAME_PID_PATH="$GAME_DATA_DIR/radish_server.pid"
 # Django dieses Containers (radish/game-server/instances/views.py). Bis
 # dahin kommt nichts durch -- es gibt ja auch noch kein Spiel.
 
-/usr/local/bin/zucchini_server &
+/usr/local/bin/zucchini_server -n "$RADISH_GAME_INSTANCE_NAME" -p "$RADISH_GAME_SERVER_PORT" &
 ZUCCHINI_PID=$!
 
 # Der Admin-Client legt seine Queue selbst an, weckt den Server aber per
 # Signal -- der muss dafuer schon laufen.
 sleep 1
 
-/usr/local/bin/zucchini_admin_client status
+/usr/local/bin/zucchini_admin_client -n "$RADISH_GAME_INSTANCE_NAME" status
 
-/usr/local/bin/radish_server "$ZUC_INSTANCE_NAME" &
+/usr/local/bin/radish_server "$RADISH_GAME_INSTANCE_NAME" &
 RADISH_PID=$!
 
 terminate()

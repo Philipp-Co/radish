@@ -7,6 +7,7 @@
 #include <radish/game/game.h>
 #include <radish/game/user.h>
 #include <radish/game/model/unit/unit.h>
+#include <radish/game/model/tile/tile.h>
 
 ///
 /// Spielstart -- wie aus einer Spieldatei ein Spiel wird.
@@ -39,6 +40,11 @@
 /// erlaubt, die festen Felder des Spiels aber nicht halten koennen, ist
 /// RAD_GAME_START_ERROR_LIMIT -- abgelehnt wird dann die ganze Datei, nichts
 /// wird gekuerzt.
+///
+/// **Dazu das Gelaende.** Neben den Spielern steht in "gelaende" je Tile-Typ, was
+/// er fuer das Spiel bedeutet (RAD_Terrain_t): MV, CV und ob er unbegehbar ist.
+/// Die Werte pflegt das Backend im Katalog; das Spiel kennt keine eigenen. Jeder
+/// Typ muss genau einmal vorkommen, sonst ist es RAD_GAME_START_ERROR_SCHEMA.
 ///
 /// Unbekannte Schluessel werden uebergangen: die Datei schreibt das Backend und
 /// nicht ein Mensch, und ein Feld, das es spaeter dazubekommt, soll einen aelteren
@@ -91,6 +97,9 @@ typedef struct
 {
     /// In der Reihenfolge der Datei: zuerst der Host, dann der zweite Spieler.
     RAD_GameStartPlayer_t players[RAD_GAME_START_NUMBER_OF_PLAYERS];
+
+    /// Das Gelaende aus "gelaende", Index RAD_TileType_t.
+    RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES];
 } RAD_GameStart_t;
 
 typedef enum
@@ -108,8 +117,9 @@ typedef enum
     /// Spieler, ein leerer oder zu langer Name, eine Kennung, die nicht genau
     /// RAD_GAME_START_IDENTIFIER_LENGTH Zeichen hat, eine Armee ohne
     /// Einheiten, eine Einheit ohne Entitaeten, ein fehlender Pflichtschluessel,
-    /// ein Wert vom falschen Typ oder ausserhalb 0..32767, eine unbekannte
-    /// Waffenklasse.
+    /// ein Wert vom falschen Typ oder ausserhalb 0..32767 (MV: -32768..32767),
+    /// eine unbekannte Waffenklasse, ein Gelaende, das fehlt, doppelt vorkommt
+    /// oder unbekannt ist.
     ///
     RAD_GAME_START_ERROR_SYNTAX,
     RAD_GAME_START_ERROR_SCHEMA,
@@ -188,6 +198,8 @@ bool RAD_IdentifierFromUserId(RAD_UserId_t user, char out[RAD_GAME_START_IDENTIF
 ///      Werten aus der Datei, dem Spieler als Besitzer (RAD_Unit_t.owner) und
 ///      im Zustand RAD_UNIT_STATE_RESERVE.
 ///   3. Sie kommt in die Einheitenliste ihres Spielers und in seine Reserve.
+///   4. Die Welt uebernimmt das Gelaende (RAD_WorldSetTerrain): jedes Feld
+///      bekommt die Werte seines Typs.
 ///
 /// Abgelehnt wird, bevor sich etwas aendert:
 ///

@@ -67,6 +67,12 @@ static void notiere_nichts(void *user_argument, const RAD_Unit_t *unit, int32_t 
     (void)y;
 }
 
+static void notiere_keinen_angriff(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
+    (void)result;
+}
+
 ///
 /// Eine Gruppe wird als Ganzes gesetzt, also stehen hier auch die zwei Callbacks,
 /// die diese Datei nicht braucht (event_manager.h). Abonniert wird immer erst,
@@ -81,7 +87,8 @@ static void abonniere_zug(RAD_EventManager_t *events, RAD_ZugMitschrift_t *mitsc
         .user_argument = mitschrift,
         .spawned = notiere_nichts,
         .destroyed = notiere_nichts,
-        .moved = notiere_zug
+        .moved = notiere_zug,
+        .attacked = notiere_keinen_angriff
     });
 }
 
@@ -100,6 +107,22 @@ static void pruefe_figur_steht_auf(RAD_Game_t *game, RAD_UnitId_t id, int32_t x,
     const RAD_Tile_t *tile = RAD_WorldTileAt(&game->world, x, y);
     TEST_ASSERT_NOT_NULL(tile);
     TEST_ASSERT_EQUAL_INT(id, tile->unit);
+}
+
+///
+/// Eine Figur direkt auf dem Feld, mit Bewegung: eine gespawnte hat keine
+/// (RAD_WorldSpawnUnit), und ohne waere jeder Weg zu weit (RAD_GameCheckMovePath).
+///
+#define BEWEGUNG 5
+
+static RAD_UnitId_t spawne(RAD_Game_t *game, int32_t x, int32_t y)
+{
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
+    if(id != RAD_UNIT_NONE)
+    {
+        RAD_WorldUnitById(&game->world, id)->movement = BEWEGUNG;
+    }
+    return id;
 }
 
 /// Ist das Feld frei? Nur die Tile-Seite -- die Figur, die es nicht traegt, gibt
@@ -128,7 +151,7 @@ void test_move_kommando_bewegt_die_figur(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
 
     RAD_ZugMitschrift_t mitschrift;
@@ -194,11 +217,11 @@ void test_move_kommando_auf_besetztes_feld_bewegt_nicht(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_UnitId_t zieher = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t zieher = spawne(game, 2, 2);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, zieher);
 
     // Direkt daneben, auf dem Feld, auf das der Zug gehen soll.
-    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+    const RAD_UnitId_t im_weg = spawne(game, 3, 2);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, im_weg);
     TEST_ASSERT_NOT_EQUAL(zieher, im_weg);
 
@@ -265,7 +288,7 @@ void test_move_kommando_ueber_den_rand_bewegt_nicht(void)
     // Ganz an den Rand, damit der naechste Schritt schon draussen liegt.
     const int16_t rand_x = (int16_t)(RAD_WORLD_WIDTH - 1);
 
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, rand_x, 3);
+    const RAD_UnitId_t figur = spawne(game, rand_x, 3);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
 
     RAD_ZugMitschrift_t mitschrift;
@@ -319,7 +342,7 @@ void test_move_kommando_fuer_einheit_in_reserve_bewegt_nicht(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    RAD_Unit_t values = { .number_of_members = 1 };
+    RAD_Unit_t values = { .number_of_members = 1, .movement = BEWEGUNG };
     const RAD_UnitId_t reserve = RAD_WorldAddReserveUnit(&game->world, &values, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, reserve);
 
@@ -386,7 +409,7 @@ void test_move_kommando_frisch_aufgestellt_zieht_nicht(void)
     RAD_Game_t *game = RAD_CreateGame(events, ziehender);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
 
-    RAD_Unit_t values = { .number_of_members = 1 };
+    RAD_Unit_t values = { .number_of_members = 1, .movement = BEWEGUNG };
     RAD_UnitId_t figur = RAD_UNIT_NONE;
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, ziehender, &values, &figur));
 
@@ -423,7 +446,7 @@ void test_move_kommando_nur_einmal_je_zug(void)
     RAD_Game_t *game = RAD_CreateGame(events, ziehender);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
 
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
     TEST_ASSERT_TRUE(RAD_GameUnitCanMove(game, figur));
 
     const RAD_Path_t erster = ein_schritt_nach_rechts(2, 2);
@@ -455,8 +478,8 @@ void test_move_kommando_am_ersten_feld_blockiert_zaehlt_nicht(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, ziehender);
 
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
-    RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    spawne(game, 3, 2);
 
     const RAD_Path_t weg = ein_schritt_nach_rechts(2, 2);
     ziehe(game, figur, &weg);
@@ -478,8 +501,8 @@ void test_move_kommando_teilweise_blockiert_zaehlt(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, ziehender);
 
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
-    RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 4, 2);
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    spawne(game, 4, 2);
 
     const RAD_Path_t weg = {
         .steps_to = { { .x = 2, .y = 2 }, { .x = 3, .y = 2 }, { .x = 4, .y = 2 } },
@@ -490,6 +513,193 @@ void test_move_kommando_teilweise_blockiert_zaehlt(void)
     pruefe_figur_steht_auf(game, figur, 3, 2);
     TEST_ASSERT_TRUE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_UNIT_ALREADY_MOVED, RAD_GameCheckMoveUnit(game, figur));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Die Regel des Weges** (RAD_GameCheckMovePath): von Nachbar zu Nachbar, nur
+/// ueber begehbares Gelaende, und nicht weiter, als die Bewegung reicht. Ein Weg,
+/// der eine davon verletzt, wird als Ganzes abgelehnt -- die Figur bleibt stehen
+/// und darf es noch einmal versuchen.
+///
+/// Das Gelaende kommt wie im Spiel als Tabelle (RAD_WorldSetTerrain): Wald kostet
+/// zwei, Strasse wie Boden eins, tiefes Wasser ist unbegehbar.
+///
+static void setze_gelaende(RAD_Game_t *game)
+{
+    RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES] = { { 0 } };
+    terrain[RAD_TILE_TYPE_FOREST] = (RAD_Terrain_t){ .movement_modifier = -1, .cover = 2 };
+    terrain[RAD_TILE_TYPE_ROAD] = (RAD_Terrain_t){ .movement_modifier = 1 };
+    terrain[RAD_TILE_TYPE_WATER_DEEP] = (RAD_Terrain_t){ .impassable = true };
+    RAD_WorldSetTerrain(&game->world, terrain);
+}
+
+static RAD_Path_t weg_aus(const int16_t felder[][2], int32_t anzahl)
+{
+    RAD_Path_t weg = { .number_of_steps = anzahl };
+    for(int32_t i = 0; i < anzahl; ++i)
+    {
+        weg.steps_to[i].x = felder[i][0];
+        weg.steps_to[i].y = felder[i][1];
+    }
+    return weg;
+}
+
+void test_move_regel_kosten_des_gelaendes(void)
+{
+    const RAD_Tile_t wald = { .terrain = { .movement_modifier = -1 } };
+    const RAD_Tile_t sumpf = { .terrain = { .movement_modifier = -2 } };
+    const RAD_Tile_t strasse = { .terrain = { .movement_modifier = 1 } };
+    const RAD_Tile_t boden = { .terrain = { .movement_modifier = 0 } };
+
+    TEST_ASSERT_EQUAL_INT(2, RAD_TileMovementCost(&wald));
+    TEST_ASSERT_EQUAL_INT(3, RAD_TileMovementCost(&sumpf));
+    TEST_ASSERT_EQUAL_INT(1, RAD_TileMovementCost(&strasse));
+    TEST_ASSERT_EQUAL_INT(1, RAD_TileMovementCost(&boden));
+}
+
+void test_move_regel_nennt_jeden_grund(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    setze_gelaende(game);
+
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    RAD_WorldUnitById(&game->world, figur)->movement = 3;
+
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 3, 2, 0, RAD_TILE_TYPE_FOREST));
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 2, 3, 0, RAD_TILE_TYPE_WATER_DEEP));
+    TEST_ASSERT_TRUE(RAD_GameRemoveTile(game, 1, 2));
+
+    // Wald (2) und Boden (1): genau die Bewegung.
+    const int16_t passt[][2] = { { 2, 2 }, { 3, 2 }, { 4, 2 } };
+    RAD_Path_t weg = weg_aus(passt, 3);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckMovePath(game, figur, &weg));
+
+    // Ein Feld mehr ist eines zu viel.
+    const int16_t zu_weit[][2] = { { 2, 2 }, { 3, 2 }, { 4, 2 }, { 5, 2 } };
+    weg = weg_aus(zu_weit, 4);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUT_OF_MOVEMENT, RAD_GameCheckMovePath(game, figur, &weg));
+
+    // Schraeg ist kein Nachbar, ein Sprung auch nicht -- und der erste Schritt
+    // muss an die Figur grenzen, gleich was in steps_to[0] steht.
+    const int16_t schraeg[][2] = { { 2, 2 }, { 3, 3 } };
+    weg = weg_aus(schraeg, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_PATH, RAD_GameCheckMovePath(game, figur, &weg));
+    const int16_t sprung[][2] = { { 2, 2 }, { 4, 2 } };
+    weg = weg_aus(sprung, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_PATH, RAD_GameCheckMovePath(game, figur, &weg));
+    const int16_t fremder_start[][2] = { { 5, 5 }, { 5, 6 } };
+    weg = weg_aus(fremder_start, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_PATH, RAD_GameCheckMovePath(game, figur, &weg));
+
+    // Unbegehbar, ohne Gelaende, ausserhalb der Welt.
+    const int16_t wasser[][2] = { { 2, 2 }, { 2, 3 } };
+    weg = weg_aus(wasser, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_IMPASSABLE, RAD_GameCheckMovePath(game, figur, &weg));
+    const int16_t leere[][2] = { { 2, 2 }, { 1, 2 } };
+    weg = weg_aus(leere, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_GROUND, RAD_GameCheckMovePath(game, figur, &weg));
+
+    // Kein Weg: nur der Standort.
+    const int16_t standort[][2] = { { 2, 2 } };
+    weg = weg_aus(standort, 1);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_PATH, RAD_GameCheckMovePath(game, figur, &weg));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_INVALID_PATH, RAD_GameCheckMovePath(game, figur, NULL));
+
+    // Erst die Einheit, dann der Weg.
+    weg = weg_aus(passt, 3);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_UNIT, RAD_GameCheckMovePath(game, 99, &weg));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Die Strasse ist nicht umsonst: drei Felder Strasse kosten drei, nicht null.
+///
+void test_move_regel_strasse_kostet_eins(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    setze_gelaende(game);
+
+    const RAD_UnitId_t figur = spawne(game, 0, 0);
+    RAD_WorldUnitById(&game->world, figur)->movement = 2;
+    for(int32_t x = 1; x <= 3; ++x)
+    {
+        TEST_ASSERT_TRUE(RAD_GameAddTile(game, x, 0, 0, RAD_TILE_TYPE_ROAD));
+    }
+
+    const int16_t zwei[][2] = { { 0, 0 }, { 1, 0 }, { 2, 0 } };
+    RAD_Path_t weg = weg_aus(zwei, 3);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckMovePath(game, figur, &weg));
+
+    const int16_t drei[][2] = { { 0, 0 }, { 1, 0 }, { 2, 0 }, { 3, 0 } };
+    weg = weg_aus(drei, 4);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUT_OF_MOVEMENT, RAD_GameCheckMovePath(game, figur, &weg));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Abgelehnt wird als Ganzes:** ein Weg, der zu weit fuehrt, bewegt die Figur
+/// keinen Schritt -- nicht bis dorthin, wo die Bewegung noch reichte. Sie hat
+/// danach nicht gezogen und darf es mit einem kuerzeren Weg versuchen.
+///
+void test_move_kommando_zu_weit_bewegt_nicht(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    setze_gelaende(game);
+
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    RAD_WorldUnitById(&game->world, figur)->movement = 2;
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 4, 2, 0, RAD_TILE_TYPE_FOREST));
+
+    RAD_ZugMitschrift_t mitschrift;
+    abonniere_zug(events, &mitschrift);
+
+    // Boden (1) und Wald (2): drei, eine Bewegung von zwei reicht nicht.
+    const int16_t zu_weit[][2] = { { 2, 2 }, { 3, 2 }, { 4, 2 } };
+    RAD_Path_t weg = weg_aus(zu_weit, 3);
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 2, 2);
+    TEST_ASSERT_FALSE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+    TEST_ASSERT_EQUAL_INT(1, mitschrift.moved);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.pfad.number_of_steps);
+    TEST_ASSERT_NOT_EQUAL(0, mitschrift.ergebnis);
+
+    const int16_t kuerzer[][2] = { { 2, 2 }, { 3, 2 } };
+    weg = weg_aus(kuerzer, 2);
+    ziehe(game, figur, &weg);
+    pruefe_figur_steht_auf(game, figur, 3, 2);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Unbegehbar heisst auch: nicht darauf aufstellen.
+///
+void test_deploy_nicht_auf_unbegehbares_feld(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
+    setze_gelaende(game);
+
+    RAD_Unit_t values = { .number_of_members = 1, .movement = BEWEGUNG };
+    RAD_UnitId_t figur = RAD_UNIT_NONE;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, ziehender, &values, &figur));
+
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 3, 4, 0, RAD_TILE_TYPE_WATER_DEEP));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_IMPASSABLE, RAD_GameCheckDeployUnit(game, ziehender, figur, 3, 4));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, ziehender, figur, 2, 4));
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

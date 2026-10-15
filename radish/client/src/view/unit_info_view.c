@@ -1,26 +1,32 @@
 #include <radish/view/unit_info_view.h>
 #include <radish/view/abbreviations.h>
-#include <radish/view/labeled_bar_view.h>
-#include <radish/view/text_view.h>
+#include <radish/view/typewriter_view.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 
 ///
-/// Abstand zum Rand, zwischen den Spalten und zwischen den Zeilen, in Pixeln.
+/// Abstand zum Rand und zwischen Kopf und Zeilen, in Pixeln. Der Abstand zum
+/// Rand zaehlt ab der Aussenkante, der Rahmen liegt also darin.
 ///
-#define RAD_UNIT_INFO_VIEW_PADDING 4
-#define RAD_UNIT_INFO_VIEW_GAP 4
+#define RAD_UNIT_INFO_VIEW_PADDING 12
+#define RAD_UNIT_INFO_VIEW_GAP 6
 
 ///
-/// Wofuer die Spalte mit der Anzahl breit genug ist (view/unit_info_view.h).
+/// Wie dick der weisse Rahmen ist, in Pixeln, nach innen gezeichnet.
 ///
-#define RAD_UNIT_INFO_VIEW_COUNT_SAMPLE "99x"
+#define RAD_UNIT_INFO_VIEW_BORDER 2
 
 ///
-/// Platz fuer die Anzahl als Text samt abschliessender Null: "4294967295x".
+/// Wie weit eine eingerueckte Zeile eingerueckt ist (view/unit_info_view.h).
 ///
-#define RAD_UNIT_INFO_VIEW_COUNT_MAX 12
+#define RAD_UNIT_INFO_VIEW_INDENT_SAMPLE "99x "
+
+///
+/// Platz fuer die Lebenspunkte als Text samt abschliessender Null:
+/// "LP -2147483648/-2147483648".
+///
+#define RAD_UNIT_INFO_VIEW_HIT_POINTS_MAX 28
 
 ///
 /// Platz fuer die Bewegungsreichweite als Text samt abschliessender Null:
@@ -32,21 +38,9 @@
 /// Oberkante der ersten Zeile, relativ: unter dem Namen und der Zeile mit
 /// Lebenspunkten und Bewegungsreichweite (view/unit_info_view.h).
 ///
-#define RAD_UNIT_INFO_VIEW_FIRST_ROW_TOP(line) \
+#define RAD_UNIT_INFO_VIEW_FIRST_LINE_TOP(line) \
     (RAD_UNIT_INFO_VIEW_PADDING + 2 * ((line) + RAD_UNIT_INFO_VIEW_GAP))
 
-
-///
-/// Eine Zeile: die Anzahl links, die EntityView rechts. "bottom" ist die
-/// Unterkante in Pixeln, relativ zur Oberkante der UnitInfoView -- liegt sie
-/// unter deren Unterkante, wird die Zeile nicht gezeichnet.
-///
-typedef struct
-{
-    RAD_TextView_t *count;
-    RAD_EntityView_t *entity;
-    int32_t bottom;
-} RAD_UnitInfoViewRow_t;
 
 ///
 /// Die Struktur steht hier und nicht im Header, wie bei view/view.c.
@@ -67,29 +61,30 @@ struct RAD_UnitInfoView
     /// werden sie mit "area" als Viewport (RAD_UpdateUnitInfoView). So muss beim
     /// Wachsen keines verschoben werden.
     ///
-    RAD_TextView_t *name;
+    RAD_TypewriterView_t *name;
 
     ///
-    /// Unter dem Namen nebeneinander: die Summe der Lebenspunkte als Balken,
-    /// die Bewegungsreichweite als Zahl.
+    /// Unter dem Namen nebeneinander: die Summe der Lebenspunkte und die
+    /// Bewegungsreichweite.
     ///
-    RAD_LabeledBarView_t *hit_points;
-    RAD_TextView_t *movement_range;
+    RAD_TypewriterView_t *hit_points;
+    RAD_TypewriterView_t *movement_range;
 
     ///
-    /// Breite der Spalte mit der Anzahl, und Oberkante der naechsten Zeile, die
-    /// angehaengt wird (relativ).
+    /// Wie weit eine eingerueckte Zeile eingerueckt ist, in Pixeln.
     ///
-    int32_t count_column_width;
-    int32_t next_row_top;
+    int32_t indent;
 
-    size_t number_of_rows;
-    RAD_UnitInfoViewRow_t rows[RAD_UNIT_INFO_VIEW_ENTITIES_MAX];
+    ///
+    /// Die Zeilen, je eine Zeile der Schrift hoch, die erste bei
+    /// RAD_UNIT_INFO_VIEW_FIRST_LINE_TOP.
+    ///
+    size_t number_of_lines;
+    RAD_TypewriterView_t *lines[RAD_UNIT_INFO_VIEW_LINES_MAX];
 };
 
 
-static void RAD_UnitInfoViewDestroyRow(RAD_UnitInfoViewRow_t *row);
-static bool RAD_UnitInfoViewSetCountText(RAD_TextView_t *count_view, uint32_t count);
+static int32_t RAD_UnitInfoViewLinesBottom(const RAD_UnitInfoView_t *unit_info_view, size_t number_of_lines);
 static void RAD_UnitInfoViewFitToContent(RAD_UnitInfoView_t *unit_info_view);
 static void RAD_UnitInfoViewDestroyHeader(RAD_UnitInfoView_t *unit_info_view);
 
@@ -104,10 +99,10 @@ RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, 
 
     const int32_t line = TTF_FontLineSkip(font);
 
-    int count_column_width = 0;
-    if(TTF_SizeUTF8(font, RAD_UNIT_INFO_VIEW_COUNT_SAMPLE, &count_column_width, NULL) != 0)
+    int indent = 0;
+    if(TTF_SizeUTF8(font, RAD_UNIT_INFO_VIEW_INDENT_SAMPLE, &indent, NULL) != 0)
     {
-        count_column_width = line * 2;
+        indent = line * 2;
     }
 
     // Die Zeile unter dem Namen: links die Lebenspunkte, rechts die
@@ -120,29 +115,36 @@ RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, 
         .max_area = { .x = x, .y = y, .w = width, .h = height },
         .area = { .x = x, .y = y, .w = width, .h = height },
         .font = font,
-        .name = RAD_CreateTextView(
+        .name = RAD_CreateTypewriterView(
             RAD_UNIT_INFO_VIEW_PADDING,
             RAD_UNIT_INFO_VIEW_PADDING,
             inner_width,
-            line,
-            font
+            line
         ),
-        .hit_points = RAD_CreateLabeledBarView(RAD_UNIT_INFO_VIEW_PADDING, second_line_top, half_width, line, font),
-        .movement_range = RAD_CreateTextView(
+        .hit_points = RAD_CreateTypewriterView(RAD_UNIT_INFO_VIEW_PADDING, second_line_top, half_width, line),
+        .movement_range = RAD_CreateTypewriterView(
             RAD_UNIT_INFO_VIEW_PADDING + half_width + RAD_UNIT_INFO_VIEW_GAP,
             second_line_top,
             inner_width - half_width - RAD_UNIT_INFO_VIEW_GAP,
-            line,
-            font
+            line
         ),
-        .count_column_width = count_column_width,
-        .next_row_top = RAD_UNIT_INFO_VIEW_FIRST_ROW_TOP(line),
-        .number_of_rows = 0,
-        .rows = { { NULL, NULL, 0 } }
+        .indent = indent,
+        .number_of_lines = 0,
+        .lines = { NULL }
     };
 
-    if(unit_info_view->name == NULL || unit_info_view->hit_points == NULL || unit_info_view->movement_range == NULL
-       || !RAD_LabeledBarViewSetLabel(unit_info_view->hit_points, RAD_VIEW_ABBREVIATION_HIT_POINTS)
+    if(unit_info_view->name == NULL || unit_info_view->hit_points == NULL || unit_info_view->movement_range == NULL)
+    {
+        RAD_UnitInfoViewDestroyHeader(unit_info_view);
+        free(unit_info_view);
+        return NULL;
+    }
+
+    RAD_TypewriterViewSetFont(unit_info_view->name, font);
+    RAD_TypewriterViewSetFont(unit_info_view->hit_points, font);
+    RAD_TypewriterViewSetFont(unit_info_view->movement_range, font);
+
+    if(!RAD_UnitInfoViewSetHitPoints(unit_info_view, 0, 0)
        || !RAD_UnitInfoViewSetMovementRange(unit_info_view, 0))
     {
         RAD_UnitInfoViewDestroyHeader(unit_info_view);
@@ -158,7 +160,7 @@ void RAD_DestroyUnitInfoView(RAD_UnitInfoView_t **unit_info_view)
 {
     RAD_UnitInfoView_t *v = *unit_info_view;
 
-    RAD_UnitInfoViewClearEntities(v);
+    RAD_UnitInfoViewClearLines(v);
     RAD_UnitInfoViewDestroyHeader(v);
     free(v);
     *unit_info_view = NULL;
@@ -166,75 +168,61 @@ void RAD_DestroyUnitInfoView(RAD_UnitInfoView_t **unit_info_view)
 
 bool RAD_UnitInfoViewSetName(RAD_UnitInfoView_t *unit_info_view, const char *name)
 {
-    return RAD_TextViewSetText(unit_info_view->name, name);
+    return RAD_TypewriterViewSetText(unit_info_view->name, name);
 }
 
-void RAD_UnitInfoViewSetHitPoints(RAD_UnitInfoView_t *unit_info_view, int32_t current, int32_t maximum)
+bool RAD_UnitInfoViewSetHitPoints(RAD_UnitInfoView_t *unit_info_view, int32_t current, int32_t maximum)
 {
-    RAD_LabeledBarViewSetValue(unit_info_view->hit_points, current, maximum);
+    char text[RAD_UNIT_INFO_VIEW_HIT_POINTS_MAX];
+    snprintf(text, sizeof(text), "%s %d/%d", RAD_VIEW_ABBREVIATION_HIT_POINTS, (int)current, (int)maximum);
+    return RAD_TypewriterViewSetText(unit_info_view->hit_points, text);
 }
 
 bool RAD_UnitInfoViewSetMovementRange(RAD_UnitInfoView_t *unit_info_view, int32_t movement_range)
 {
     char text[RAD_UNIT_INFO_VIEW_MOVEMENT_RANGE_MAX];
     snprintf(text, sizeof(text), "%s %d", RAD_VIEW_ABBREVIATION_MOVEMENT_RANGE, (int)movement_range);
-    return RAD_TextViewSetText(unit_info_view->movement_range, text);
+    return RAD_TypewriterViewSetText(unit_info_view->movement_range, text);
 }
 
-RAD_EntityView_t* RAD_UnitInfoViewAddEntity(RAD_UnitInfoView_t *unit_info_view, uint32_t count, size_t number_of_weapons)
+bool RAD_UnitInfoViewAddLine(RAD_UnitInfoView_t *unit_info_view, const char *text, bool indented)
 {
-    if(unit_info_view->number_of_rows >= RAD_UNIT_INFO_VIEW_ENTITIES_MAX || number_of_weapons > RAD_ENTITY_VIEW_WEAPONS_MAX)
-    {
-        return NULL;
-    }
-
-    const int32_t line = TTF_FontLineSkip(unit_info_view->font);
-    const int32_t top = unit_info_view->next_row_top;
-    const int32_t count_x = RAD_UNIT_INFO_VIEW_PADDING;
-    const int32_t entity_x = count_x + unit_info_view->count_column_width + RAD_UNIT_INFO_VIEW_GAP;
-    const int32_t entity_width = unit_info_view->max_area.w - RAD_UNIT_INFO_VIEW_PADDING - entity_x;
-    const int32_t entity_height = RAD_EntityViewHeight(unit_info_view->font, number_of_weapons);
-
-    RAD_UnitInfoViewRow_t row = {
-        .count = RAD_CreateTextView(count_x, top, unit_info_view->count_column_width, line, unit_info_view->font),
-        .entity = RAD_CreateEntityView(entity_x, top, (entity_width > 0) ? entity_width : 0, entity_height, unit_info_view->font),
-        .bottom = top + entity_height
-    };
-
-    if(row.count == NULL || row.entity == NULL
-       || !RAD_UnitInfoViewSetCountText(row.count, count)
-       || !RAD_EntityViewSetNumberOfWeapons(row.entity, number_of_weapons))
-    {
-        RAD_UnitInfoViewDestroyRow(&row);
-        return NULL;
-    }
-
-    unit_info_view->rows[unit_info_view->number_of_rows] = row;
-    ++unit_info_view->number_of_rows;
-    unit_info_view->next_row_top = row.bottom + RAD_UNIT_INFO_VIEW_GAP;
-    RAD_UnitInfoViewFitToContent(unit_info_view);
-
-    return row.entity;
-}
-
-bool RAD_UnitInfoViewSetEntityCount(RAD_UnitInfoView_t *unit_info_view, size_t row, uint32_t count)
-{
-    if(row >= unit_info_view->number_of_rows)
+    if(unit_info_view->number_of_lines >= RAD_UNIT_INFO_VIEW_LINES_MAX)
     {
         return false;
     }
-    return RAD_UnitInfoViewSetCountText(unit_info_view->rows[row].count, count);
-}
 
-void RAD_UnitInfoViewClearEntities(RAD_UnitInfoView_t *unit_info_view)
-{
-    for(size_t i = 0; i < unit_info_view->number_of_rows; ++i)
+    const int32_t line = TTF_FontLineSkip(unit_info_view->font);
+    const int32_t x = RAD_UNIT_INFO_VIEW_PADDING + (indented ? unit_info_view->indent : 0);
+    const int32_t width = unit_info_view->max_area.w - RAD_UNIT_INFO_VIEW_PADDING - x;
+    const int32_t top = RAD_UnitInfoViewLinesBottom(unit_info_view, unit_info_view->number_of_lines);
+
+    RAD_TypewriterView_t *typewriter_view = RAD_CreateTypewriterView(x, top, (width > 0) ? width : 0, line);
+    if(typewriter_view == NULL)
     {
-        RAD_UnitInfoViewDestroyRow(&unit_info_view->rows[i]);
+        return false;
+    }
+    RAD_TypewriterViewSetFont(typewriter_view, unit_info_view->font);
+    if(!RAD_TypewriterViewSetText(typewriter_view, text))
+    {
+        RAD_DestroyTypewriterView(&typewriter_view);
+        return false;
     }
 
-    unit_info_view->number_of_rows = 0;
-    unit_info_view->next_row_top = RAD_UNIT_INFO_VIEW_FIRST_ROW_TOP(TTF_FontLineSkip(unit_info_view->font));
+    unit_info_view->lines[unit_info_view->number_of_lines] = typewriter_view;
+    ++unit_info_view->number_of_lines;
+    RAD_UnitInfoViewFitToContent(unit_info_view);
+    return true;
+}
+
+void RAD_UnitInfoViewClearLines(RAD_UnitInfoView_t *unit_info_view)
+{
+    for(size_t i = 0; i < unit_info_view->number_of_lines; ++i)
+    {
+        RAD_DestroyTypewriterView(&unit_info_view->lines[i]);
+    }
+
+    unit_info_view->number_of_lines = 0;
     RAD_UnitInfoViewFitToContent(unit_info_view);
 }
 
@@ -248,24 +236,29 @@ void RAD_UpdateUnitInfoView(RAD_UnitInfoView_t *unit_info_view, SDL_Renderer *re
     SDL_RenderSetViewport(renderer, &unit_info_view->area);
 
     const SDL_Rect background = { .x = 0, .y = 0, .w = unit_info_view->area.w, .h = unit_info_view->area.h };
-    SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, &background);
 
-    RAD_UpdateTextView(unit_info_view->name, renderer);
-    RAD_UpdateLabeledBarView(unit_info_view->hit_points, renderer);
-    RAD_UpdateTextView(unit_info_view->movement_range, renderer);
+    // Der Rahmen: je Pixel Dicke ein Rechteck, eins weiter innen als das davor.
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    for(int32_t i = 0; i < RAD_UNIT_INFO_VIEW_BORDER; ++i)
+    {
+        const SDL_Rect frame = { .x = i, .y = i, .w = background.w - 2 * i, .h = background.h - 2 * i };
+        SDL_RenderDrawRect(renderer, &frame);
+    }
+
+    RAD_UpdateTypewriterView(unit_info_view->name, renderer);
+    RAD_UpdateTypewriterView(unit_info_view->hit_points, renderer);
+    RAD_UpdateTypewriterView(unit_info_view->movement_range, renderer);
 
     const int32_t bottom = unit_info_view->area.h;
-    for(size_t i = 0; i < unit_info_view->number_of_rows; ++i)
+    for(size_t i = 0; i < unit_info_view->number_of_lines; ++i)
     {
-        const RAD_UnitInfoViewRow_t *row = &unit_info_view->rows[i];
-        if(row->bottom > bottom)
+        if(RAD_UnitInfoViewLinesBottom(unit_info_view, i + 1) > bottom)
         {
             break;
         }
-
-        RAD_UpdateTextView(row->count, renderer);
-        RAD_UpdateEntityView(row->entity, renderer);
+        RAD_UpdateTypewriterView(unit_info_view->lines[i], renderer);
     }
 
     SDL_RenderSetViewport(renderer, &previous_viewport);
@@ -273,36 +266,28 @@ void RAD_UpdateUnitInfoView(RAD_UnitInfoView_t *unit_info_view, SDL_Renderer *re
 
 
 ///
-/// Baut die Views einer Zeile ab, auch einer halb angelegten
-/// (RAD_UnitInfoViewAddEntity im Fehlerfall).
+/// Unterkante der ersten "number_of_lines" Zeilen, relativ zur Oberkante der
+/// UnitInfoView -- zugleich Oberkante der Zeile danach. Ohne Zeilen die
+/// Oberkante der ersten.
 ///
-static void RAD_UnitInfoViewDestroyRow(RAD_UnitInfoViewRow_t *row)
+static int32_t RAD_UnitInfoViewLinesBottom(const RAD_UnitInfoView_t *unit_info_view, size_t number_of_lines)
 {
-    if(row->count != NULL)
-    {
-        RAD_DestroyTextView(&row->count);
-    }
-    if(row->entity != NULL)
-    {
-        RAD_DestroyEntityView(&row->entity);
-    }
-}
-
-static bool RAD_UnitInfoViewSetCountText(RAD_TextView_t *count_view, uint32_t count)
-{
-    char text[RAD_UNIT_INFO_VIEW_COUNT_MAX];
-    snprintf(text, sizeof(text), "%ux", (unsigned)count);
-    return RAD_TextViewSetText(count_view, text);
+    const int32_t line = TTF_FontLineSkip(unit_info_view->font);
+    return RAD_UNIT_INFO_VIEW_FIRST_LINE_TOP(line) + (int32_t)number_of_lines * line;
 }
 
 ///
-/// Passt "area" dem Inhalt an: so hoch, wie Name und Zeilen samt Rand brauchen,
+/// Passt "area" dem Inhalt an: so hoch, wie Kopf und Zeilen samt Rand brauchen,
 /// hoechstens so hoch wie "max_area", und an deren Unterkante.
 ///
 static void RAD_UnitInfoViewFitToContent(RAD_UnitInfoView_t *unit_info_view)
 {
-    // next_row_top steht schon einen Abstand unter dem letzten Inhalt.
-    int32_t height = unit_info_view->next_row_top - RAD_UNIT_INFO_VIEW_GAP + RAD_UNIT_INFO_VIEW_PADDING;
+    // Ohne Zeilen steht die Oberkante der ersten einen Abstand unter dem Kopf.
+    int32_t height = RAD_UnitInfoViewLinesBottom(unit_info_view, unit_info_view->number_of_lines) + RAD_UNIT_INFO_VIEW_PADDING;
+    if(unit_info_view->number_of_lines == 0)
+    {
+        height -= RAD_UNIT_INFO_VIEW_GAP;
+    }
     if(height > unit_info_view->max_area.h)
     {
         height = unit_info_view->max_area.h;
@@ -324,14 +309,14 @@ static void RAD_UnitInfoViewDestroyHeader(RAD_UnitInfoView_t *unit_info_view)
 {
     if(unit_info_view->name != NULL)
     {
-        RAD_DestroyTextView(&unit_info_view->name);
+        RAD_DestroyTypewriterView(&unit_info_view->name);
     }
     if(unit_info_view->hit_points != NULL)
     {
-        RAD_DestroyLabeledBarView(&unit_info_view->hit_points);
+        RAD_DestroyTypewriterView(&unit_info_view->hit_points);
     }
     if(unit_info_view->movement_range != NULL)
     {
-        RAD_DestroyTextView(&unit_info_view->movement_range);
+        RAD_DestroyTypewriterView(&unit_info_view->movement_range);
     }
 }

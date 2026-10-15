@@ -43,7 +43,13 @@ typedef enum
     /// (world_definition.h).
     RAD_SERIALIZE_ERROR_WORLD_OCCUPIED,
 
-    RAD_SERIALIZE_ERROR_OUT_OF_MEMORY
+    RAD_SERIALIZE_ERROR_OUT_OF_MEMORY,
+
+    /// Ein Siegfeld liegt ausserhalb der Welt, steht nicht auf Land oder
+    /// kommt doppelt vor (world_definition.h).
+    RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS,
+    RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND,
+    RAD_SERIALIZE_ERROR_VICTORY_DUPLICATE
 } RAD_SerializeResult_t;
 
 const char* RAD_SerializeResultText(RAD_SerializeResult_t result);

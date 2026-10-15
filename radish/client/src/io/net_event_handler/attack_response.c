@@ -26,6 +26,6 @@ void RAD_IoNetOnAttackResponse(void *user_argument, const RAD_NetAttackResponse_
                (int)response->target.x, (int)response->target.y, outcome, reason);
     }
 
-    // In die Welt traegt die Antwort nichts ein: einen Kampf, der etwas
-    // aendern koennte, gibt es im Spiel noch nicht.
+    // In die Welt traegt die Antwort nichts ein. Einen angenommenen Angriff
+    // bringt vorher das Ereignis (unit_attacked.c).
 }

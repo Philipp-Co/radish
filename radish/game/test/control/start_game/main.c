@@ -10,6 +10,8 @@
 void test_spielstart_liest_beide_spieler(void);
 void test_spielstart_liest_die_werte_der_einheiten(void);
 void test_spielstart_uebergeht_unbekannte_schluessel(void);
+void test_spielstart_liest_das_gelaende(void);
+void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void);
 void test_spielstart_lehnt_fehlerhafte_dateien_ab(void);
 void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void);
 void test_spielstart_fehler_laesst_stand_unberuehrt(void);
@@ -26,6 +28,7 @@ void test_start_lehnt_ab_was_nicht_in_den_pool_passt(void);
 void test_start_ohne_spiel_oder_daten(void);
 void test_start_aus_datei(void);
 void test_start_aus_fehlender_datei_aendert_nichts(void);
+void test_start_bringt_das_gelaende_auf_die_felder(void);
 
 
 void setUp(void) {}
@@ -38,6 +41,8 @@ int main(void)
     RUN_TEST(test_spielstart_liest_beide_spieler);
     RUN_TEST(test_spielstart_liest_die_werte_der_einheiten);
     RUN_TEST(test_spielstart_uebergeht_unbekannte_schluessel);
+    RUN_TEST(test_spielstart_liest_das_gelaende);
+    RUN_TEST(test_spielstart_lehnt_fehlerhaftes_gelaende_ab);
     RUN_TEST(test_spielstart_lehnt_fehlerhafte_dateien_ab);
     RUN_TEST(test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann);
     RUN_TEST(test_spielstart_fehler_laesst_stand_unberuehrt);
@@ -54,6 +59,7 @@ int main(void)
     RUN_TEST(test_start_ohne_spiel_oder_daten);
     RUN_TEST(test_start_aus_datei);
     RUN_TEST(test_start_aus_fehlender_datei_aendert_nichts);
+    RUN_TEST(test_start_bringt_das_gelaende_auf_die_felder);
 
     return UNITY_END();
 }

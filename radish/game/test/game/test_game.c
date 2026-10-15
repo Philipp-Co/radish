@@ -31,6 +31,51 @@ void test_game_wird_leer_angelegt(void)
     TEST_ASSERT_NULL(events);
 }
 
+///
+/// Jedes Spiel hat seinen eigenen Wuerfel (RAD_Game_t.dice): zwei, die
+/// gleichzeitig leben, ziehen aus verschiedenen Folgen, und Wuerfe im einen
+/// verschieben nichts am anderen.
+///
+void test_game_jedes_spiel_hat_seinen_eigenen_wuerfel(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *first = RAD_CreateGame(events, RAD_USER_NONE);
+    RAD_Game_t *second = RAD_CreateGame(events, RAD_USER_NONE);
+
+    TEST_ASSERT_NOT_EQUAL_UINT64(first->dice.state, second->dice.state);
+
+    const uint64_t before = second->dice.state;
+    for(int32_t i = 0; i < 100; ++i)
+    {
+        RAD_DiceD10(&first->dice);
+    }
+    TEST_ASSERT_EQUAL_UINT64(before, second->dice.state);
+
+    RAD_DestroyGame(&second);
+    RAD_DestroyGame(&first);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Anlegen, freigeben, wieder anlegen: das neue Spiel kann an derselben Adresse
+/// liegen und in derselben Sekunde entstehen. Sein Wuerfel muss trotzdem ein
+/// anderer sein.
+///
+void test_game_ein_neues_spiel_wuerfelt_neu(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+
+    RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
+    const uint64_t first = game->dice.state;
+    RAD_DestroyGame(&game);
+
+    game = RAD_CreateGame(events, RAD_USER_NONE);
+    TEST_ASSERT_NOT_EQUAL_UINT64(first, game->dice.state);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
 
 ///
 /// Was beim Abonnenten von einer Bewegung ankommt.
@@ -77,6 +122,12 @@ static void notiere_nichts(void *user_argument, const RAD_Unit_t *unit, int32_t 
     (void)y;
 }
 
+static void notiere_keinen_angriff(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
+    (void)result;
+}
+
 ///
 /// Eine Gruppe wird als Ganzes gesetzt, also stehen hier auch die zwei Callbacks,
 /// die dieser Test nicht braucht (event_manager.h). Abonniert wird *nach* dem
@@ -90,7 +141,8 @@ static void abonniere_bewegung(RAD_EventManager_t *events, RAD_BewegungMitschrif
         .user_argument = mitschrift,
         .spawned = notiere_nichts,
         .destroyed = notiere_nichts,
-        .moved = notiere_moved
+        .moved = notiere_moved,
+        .attacked = notiere_keinen_angriff
     });
 }
 
@@ -117,6 +169,8 @@ void test_game_move_kommando_veroeffentlicht_ein_ereignis(void)
 
     const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
+    // Eine gespawnte Figur hat keine Bewegung; ohne kommt sie kein Feld weit.
+    RAD_WorldUnitById(&game->world, id)->movement = 1;
 
     RAD_BewegungMitschrift_t mitschrift;
     abonniere_bewegung(events, &mitschrift);

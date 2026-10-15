@@ -33,6 +33,8 @@ from .models import (
     GameStatus,
     Player,
     Species,
+    TerrainCode,
+    TerrainType,
     Unit,
     UnitType,
     Weapon,
@@ -58,6 +60,7 @@ PLAYER_TOKEN = {"realm_access": {"roles": ["Player"]}}
 # steht fuer ein Token eines Nutzers mit der Realm-Rolle "Radish-Admin"
 # (siehe docker/keycloak/realm-radish.json, User "radish-admin").
 ADMIN_TOKEN = {"realm_access": {"roles": ["Radish-Admin"]}}
+SERVER_TOKEN = {"realm_access": {"roles": ["Technischer-User-Server"]}}
 
 
 class ServerListTests(APITestCase):
@@ -109,6 +112,53 @@ class ServerListTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
+class ServerRegisterTests(APITestCase):
+    """
+    server_views.ServerView.post: eine Instanz meldet sich mit globalem Namen,
+    UDP-Adresse/-Port und ihrer Instanz-API (control_url + instance_name) an.
+    """
+
+    def setUp(self):
+        self.client.force_authenticate(user=User.objects.create(username="technischer-server-user"))
+
+    def payload(self, **overrides):
+        return {
+            "name": "gs1-game-instance-1",
+            "address": "game-server",
+            "port": 9999,
+            "control_url": "http://game-server:8000",
+            "instance_name": "game-instance-1",
+            **overrides,
+        }
+
+    def test_register_stores_instance_name(self):
+        response = self.client.post("/api/servers/", self.payload(), format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        server = GameServer.objects.get(name="gs1-game-instance-1")
+        self.assertEqual(server.instance_name, "game-instance-1")
+        self.assertEqual(server.port, 9999)
+
+    def test_instance_name_may_repeat_across_containers(self):
+        self.client.post("/api/servers/", self.payload(), format="json")
+
+        response = self.client.post(
+            "/api/servers/",
+            self.payload(name="gs2-game-instance-1", control_url="http://game-server-2:8000"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_instance_name_must_be_usable_in_a_url(self):
+        response = self.client.post(
+            "/api/servers/", self.payload(instance_name="../game-instance-1"), format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("instance_name", response.data)
+
+
 class AdminServerListTests(APITestCase):
     """
     Deckt admin_views.AdminServerListView ab: nur mit der Realm-Rolle
@@ -145,6 +195,75 @@ class AdminServerListTests(APITestCase):
         self.assertEqual(names, ["server-a", "server-b"])
 
 
+class AdminTerrainTests(APITestCase):
+    """
+    admin_views.AdminTerrainTypeListView/DetailView: die Werte der Tile-Typen,
+    nur mit "Radish-Admin", aenderbar, aber nicht anzulegen oder zu loeschen.
+    Die Zeilen legt die Migration an.
+    """
+
+    def setUp(self):
+        self.admin_user = User.objects.create(username="radish-admin-user")
+        self.client.force_authenticate(user=self.admin_user, token=ADMIN_TOKEN)
+
+    def test_lists_every_type_with_the_seeded_values(self):
+        response = self.client.get("/api/admin/terrain/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        terrain = response.data["terrain"]
+        self.assertEqual([entry["code"] for entry in terrain], TerrainCode.values)
+        forest = next(entry for entry in terrain if entry["code"] == "forest")
+        self.assertEqual(
+            forest,
+            {"code": "forest", "label": "Wald", "movement_modifier": -1, "cover": 2, "impassable": False},
+        )
+        self.assertTrue(next(e for e in terrain if e["code"] == "water_deep")["impassable"])
+
+    def test_player_role_is_not_sufficient(self):
+        self.client.force_authenticate(user=self.admin_user, token=PLAYER_TOKEN)
+
+        self.assertEqual(self.client.get("/api/admin/terrain/").status_code, status.HTTP_403_FORBIDDEN)
+        response = self.client.patch("/api/admin/terrain/forest/", {"cover": 5}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_changes_the_values(self):
+        response = self.client.put(
+            "/api/admin/terrain/forest/",
+            {"movement_modifier": -2, "cover": 3, "impassable": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        forest = TerrainType.objects.get(code="forest")
+        self.assertEqual((forest.movement_modifier, forest.cover, forest.impassable), (-2, 3, True))
+
+    def test_code_cannot_be_changed(self):
+        response = self.client.patch("/api/admin/terrain/forest/", {"code": "road", "cover": 1}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["code"], "forest")
+        self.assertEqual(TerrainType.objects.filter(code="forest").count(), 1)
+        self.assertEqual(TerrainType.objects.get(code="road").cover, 0)
+
+    def test_values_outside_the_limits_are_rejected(self):
+        for values in ({"cover": 11}, {"cover": -1}, {"movement_modifier": 11},
+                       {"movement_modifier": -11}, {"impassable": "vielleicht"}):
+            response = self.client.patch("/api/admin/terrain/forest/", values, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, values)
+
+    def test_cannot_create_or_delete(self):
+        response = self.client.post(
+            "/api/admin/terrain/", {"code": "lava", "cover": 1}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        response = self.client.delete("/api/admin/terrain/forest/")
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(TerrainType.objects.count(), len(TerrainCode.values))
+
+    def test_unknown_type_is_not_found(self):
+        self.assertEqual(self.client.get("/api/admin/terrain/lava/").status_code, status.HTTP_404_NOT_FOUND)
+
+
 class ArmyTestCase(APITestCase):
     """
     Gemeinsamer Katalog fuer die Armee-Tests: die Spezies "Menschen" (aus
@@ -167,11 +286,11 @@ class ArmyTestCase(APITestCase):
             movement=6,
         )
         self.soldier = EntityProfile.objects.create(
-            unit_type=self.squad, name="Soldat", health=1, armor=3, strength=3, accuracy=4,
+            unit_type=self.squad, name="Soldat", health=1, armor=3, toughness=3, strength=3, accuracy=4,
             equipment_slots=1, weapon_slots=2, cost=10, min_count=1, max_count=9,
         )
         self.leader = EntityProfile.objects.create(
-            unit_type=self.squad, name="Anfuehrer", health=2, armor=3, strength=4, accuracy=3,
+            unit_type=self.squad, name="Anfuehrer", health=2, armor=3, toughness=3, strength=4, accuracy=3,
             equipment_slots=2, weapon_slots=1, heavy_weapon_slots=1, super_heavy_weapon_slots=1,
             cost=20, min_count=1, max_count=1,
         )
@@ -179,7 +298,7 @@ class ArmyTestCase(APITestCase):
             species=self.humans, name="Spaeher", min_entities=1, max_entities=3, movement=8
         )
         self.scout = EntityProfile.objects.create(
-            unit_type=self.scout_team, name="Spaeher", health=1, armor=2, strength=3, accuracy=3,
+            unit_type=self.scout_team, name="Spaeher", health=1, armor=2, toughness=3, strength=3, accuracy=3,
             equipment_slots=0, weapon_slots=1, cost=8,
         )
         self.truck_type = UnitType.objects.create(
@@ -187,7 +306,7 @@ class ArmyTestCase(APITestCase):
             transport_capacity=2, movement=12,
         )
         self.truck = EntityProfile.objects.create(
-            unit_type=self.truck_type, name="Lastwagen", health=8, armor=5, strength=5, accuracy=5,
+            unit_type=self.truck_type, name="Lastwagen", health=8, armor=5, toughness=3, strength=5, accuracy=5,
             equipment_slots=0, weapon_slots=0, cost=50,
         )
         self.rifle = Weapon.objects.create(
@@ -703,7 +822,7 @@ class CatalogAdminTests(ArmyTestCase):
 
         response = self.client.post(
             "/api/admin/catalog/profiles/",
-            {"unit_type_id": unit_type_id, "name": "Gardist", "health": 1, "armor": 4,
+            {"unit_type_id": unit_type_id, "name": "Gardist", "health": 1, "armor": 4, "toughness": 3,
              "strength": 3, "accuracy": 4, "equipment_slots": 1, "weapon_slots": 1, "cost": 12,
              "min_count": 1, "max_count": 5},
             format="json",
@@ -903,7 +1022,7 @@ class CatalogAdminTests(ArmyTestCase):
 
     def profile_payload(self, **overrides):
         payload = {"unit_type_id": self.squad.id, "name": "Sanitaeter", "health": 1,
-                   "armor": 3, "strength": 3, "accuracy": 4, "equipment_slots": 2,
+                   "armor": 3, "toughness": 3, "strength": 3, "accuracy": 4, "equipment_slots": 2,
                    "weapon_slots": 1,
                    "cost": 15, "min_count": 0, "max_count": 1}
         payload.update(overrides)
@@ -917,6 +1036,15 @@ class CatalogAdminTests(ArmyTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("accuracy", response.data)
+
+    def test_profile_requires_toughness(self):
+        payload = self.profile_payload()
+        del payload["toughness"]
+
+        response = self.client.post("/api/admin/catalog/profiles/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("toughness", response.data)
 
     def test_profile_min_above_max(self):
         response = self.client.post(
@@ -1011,7 +1139,8 @@ class GameTestCase(ArmyTestCase):
         self.player = Player.objects.create(user=self.user)
         self.army = self.army_for(self.player)
         self.server = GameServer.objects.create(
-            name="server-a", address="10.0.0.1", port=7000, control_url="http://instanz:8000"
+            name="server-a", address="10.0.0.1", port=7000, control_url="http://instanz:8000",
+            instance_name="game-instance-1",
         )
 
     def army_for(self, player, name="Erste Kompanie", units=None):
@@ -1371,6 +1500,153 @@ class GameLobbyTests(GameTestCase):
         self.assertEqual(self.client.get("/api/client/games/").data["games"], [])
 
 
+@mock.patch("api.instance_client.cancel_game")
+@mock.patch("api.instance_client.start_game")
+class GameFinishedTests(GameTestCase):
+    """
+    Die Spielinstanz meldet das Ende eines Spiels (server_views
+    .GameFinishedView). Danach ist es fuer beide vorbei wie beim Verlassen.
+    Die Aufrufe an die Instanz (instance_client) sind gemockt.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.create_game()
+        self.game = Game.objects.get(name="spiel")
+        self.guest = Player.objects.create(user=User.objects.create(username="gast"))
+        self.game.second_player = self.guest
+        self.game.second_player_army = self.army_for(self.guest)
+        self.game.save()
+        self.server_user = User.objects.create(username="radish-game-server")
+
+    def start(self):
+        with mock.patch("api.instance_client.start_game"):
+            self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+            self.assertEqual(
+                self.client.post("/api/client/game/start/").status_code, status.HTTP_200_OK
+            )
+
+    def finish(self, body=None, name="server-a", token=SERVER_TOKEN):
+        if body is None:
+            body = {
+                "winner": self.player.identifier,
+                "loser": self.guest.identifier,
+                "game-instance": name,
+            }
+        self.client.force_authenticate(user=self.server_user, token=token)
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(f"/api/servers/{name}/game-finished/", body, format="json")
+
+    def test_finished_game_ends_for_both(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Game.objects.exists())
+        self.server.refresh_from_db()
+        self.assertFalse(self.server.is_occupied)
+        cancel_game.assert_called_once()
+        self.assertEqual(cancel_game.call_args.args[0].name, "server-a")
+        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+        self.assertIsNone(self.client.get("/api/client/game/current/").data["game"])
+
+    def test_loser_may_be_the_host(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish({
+            "winner": self.guest.identifier,
+            "loser": self.player.identifier,
+            "game-instance": "server-a",
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Game.objects.exists())
+
+    def test_draw_has_neither_winner_nor_loser(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish({"winner": None, "loser": None, "game-instance": "server-a"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Game.objects.exists())
+        self.server.refresh_from_db()
+        self.assertFalse(self.server.is_occupied)
+        cancel_game.assert_called_once()
+
+    def test_players_may_not_finish_a_game(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish(token=PLAYER_TOKEN)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Game.objects.exists())
+        cancel_game.assert_not_called()
+
+    def test_unknown_server(self, start_game, cancel_game):
+        response = self.finish(name="server-x")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_game_in_lobby_is_not_finished(self, start_game, cancel_game):
+        response = self.finish()
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(Game.objects.exists())
+        cancel_game.assert_not_called()
+
+    def test_second_report_finds_no_game(self, start_game, cancel_game):
+        self.start()
+        self.finish()
+
+        response = self.finish()
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        cancel_game.assert_called_once()
+
+    def test_instance_in_body_must_match_url(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish({
+            "winner": self.player.identifier,
+            "loser": self.guest.identifier,
+            "game-instance": "server-b",
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("game-instance", response.data)
+        self.assertTrue(Game.objects.exists())
+
+    def test_ids_must_be_the_players_of_the_game(self, start_game, cancel_game):
+        self.start()
+        stranger = Player.objects.create(user=User.objects.create(username="fremd"))
+
+        for body in (
+            {"winner": stranger.identifier, "loser": self.guest.identifier},
+            {"winner": self.player.identifier, "loser": self.player.identifier},
+            {"winner": self.player.identifier},
+            {"loser": self.guest.identifier},
+            {"winner": None, "loser": self.guest.identifier},
+            {"winner": self.player.identifier, "loser": None},
+            {"winner": None},
+        ):
+            body["game-instance"] = "server-a"
+            with self.subTest(body=body):
+                response = self.finish(body)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.assertTrue(Game.objects.exists())
+        cancel_game.assert_not_called()
+
+    def test_body_needs_the_instance(self, start_game, cancel_game):
+        self.start()
+
+        response = self.finish({"winner": self.player.identifier, "loser": self.guest.identifier})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("game-instance", response.data)
+
+
 class InstanceClientTests(GameTestCase):
     """instance_client.start_game: Ziel-URL, Payload und Fehlerfaelle."""
 
@@ -1392,7 +1668,7 @@ class InstanceClientTests(GameTestCase):
         instance_client.start_game(self.game)
 
         url = post.call_args.args[0]
-        self.assertEqual(url, "http://instanz:8000/api/instances/server-a/game/start/")
+        self.assertEqual(url, "http://instanz:8000/api/instances/game-instance-1/game/start/")
         sent = post.call_args.kwargs["json"]
         # Die Spieldaten nach dem Schema, die Codes daneben -- nicht darin.
         self.assertEqual(sent["spieldaten"], instance_client.game_start_document(self.game)["spieldaten"])
@@ -1418,8 +1694,9 @@ class InstanceClientTests(GameTestCase):
         )
         leader = next(e for e in unit["entitaeten"] if e["profil"] == "Anfuehrer")
         self.assertEqual(
-            (leader["leben"], leader["ruestung"], leader["staerke"], leader["genauigkeit"]),
-            (2, 3, 4, 3),
+            (leader["leben"], leader["ruestung"], leader["widerstand"], leader["staerke"],
+             leader["genauigkeit"]),
+            (2, 3, 3, 4, 3),
         )
 
     def test_document_query_count_is_constant(self):
@@ -1427,8 +1704,9 @@ class InstanceClientTests(GameTestCase):
 
         game = Game.objects.select_related("host", "second_player").get(pk=self.game.pk)
         # Armeen samt Spezies, Einheiten mit Typ, Entitaeten mit Profil,
-        # Waffen, Ausruestung -- unabhaengig von der Groesse der Armeen.
-        with self.assertNumQueries(5):
+        # Waffen, Ausruestung, dazu das Gelaende -- unabhaengig von der
+        # Groesse der Armeen.
+        with self.assertNumQueries(6):
             instance_client.game_start_document(game)
 
     @unittest.skipUnless(jsonschema, "jsonschema nicht installiert")
@@ -1441,11 +1719,47 @@ class InstanceClientTests(GameTestCase):
 
         jsonschema.validate(instance_client.game_start_document(self.game), schema)
 
+    def test_document_carries_the_terrain(self):
+        from . import instance_client
+
+        TerrainType.objects.filter(code="forest").update(movement_modifier=-2, cover=4)
+
+        terrain = instance_client.game_start_document(self.game)["gelaende"]
+
+        # Jeder Typ genau einmal, in der Reihenfolge des Spiels.
+        self.assertEqual([entry["typ"] for entry in terrain], TerrainCode.values)
+        forest = next(entry for entry in terrain if entry["typ"] == "forest")
+        self.assertEqual(forest, {"typ": "forest", "bewegung": -2, "deckung": 4, "unbegehbar": False})
+        deep = next(entry for entry in terrain if entry["typ"] == "water_deep")
+        self.assertTrue(deep["unbegehbar"])
+
+    @mock.patch("api.instance_client.requests.post")
+    def test_start_without_terrain_type_fails(self, post):
+        from . import instance_client
+
+        TerrainType.objects.filter(code="road").delete()
+
+        with self.assertRaises(instance_client.InstanceError):
+            instance_client.start_game(self.game)
+        post.assert_not_called()
+
     @mock.patch("api.instance_client.requests.post")
     def test_start_without_control_url_fails(self, post):
         from . import instance_client
 
         self.server.control_url = ""
+        self.server.save()
+        self.game.refresh_from_db()
+
+        with self.assertRaises(instance_client.InstanceError):
+            instance_client.start_game(self.game)
+        post.assert_not_called()
+
+    @mock.patch("api.instance_client.requests.post")
+    def test_start_without_instance_name_fails(self, post):
+        from . import instance_client
+
+        self.server.instance_name = ""
         self.server.save()
         self.game.refresh_from_db()
 
@@ -1505,7 +1819,8 @@ class ConsumerTests(TransactionTestCase):
         self.player = Player.objects.create(user=self.user)
         guest = Player.objects.create(user=User.objects.create(username="gast"))
         self.server = GameServer.objects.create(
-            name="server-ws", address="127.0.0.1", port=1, control_url="http://instanz:8000"
+            name="server-ws", address="127.0.0.1", port=1, control_url="http://instanz:8000",
+            instance_name="game-instance-1",
         )
         self.game = Game.objects.create(
             name="laeuft", password="geheim", server=self.server, host=self.player,

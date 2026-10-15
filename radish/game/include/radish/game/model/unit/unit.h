@@ -95,8 +95,22 @@ typedef struct
 typedef struct
 {
     char profile[RAD_UNIT_NAME_MAX];
+
+    ///
+    /// Lebenspunkte: was das Mitglied noch hat und womit es ins Spiel kam. Den
+    /// Hoechstwert setzt die Welt beim Aufnehmen (RAD_WorldAddReserveUnit) auf
+    /// "health"; danach sinkt nur noch "health", mit jedem wirkenden Schuss um
+    /// einen (control/attack_unit.c). Bei 0 ist das Mitglied nicht mehr da.
+    ///
     int16_t health;
+    int16_t health_max;
     int16_t armor;
+
+    ///
+    /// Widerstand gegen einen Schuss, der die Ruestung durchschlagen hat: er
+    /// wirkt, wenn Wurf + Staerke der Waffe ihn erreicht (control/attack_unit.c).
+    ///
+    int16_t toughness;
     int16_t strength;
     int16_t accuracy;
 

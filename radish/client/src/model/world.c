@@ -6,6 +6,8 @@
 typedef void (*RAD_ClientWorldTileCreated_t)(void *user_argument, const RAD_ClientWorld_t *world, const RAD_ClientTile_t *tile);
 typedef void (*RAD_ClientWorldReserveCreated_t)(void *user_argument, const RAD_ClientWorld_t *world, const RAD_ClientReserve_t *reserve);
 typedef void (*RAD_ClientWorldSizeChanged_t)(void *user_argument, const RAD_ClientWorld_t *world);
+typedef void (*RAD_ClientWorldUnitMoved_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                           const RAD_ClientPosition_t *steps, size_t count);
 
 static bool RAD_ClientWorldInBounds(int32_t x, int32_t y)
 {
@@ -16,7 +18,7 @@ static RAD_ClientUnit_t* RAD_ClientWorldFieldUnit(RAD_ClientWorld_t *world, RAD_
 static RAD_ClientReserve_t* RAD_ClientWorldReserveContaining(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id);
 
 //
-// Die drei Ereignisse haben je eine eigene Signatur, also je eine eigene
+// Die vier Ereignisse haben je eine eigene Signatur, also je eine eigene
 // Meldefunktion. Alle laufen ueber eine Kopie der Liste: ein Beobachter darf
 // sich im Callback an- und abmelden.
 //
@@ -66,6 +68,22 @@ static void RAD_ClientWorldNotifySizeChanged(const RAD_ClientWorld_t *world)
     }
 }
 
+static void RAD_ClientWorldNotifyUnitMoved(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                           const RAD_ClientPosition_t *steps, size_t count)
+{
+    const RAD_ModelObservable_t observable = world->observable;
+
+    for(uint32_t i = 0; i < observable.number_of_observers; ++i)
+    {
+        const RAD_ModelObserver_t *observer = &observable.observers[i];
+        const RAD_ClientWorldUnitMoved_t callback = (RAD_ClientWorldUnitMoved_t)observer->callbacks[RAD_CLIENT_WORLD_EVENT_UNIT_MOVED];
+        if(callback != NULL)
+        {
+            callback(observer->user_argument, world, unit, steps, count);
+        }
+    }
+}
+
 void RAD_ClientWorldInit(RAD_ClientWorld_t *world)
 {
     memset(world, 0, sizeof(*world));
@@ -86,7 +104,9 @@ void RAD_ClientWorldSetSize(RAD_ClientWorld_t *world, uint32_t width, uint32_t h
 void RAD_ClientWorldApplyTile(RAD_ClientWorld_t *world,
                               RAD_ClientPosition_t position,
                               RAD_ClientTileType_t type,
-                              RAD_ClientUnitId_t unit)
+                              RAD_ClientUnitId_t unit,
+                              bool victory,
+                              RAD_ClientTerrain_t terrain)
 {
     if(!RAD_ClientWorldInBounds(position.x, position.y))
     {
@@ -100,7 +120,7 @@ void RAD_ClientWorldApplyTile(RAD_ClientWorld_t *world,
     // sie abgemeldet --, sein "changed" erreicht also niemanden.
     // Auf dem Feld steht nur eine Einheit, die die Welt schon kennt (world.h).
     world->known[position.y][position.x] = true;
-    RAD_ClientTileSet(target, position.x, position.y, type, RAD_ClientWorldFieldUnit(world, unit));
+    RAD_ClientTileSet(target, position.x, position.y, type, RAD_ClientWorldFieldUnit(world, unit), victory, terrain);
 
     if(created)
     {
@@ -129,8 +149,17 @@ const RAD_ClientTile_t* RAD_ClientWorldTileAt(const RAD_ClientWorld_t *world, in
     return &world->tiles[y][x];
 }
 
-void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit_id, RAD_ClientPosition_t from, RAD_ClientPosition_t to)
+void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit_id,
+                               const RAD_ClientPosition_t *steps, size_t count)
 {
+    if((steps == NULL) || (count < 2))
+    {
+        return;
+    }
+
+    const RAD_ClientPosition_t from = steps[0];
+    const RAD_ClientPosition_t to = steps[count - 1];
+
     if(!RAD_ClientWorldInBounds(from.x, from.y) || !RAD_ClientWorldInBounds(to.x, to.y))
     {
         return;
@@ -141,6 +170,8 @@ void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit
     {
         return;
     }
+
+    RAD_ClientWorldNotifyUnitMoved(world, unit_id, steps, count);
 
     RAD_ClientTileSetUnit(&world->tiles[from.y][from.x], NULL);
     RAD_ClientTileSetUnit(&world->tiles[to.y][to.x], unit);
@@ -243,6 +274,34 @@ bool RAD_ClientWorldRemoveReserveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId
     return true;
 }
 
+bool RAD_ClientWorldRemoveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position)
+{
+    if(RAD_ClientUnitRepositoryFind(&world->units, id) == NULL)
+    {
+        return false;
+    }
+
+    // Erst wer sie nennt, dann sie selbst: wer "removed" hoert, soll sie auf
+    // keinem Feld und in keiner Reserve mehr finden.
+    if(RAD_ClientWorldInBounds(position.x, position.y))
+    {
+        RAD_ClientTile_t *tile = &world->tiles[position.y][position.x];
+        if((tile->unit != NULL) && (tile->unit->id == id))
+        {
+            RAD_ClientTileSetUnit(tile, NULL);
+        }
+    }
+
+    RAD_ClientReserve_t *reserve = RAD_ClientWorldReserveContaining(world, id);
+    if(reserve != NULL)
+    {
+        RAD_ClientReserveRemoveUnit(reserve, id);
+    }
+
+    RAD_ClientUnitRepositoryRemove(&world->units, id);
+    return true;
+}
+
 bool RAD_ClientWorldDeployUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position)
 {
     if(!RAD_ClientWorldInBounds(position.x, position.y) || !world->known[position.y][position.x])
@@ -295,6 +354,94 @@ RAD_ClientPlayerId_t RAD_ClientWorldCurrentPlayer(const RAD_ClientWorld_t *world
     return world->current_player;
 }
 
+void RAD_ClientWorldSetRound(RAD_ClientWorld_t *world, int32_t round, int32_t rounds)
+{
+    world->round = round;
+    world->rounds = rounds;
+}
+
+int32_t RAD_ClientWorldRound(const RAD_ClientWorld_t *world)
+{
+    return world->round;
+}
+
+int32_t RAD_ClientWorldNumberOfRounds(const RAD_ClientWorld_t *world)
+{
+    return world->rounds;
+}
+
+void RAD_ClientWorldSetResult(RAD_ClientWorld_t *world, const RAD_ClientGameResult_t *result)
+{
+    world->result = *result;
+}
+
+const RAD_ClientGameResult_t* RAD_ClientWorldResult(const RAD_ClientWorld_t *world)
+{
+    return &world->result;
+}
+
+bool RAD_ClientWorldIsFinished(const RAD_ClientWorld_t *world)
+{
+    return world->result.finished;
+}
+
+bool RAD_ClientWorldSetDeployZone(RAD_ClientWorld_t *world, const RAD_ClientDeployZone_t *zone)
+{
+    if((zone->owner == RAD_CLIENT_PLAYER_NONE) || (zone->min_x > zone->max_x) || (zone->min_y > zone->max_y))
+    {
+        return false;
+    }
+
+    // Seine eigene, sonst der erste freie Platz.
+    RAD_ClientDeployZone_t *slot = NULL;
+    for(size_t i = 0; i < RAD_CLIENT_WORLD_PLAYERS; ++i)
+    {
+        if(world->deploy_zones[i].owner == zone->owner)
+        {
+            slot = &world->deploy_zones[i];
+            break;
+        }
+        if((slot == NULL) && (world->deploy_zones[i].owner == RAD_CLIENT_PLAYER_NONE))
+        {
+            slot = &world->deploy_zones[i];
+        }
+    }
+    if(slot == NULL)
+    {
+        return false;
+    }
+
+    *slot = *zone;
+    return true;
+}
+
+const RAD_ClientDeployZone_t* RAD_ClientWorldDeployZone(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner)
+{
+    if(owner == RAD_CLIENT_PLAYER_NONE)
+    {
+        return NULL;
+    }
+
+    for(size_t i = 0; i < RAD_CLIENT_WORLD_PLAYERS; ++i)
+    {
+        if(world->deploy_zones[i].owner == owner)
+        {
+            return &world->deploy_zones[i];
+        }
+    }
+    return NULL;
+}
+
+bool RAD_ClientWorldInDeployZone(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner, int32_t x, int32_t y)
+{
+    const RAD_ClientDeployZone_t *zone = RAD_ClientWorldDeployZone(world, owner);
+    if(zone == NULL)
+    {
+        return false;
+    }
+    return (x >= zone->min_x) && (x <= zone->max_x) && (y >= zone->min_y) && (y <= zone->max_y);
+}
+
 const RAD_ClientUnitRepository_t* RAD_ClientWorldUnits(const RAD_ClientWorld_t *world)
 {
     return &world->units;
@@ -307,7 +454,8 @@ bool RAD_ClientWorldSubscribe(const RAD_ClientWorld_t *world, RAD_ClientWorldObs
         .callbacks = {
             [RAD_CLIENT_WORLD_EVENT_TILE_CREATED] = (RAD_ModelCallback_t)observer.tile_created,
             [RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED] = (RAD_ModelCallback_t)observer.reserve_created,
-            [RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED] = (RAD_ModelCallback_t)observer.size_changed
+            [RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED] = (RAD_ModelCallback_t)observer.size_changed,
+            [RAD_CLIENT_WORLD_EVENT_UNIT_MOVED] = (RAD_ModelCallback_t)observer.unit_moved
         }
     };
     return RAD_ModelObservableSubscribe(RAD_ModelObservableOf(&world->observable), &generic);

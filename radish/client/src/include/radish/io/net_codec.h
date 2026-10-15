@@ -182,9 +182,11 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverUnits(uint8_t *buffer,
 ///   command_response mit end_turn                  -> RAD_NetEventManagerPublishEndTurnResponse
 ///   event.game.created                             -> RAD_NetEventManagerPublishGameCreated
 ///   event.game.finished                             -> RAD_NetEventManagerPublishGameFinished
+///   event.game.round                                -> RAD_NetEventManagerPublishRound
 ///   event.game.current_player                       -> RAD_NetEventManagerPublishCurrentPlayer
 ///   event.game.players                              -> RAD_NetEventManagerPublishPlayers
 ///   event.game.world_size                           -> RAD_NetEventManagerPublishWorldSize
+///   event.game.deploy_zone                          -> RAD_NetEventManagerPublishDeployZone
 ///   event.game.reserve_unit                         -> RAD_NetEventManagerPublishReserveUnit
 ///   event.game.unit_deployed                        -> RAD_NetEventManagerPublishUnitDeployed
 ///   event.game.unit                                 -> RAD_NetEventManagerPublishUnit

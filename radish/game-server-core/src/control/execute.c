@@ -71,6 +71,12 @@ const char* RAD_ControlResultText(RAD_ControlResult_t result)
                                                 return "Einheit steht nicht auf dem Feld";
         case RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE:
                                                 return "Ziel liegt ausserhalb der Reichweite";
+        case RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE:
+                                                return "Zielfeld liegt ausserhalb der Aufstellzone";
+        case RAD_CONTROL_ERROR_GAME_FINISHED:   return "das Spiel ist vorbei";
+        case RAD_CONTROL_ERROR_INVALID_PATH:    return "Weg fuehrt nicht von Nachbar zu Nachbar";
+        case RAD_CONTROL_ERROR_IMPASSABLE:      return "Feld ist unbegehbar";
+        case RAD_CONTROL_ERROR_OUT_OF_MOVEMENT: return "Weg ist weiter als die Bewegung der Einheit";
         default:                                return "unbekanntes Ergebnis";
     }
 }
@@ -196,6 +202,42 @@ RAD_UserId_t RAD_ControlPlayerAt(RAD_Control_t control, int32_t index)
     return RAD_GamePlayerAt(control->game, index);
 }
 
+int32_t RAD_ControlRound(RAD_Control_t control)
+{
+    return RAD_GameRound(control->game);
+}
+
+int32_t RAD_ControlNumberOfRounds(RAD_Control_t control)
+{
+    return RAD_GameNumberOfRounds(control->game);
+}
+
+int32_t RAD_ControlScore(RAD_Control_t control, RAD_UserId_t user)
+{
+    return RAD_GameScore(control->game, user);
+}
+
+RAD_GameEndReason_t RAD_ControlEndReason(RAD_Control_t control)
+{
+    return RAD_GameEndReason(control->game);
+}
+
+bool RAD_ControlIsFinished(RAD_Control_t control)
+{
+    return RAD_GameIsFinished(control->game);
+}
+
+RAD_UserId_t RAD_ControlWinner(RAD_Control_t control)
+{
+    return RAD_GameWinner(control->game);
+}
+
+bool RAD_ControlDeployZone(RAD_Control_t control, RAD_UserId_t user,
+                           int32_t *min_x, int32_t *min_y, int32_t *max_x, int32_t *max_y)
+{
+    return RAD_GameDeployZone(control->game, user, min_x, min_y, max_x, max_y);
+}
+
 int32_t RAD_ControlWorldWidth(RAD_Control_t control)
 {
     return RAD_GameWorldWidth(control->game);
@@ -301,6 +343,13 @@ static RAD_ControlResult_t RAD_ControlCheckCommand(RAD_Control_t control, const 
         return RAD_CONTROL_ERROR_NO_USER;
     }
 
+    // Ist das Spiel vorbei, gilt das fuer jedes Kommando -- noch vor der Frage,
+    // wer dran ist: dran ist dann niemand mehr.
+    if(RAD_GameIsFinished(control->game))
+    {
+        return RAD_CONTROL_ERROR_GAME_FINISHED;
+    }
+
     // Nicht aufgenommen, nur nachgefragt: wer beitritt, entscheidet der, bei dem
     // die Nachrichten ankommen (RAD_ControlAddUser).
     if(!RAD_GameIsPlaying(control->game, command->header.user))
@@ -393,7 +442,11 @@ static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_Use
         case RAD_GAME_ERROR_NOT_OWNED:       return RAD_CONTROL_ERROR_NOT_OWNED;
         case RAD_GAME_ERROR_NOT_IN_RESERVE:  return RAD_CONTROL_ERROR_NOT_IN_RESERVE;
         case RAD_GAME_ERROR_OUT_OF_BOUNDS:   return RAD_CONTROL_ERROR_OUT_OF_BOUNDS;
+        case RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE:
+                                             return RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE;
+        case RAD_GAME_ERROR_FINISHED:        return RAD_CONTROL_ERROR_GAME_FINISHED;
         case RAD_GAME_ERROR_NO_GROUND:       return RAD_CONTROL_ERROR_NO_GROUND;
+        case RAD_GAME_ERROR_IMPASSABLE:      return RAD_CONTROL_ERROR_IMPASSABLE;
         case RAD_GAME_ERROR_OCCUPIED:        return RAD_CONTROL_ERROR_TARGET_OCCUPIED;
         default:                             return RAD_CONTROL_ERROR_NOT_EXECUTED;
     }
@@ -401,7 +454,8 @@ static RAD_ControlResult_t RAD_ControlCheckDeploy(RAD_Control_t control, RAD_Use
 
 ///
 /// Ziehen: erst der Besitz, dann ob die Einheit in diesem Zug noch ziehen darf
-/// (RAD_GameCheckMoveUnit).
+/// und der Weg taugt (RAD_GameCheckMovePath) -- von Nachbar zu Nachbar, begehbar
+/// und in ihrer Bewegung. Ein Weg, der das nicht ist, wird als Ganzes abgelehnt.
 ///
 static RAD_ControlResult_t RAD_ControlCheckMove(RAD_Control_t control, RAD_UserId_t user, const RAD_CommandMoveUnit_t *move)
 {
@@ -411,7 +465,7 @@ static RAD_ControlResult_t RAD_ControlCheckMove(RAD_Control_t control, RAD_UserI
         return owner;
     }
 
-    return RAD_ControlFromUnitActionResult(RAD_GameCheckMoveUnit(control->game, move->unit));
+    return RAD_ControlFromUnitActionResult(RAD_GameCheckMovePath(control->game, move->unit, &move->path));
 }
 
 ///
@@ -430,7 +484,7 @@ static RAD_ControlResult_t RAD_ControlCheckAttack(RAD_Control_t control, RAD_Use
 }
 
 ///
-/// Die Ergebnisse von RAD_GameCheckMoveUnit und RAD_GameCheckAttack, abgebildet
+/// Die Ergebnisse von RAD_GameCheckMovePath und RAD_GameCheckAttack, abgebildet
 /// auf Antworten, die ueber die Strecke gehen.
 ///
 static RAD_ControlResult_t RAD_ControlFromUnitActionResult(RAD_GameResult_t result)
@@ -445,6 +499,11 @@ static RAD_ControlResult_t RAD_ControlFromUnitActionResult(RAD_GameResult_t resu
         case RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED:  return RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED;
         case RAD_GAME_ERROR_OUT_OF_BOUNDS:          return RAD_CONTROL_ERROR_OUT_OF_BOUNDS;
         case RAD_GAME_ERROR_TARGET_OUT_OF_RANGE:    return RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE;
+        case RAD_GAME_ERROR_FINISHED:               return RAD_CONTROL_ERROR_GAME_FINISHED;
+        case RAD_GAME_ERROR_NO_GROUND:              return RAD_CONTROL_ERROR_NO_GROUND;
+        case RAD_GAME_ERROR_INVALID_PATH:           return RAD_CONTROL_ERROR_INVALID_PATH;
+        case RAD_GAME_ERROR_IMPASSABLE:             return RAD_CONTROL_ERROR_IMPASSABLE;
+        case RAD_GAME_ERROR_OUT_OF_MOVEMENT:        return RAD_CONTROL_ERROR_OUT_OF_MOVEMENT;
         default:                                    return RAD_CONTROL_ERROR_NOT_EXECUTED;
     }
 }

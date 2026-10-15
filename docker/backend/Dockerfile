@@ -6,10 +6,11 @@
 # Wasm-Client (radish/web/) unter "/wasm/" (siehe radish/backend/web/) --
 # es gibt dafuer bewusst keinen separaten nginx-Container mehr.
 #
-# Drei Stages: "frontend-builder" baut nur das Angular-Bundle (Node),
-# "builder" nur die Python-Abhaengigkeiten (siehe unten), das eigentliche
-# Image uebernimmt aus beiden nur das fertige Ergebnis -- weder Node noch
-# Rust/gcc landen im laufenden Container.
+# Vier Stages: "frontend-builder" baut nur das Angular-Bundle (Node),
+# "wasm-builder" nur den Wasm-Client (Emscripten), "builder" nur die
+# Python-Abhaengigkeiten (siehe unten), das eigentliche Image uebernimmt aus
+# allen nur das fertige Ergebnis -- weder Node noch Emscripten noch Rust/gcc
+# landen im laufenden Container.
 #
 # Der Python-Teil ist zweistufig: simplejwts [crypto]-Extra zieht
 # "cryptography" nach sich, und dafuer gibt es
@@ -27,6 +28,34 @@ COPY radish/frontend/package.json radish/frontend/package-lock.json* ./
 RUN npm install
 COPY radish/frontend/ ./
 RUN npm run build -- --configuration production
+
+
+# Der Wasm-Client (radish/client/), frisch aus dem Quelltext -- nicht mehr das,
+# was zufaellig gerade in radish/web/ liegt. Dieselbe Emscripten-Version wie das
+# emsdk/ im Repository, sonst baut das Image einen anderen Client als der Host.
+FROM emscripten/emsdk:6.0.5 AS wasm-builder
+
+# protoc und protoc-gen-c als Host-Werkzeuge, wie im game-server-Image (siehe
+# radish/cmake/protobuf-c.cmake).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends protobuf-compiler protobuf-c-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Die SDL-Ports vorab, in eigener Schicht: emcc laedt und uebersetzt sie sonst
+# beim ersten Linken, und jede Aenderung unter radish/ wuerde das wiederholen.
+RUN embuilder build sdl2 sdl2_ttf sdl2_image sdl2_image-png libpng zlib freetype harfbuzz
+
+WORKDIR /src
+
+# Kein zucchini/: unter Emscripten zieht radish/CMakeLists.txt es nicht.
+COPY jsmn/ jsmn/
+COPY protobuf-c/ protobuf-c/
+COPY radish/ radish/
+
+# Nur das Ziel "client": es schreibt client.js/client.wasm nach radish/web/
+# (radish/client/CMakeLists.txt).
+RUN emcmake cmake -S radish -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --target client
 
 
 FROM python:3.12-alpine AS builder
@@ -68,8 +97,9 @@ COPY radish/backend/ /app/
 # WASM_DIR = Geschwisterverzeichnis von BASE_DIR): lokal liegt radish/web/
 # neben radish/backend/, im Image muss das also parallel zu /app nach /web --
 # sonst laeuft views.wasm_file() im Container ins Leere (404), obwohl es
-# lokal (ausserhalb von Docker) funktioniert.
-COPY radish/web/ /web/
+# lokal (ausserhalb von Docker) funktioniert. Aus der Stage "wasm-builder"
+# oben, nicht aus dem Build-Kontext.
+COPY --from=wasm-builder /src/radish/web/ /web/
 
 # Gebautes Angular-Frontend (siehe Stage "frontend-builder" oben) --
 # radish/backend/web/views.py erwartet es unter FRONTEND_DIST_DIR =

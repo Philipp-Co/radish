@@ -5,8 +5,10 @@
 #include <radish/control/terrain.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 ///
@@ -18,7 +20,7 @@
 ///
 /// Wie breit der Ring nach RAD_CreateContextMenuView ist, in Pixeln.
 ///
-#define RAD_CONTEXT_MENU_VIEW_DEFAULT_RING_WIDTH 8
+#define RAD_CONTEXT_MENU_VIEW_DEFAULT_RING_WIDTH 24
 
 ///
 /// Mit wie vielen Plaetzen fuer Eintraege die Liste anfaengt; reicht das nicht,
@@ -29,7 +31,7 @@
 ///
 /// Radius der Eintraege, in Pixeln (RAD_ContextMenuViewFillItems).
 ///
-#define RAD_CONTEXT_MENU_VIEW_ITEM_RADIUS 24
+#define RAD_CONTEXT_MENU_VIEW_ITEM_RADIUS 80
 
 ///
 /// Wo die Eintraege stehen, in Grad (0 oben, im Uhrzeigersinn). Schliessen
@@ -45,14 +47,45 @@
 /// Wie viele Pixel zwischen zwei benachbarten Eintraegen frei bleiben, von
 /// Rand zu Rand.
 ///
-#define RAD_CONTEXT_MENU_VIEW_ITEM_GAP 12
+#define RAD_CONTEXT_MENU_VIEW_ITEM_GAP 32
 
 ///
-/// Farben der Markierung des Weges (RAD_UpdateContextMenuViewPathOverlay):
+/// Farben der Markierung des Weges (RAD_UpdateContextMenuViewOverlay):
 /// seine Felder durchscheinend gelb, das Ziel kraeftiger.
 ///
 #define RAD_CONTEXT_MENU_VIEW_PATH_COLOR ((SDL_Color){ 255, 220, 0, 90 })
 #define RAD_CONTEXT_MENU_VIEW_PATH_TARGET_COLOR ((SDL_Color){ 255, 220, 0, 200 })
+
+///
+/// Farben der Markierung beim Angriff (RAD_UpdateContextMenuViewOverlay): die
+/// Felder in Reichweite durchscheinend rot, das gewaehlte Ziel kraeftiger.
+///
+#define RAD_CONTEXT_MENU_VIEW_RANGE_COLOR ((SDL_Color){ 220, 40, 40, 70 })
+#define RAD_CONTEXT_MENU_VIEW_RANGE_TARGET_COLOR ((SDL_Color){ 220, 40, 40, 190 })
+
+///
+/// Farben der Markierung beim Deployen (RAD_ContextMenuViewDrawDeployZone): die
+/// Felder der eigenen Aufstellzone, auf die sich aufstellen laesst,
+/// durchscheinend gruen, das ausgewaehlte Feld kraeftiger -- gruen, wenn es
+/// annehmbar ist (RAD_ContextMenuViewDeployRejection), sonst rot.
+///
+#define RAD_CONTEXT_MENU_VIEW_DEPLOY_ZONE_COLOR ((SDL_Color){ 40, 200, 80, 70 })
+#define RAD_CONTEXT_MENU_VIEW_DEPLOY_TARGET_COLOR ((SDL_Color){ 40, 200, 80, 190 })
+#define RAD_CONTEXT_MENU_VIEW_DEPLOY_OUTSIDE_TARGET_COLOR ((SDL_Color){ 220, 40, 40, 190 })
+
+///
+/// Farbe der Felder, die die ziehende Einheit vom Ende ihres Weges aus noch
+/// erreicht (RAD_ContextMenuViewDrawReach): durchscheinend blau.
+///
+#define RAD_CONTEXT_MENU_VIEW_REACH_COLOR ((SDL_Color){ 60, 140, 255, 70 })
+
+///
+/// Wie weit RAD_ContextMenuViewDrawReach hoechstens sucht, in Feldern um das
+/// Ende des Weges: mehr Schritte als RAD_NET_PATH_MAX_STEPS - 1 hat kein Weg,
+/// und jeder kostet wenigstens 1 (RAD_ControlTerrainMovementCost).
+///
+#define RAD_CONTEXT_MENU_VIEW_REACH_RADIUS (RAD_NET_PATH_MAX_STEPS - 1)
+#define RAD_CONTEXT_MENU_VIEW_REACH_SIDE (2 * RAD_CONTEXT_MENU_VIEW_REACH_RADIUS + 1)
 
 
 ///
@@ -153,6 +186,15 @@ struct RAD_ContextMenuView
     ///
     RAD_ContextMenuViewWeaponRange_t attack_ranges[RAD_CLIENT_UNIT_MEMBERS_MAX * RAD_CLIENT_MEMBER_WEAPONS_MAX];
     int32_t attack_range_count;
+
+    ///
+    /// Ob die Einheit in diesem Zug noch ziehen bzw. angreifen darf, gelesen
+    /// beim Oeffnen (RAD_ClientUnit_t.deployed, moved, attacked): nicht in
+    /// diesem Zug aufgestellt, und nicht schon gezogen bzw. angegriffen. Davon
+    /// haengt ab, ob Move und Attack angeboten werden (RAD_ContextMenuViewFillItems).
+    ///
+    bool may_move;
+    bool may_attack;
     int32_t target_x;
     int32_t target_y;
 
@@ -163,15 +205,22 @@ struct RAD_ContextMenuView
     RAD_IoNetSession_t *session;
 
     ///
+    /// Die Welt, aus der sie liest, welche Felder die ziehende Einheit noch
+    /// erreicht (RAD_ContextMenuViewDrawReach): bekannt, frei, was sie kosten.
+    /// Gehoert dem Aufrufer.
+    ///
+    const RAD_ClientWorld_t *world;
+
+    ///
     /// Die Karte, auf der sie den Weg markiert
-    /// (RAD_UpdateContextMenuViewPathOverlay); nur gelesen. Gehoert dem
+    /// (RAD_UpdateContextMenuViewOverlay); nur gelesen. Gehoert dem
     /// Aufrufer.
     ///
     const RAD_IsoMap_t *map;
 };
 
 
-static RAD_ContextMenuItem_t* RAD_ContextMenuViewAddItem(RAD_ContextMenuView_t *context_menu_view, float angle, SDL_Color color, RAD_ContextMenuItemAction_t action);
+static RAD_ContextMenuItem_t* RAD_ContextMenuViewAddItem(RAD_ContextMenuView_t *context_menu_view, float angle, RAD_ContextMenuItemAction_t action);
 static void RAD_ContextMenuViewClearItems(RAD_ContextMenuView_t *context_menu_view);
 static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuState_t state);
 static float RAD_ContextMenuViewItemStep(const RAD_ContextMenuView_t *context_menu_view);
@@ -184,11 +233,21 @@ static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_
 static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_view);
 static void RAD_ContextMenuViewFillRing(SDL_Renderer *renderer, float center_x, float center_y, float inner_radius, float outer_radius, SDL_Color color);
 static void RAD_ContextMenuViewFillTile(SDL_Renderer *renderer, float center_x, float center_y, SDL_Color color);
+static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu_view, int32_t distance);
+static void RAD_ContextMenuViewDrawPath(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
+static void RAD_ContextMenuViewDrawReach(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
+static bool RAD_ContextMenuViewPathContains(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y);
+static void RAD_ContextMenuViewDrawAttackRange(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer, bool with_target);
+static void RAD_ContextMenuViewMarkTile(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer, int32_t x, int32_t y, SDL_Color color);
+static bool RAD_ContextMenuViewInDeployZone(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y);
+static const char* RAD_ContextMenuViewDeployRejection(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y);
+static void RAD_ContextMenuViewDrawDeployZone(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 
 
 RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t center_y, int32_t radius,
                                                  TTF_Font *font, int32_t deployment_width, int32_t deployment_height,
-                                                 RAD_IoNetSession_t *session, const RAD_IsoMap_t *map)
+                                                 RAD_IoNetSession_t *session, const RAD_IsoMap_t *map,
+                                                 const RAD_ClientWorld_t *world)
 {
     RAD_ContextMenuView_t *context_menu_view = malloc(sizeof(struct RAD_ContextMenuView));
     if(context_menu_view == NULL)
@@ -218,9 +277,12 @@ RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t cente
         .move_budget = 0,
         .move_cost = 0,
         .attack_range_count = 0,
+        .may_move = false,
+        .may_attack = false,
         .target_x = 0,
         .target_y = 0,
         .session = session,
+        .world = world,
         .map = map
     };
 
@@ -273,6 +335,15 @@ void RAD_ContextMenuViewSetCenter(RAD_ContextMenuView_t *context_menu_view, int3
 
 void RAD_ContextMenuViewOnTileSelected(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientTile_t *tile)
 {
+    // Ist das Spiel vorbei, gibt es nichts mehr zu tun: kein Menue, und ein
+    // offenes schliesst sich.
+    if(context_menu_view->world != NULL && RAD_ClientWorldIsFinished(context_menu_view->world))
+    {
+        RAD_ContextMenuStateMachineOnCancel(context_menu_view->state_machine);
+        RAD_ContextMenuViewSyncState(context_menu_view);
+        return;
+    }
+
     // Wird ein Weg zusammengeklickt, ist jedes Feld ein Schritt darauf; wird
     // ein Ziel gesucht, ist es das Ziel.
     const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(context_menu_view->state_machine);
@@ -327,6 +398,8 @@ void RAD_ContextMenuViewOnTileSelected(RAD_ContextMenuView_t *context_menu_view,
         context_menu_view->move_budget = (tile->unit != NULL) ? (int32_t)tile->unit->movement : 0;
         context_menu_view->move_cost = 0;
         RAD_ContextMenuViewReadWeaponRanges(context_menu_view, tile->unit);
+        context_menu_view->may_move = (tile->unit != NULL) && !tile->unit->deployed && !tile->unit->moved;
+        context_menu_view->may_attack = (tile->unit != NULL) && !tile->unit->deployed && !tile->unit->attacked;
     }
     RAD_ContextMenuViewSyncState(context_menu_view);
 }
@@ -503,15 +576,20 @@ void RAD_UpdateContextMenuView(RAD_ContextMenuView_t *context_menu_view, SDL_Ren
     RAD_UpdateUnitDeploymentView(context_menu_view->unit_deployment_view, renderer);
 }
 
-void RAD_UpdateContextMenuViewPathOverlay(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer)
+void RAD_UpdateContextMenuViewOverlay(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer)
 {
-    // Einen Weg gibt es nur, solange er zusammengeklickt wird oder auf die
-    // Bestaetigung wartet; die ContextMenuView selbst ist dabei mal zu
-    // sehen, mal nicht.
+    // Was markiert wird, folgt aus dem Zustand; die ContextMenuView selbst ist
+    // dabei mal zu sehen, mal nicht.
     const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(context_menu_view->state_machine);
-    const RAD_NetPath_t *path = &context_menu_view->move_path;
-    if((state != RAD_CONTEXT_MENU_STATE_ENTITY_MOVE && state != RAD_CONTEXT_MENU_STATE_WAITING_FOR_MOVE_ACKNOWLEDGEMENT)
-       || path->number_of_steps < 2)
+    const bool path = (state == RAD_CONTEXT_MENU_STATE_ENTITY_MOVE)
+                   || (state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_MOVE_ACKNOWLEDGEMENT);
+    const bool attack = (state == RAD_CONTEXT_MENU_STATE_ENTITY_ATTACK)
+                     || (state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT);
+    // Ab dem Klick auf Deploy, bis es bestaetigt oder verworfen ist.
+    const bool deploy = (state == RAD_CONTEXT_MENU_STATE_SELECT_ENTITY_FROM_RESERVE)
+                     || (state == RAD_CONTEXT_MENU_STATE_DEPLOY_FROM_RESERVE)
+                     || (state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT);
+    if(!path && !attack && !deploy)
     {
         return;
     }
@@ -522,18 +600,24 @@ void RAD_UpdateContextMenuViewPathOverlay(RAD_ContextMenuView_t *context_menu_vi
     SDL_GetRenderDrawBlendMode(renderer, &previous_blend_mode);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    // Ab 1: das Feld der Einheit bleibt unmarkiert.
-    for(int8_t i = 1; i < path->number_of_steps; i++)
+    if(path)
     {
-        int32_t center_x = 0, center_y = 0;
-        if(!RAD_IsoMapTileScreenCenter(context_menu_view->map, path->steps_to[i].x, path->steps_to[i].y, &center_x, &center_y))
+        // Solange der Weg zusammengeklickt wird, liegt darunter, wohin er noch
+        // fuehren kann.
+        if(state == RAD_CONTEXT_MENU_STATE_ENTITY_MOVE)
         {
-            continue;
+            RAD_ContextMenuViewDrawReach(context_menu_view, renderer);
         }
-
-        const bool target = (i == path->number_of_steps - 1);
-        RAD_ContextMenuViewFillTile(renderer, (float)center_x, (float)center_y,
-                                    target ? RAD_CONTEXT_MENU_VIEW_PATH_TARGET_COLOR : RAD_CONTEXT_MENU_VIEW_PATH_COLOR);
+        RAD_ContextMenuViewDrawPath(context_menu_view, renderer);
+    }
+    else if(attack)
+    {
+        RAD_ContextMenuViewDrawAttackRange(context_menu_view, renderer,
+                                           state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT);
+    }
+    else
+    {
+        RAD_ContextMenuViewDrawDeployZone(context_menu_view, renderer);
     }
 
     SDL_SetRenderDrawBlendMode(renderer, previous_blend_mode);
@@ -541,11 +625,10 @@ void RAD_UpdateContextMenuViewPathOverlay(RAD_ContextMenuView_t *context_menu_vi
 
 
 ///
-/// Legt einen Eintrag am Winkel "angle" in der Farbe "color" mit der Aktion
-/// "action" an, setzt ihn auf den Ring und haengt ihn hinten an; NULL, wenn
+/// Legt einen Eintrag am Winkel "angle" mit der Aktion "action" an, setzt ihn auf den Ring und haengt ihn hinten an; NULL, wenn
 /// kein Speicher da ist -- dann fehlt nur dieser Eintrag.
 ///
-static RAD_ContextMenuItem_t* RAD_ContextMenuViewAddItem(RAD_ContextMenuView_t *context_menu_view, float angle, SDL_Color color, RAD_ContextMenuItemAction_t action)
+static RAD_ContextMenuItem_t* RAD_ContextMenuViewAddItem(RAD_ContextMenuView_t *context_menu_view, float angle, RAD_ContextMenuItemAction_t action)
 {
     if(context_menu_view->count == context_menu_view->capacity)
     {
@@ -561,7 +644,7 @@ static RAD_ContextMenuItem_t* RAD_ContextMenuViewAddItem(RAD_ContextMenuView_t *
         context_menu_view->capacity = capacity;
     }
 
-    RAD_ContextMenuItem_t *item = RAD_CreateContextMenuItem(angle, RAD_CONTEXT_MENU_VIEW_ITEM_RADIUS, color);
+    RAD_ContextMenuItem_t *item = RAD_CreateContextMenuItem(angle, RAD_CONTEXT_MENU_VIEW_ITEM_RADIUS);
     if(item == NULL)
     {
         return NULL;
@@ -598,9 +681,14 @@ static void RAD_ContextMenuViewClearItems(RAD_ContextMenuView_t *context_menu_vi
 ///     unsichtbar.
 ///   - EMPTY_TILE_SELECTED, SELECT_ENTITY_FROM_RESERVE, DEPLOY_FROM_RESERVE:
 ///     Deploy (RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY).
-///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, blau hervorgehoben.
-///   - TILE_WITH_OWN_ENTITY_SELECTED: Move (RAD_CONTEXT_MENU_ITEM_ACTION_MOVE)
-///     und Attack (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK).
+///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, blau hervorgehoben -- wenn
+///     das ausgewaehlte Feld in der eigenen Aufstellzone liegt, sonst nicht:
+///     dann nimmt Deploy es auch nicht an (RAD_ContextMenuViewRunAction).
+///   - TILE_WITH_OWN_ENTITY_SELECTED: Move (RAD_CONTEXT_MENU_ITEM_ACTION_MOVE),
+///     wenn die Einheit noch ziehen darf, und Attack
+///     (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK), wenn sie noch angreifen darf
+///     ("may_move", "may_attack"). Jeder an seinem festen Platz, auch wenn der
+///     andere fehlt.
 ///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, blau hervorgehoben.
 ///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, blau hervorgehoben.
 ///   - TILE_WITH_FOREIGN_ENTITY_SELECTED, WAITING_FOR_SERVER_RESPONSE: nur
@@ -620,7 +708,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
     }
 
     const float first_right = RAD_CONTEXT_MENU_VIEW_FIRST_RIGHT_ANGLE;
-    RAD_ContextMenuViewAddItem(context_menu_view, RAD_CONTEXT_MENU_VIEW_CLOSE_ANGLE, (SDL_Color){ 200, 0, 0, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_CLOSE);
+    RAD_ContextMenuViewAddItem(context_menu_view, RAD_CONTEXT_MENU_VIEW_CLOSE_ANGLE, RAD_CONTEXT_MENU_ITEM_ACTION_CLOSE);
 
     switch(state)
     {
@@ -629,23 +717,31 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
         case RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT:
         case RAD_CONTEXT_MENU_STATE_DEPLOY_FROM_RESERVE:
         {
-            RAD_ContextMenuItem_t *deploy = RAD_ContextMenuViewAddItem(context_menu_view, first_right, (SDL_Color){ 0, 160, 0, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY);
+            RAD_ContextMenuItem_t *deploy = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY);
             // Wartet sie darauf, dass der Spieler das Deployen bestaetigt, ist
-            // Deploy hervorgehoben -- blau.
-            if(deploy != NULL && state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT)
+            // Deploy hervorgehoben -- blau, aber nur, wenn es auch hinausgeht.
+            if(deploy != NULL && state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT
+               && RAD_ContextMenuViewDeployRejection(context_menu_view, context_menu_view->tile_x, context_menu_view->tile_y) == NULL)
             {
                 RAD_ContextMenuItemSetHighlighted(deploy, true);
             }
             break;
         }
         case RAD_CONTEXT_MENU_STATE_TILE_WITH_OWN_ENTITY_SELECTED:
-            RAD_ContextMenuViewAddItem(context_menu_view, first_right, (SDL_Color){ 0, 96, 200, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_MOVE);
-            RAD_ContextMenuViewAddItem(context_menu_view, first_right + RAD_ContextMenuViewItemStep(context_menu_view), (SDL_Color){ 200, 160, 0, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK);
+            // Was die Einheit in diesem Zug nicht mehr darf, wird nicht angeboten.
+            if(context_menu_view->may_move)
+            {
+                RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_MOVE);
+            }
+            if(context_menu_view->may_attack)
+            {
+                RAD_ContextMenuViewAddItem(context_menu_view, first_right + RAD_ContextMenuViewItemStep(context_menu_view), RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK);
+            }
             break;
         case RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT:
         {
             // Das Ziel steht: Attack bestaetigt es, hervorgehoben -- blau.
-            RAD_ContextMenuItem_t *attack = RAD_ContextMenuViewAddItem(context_menu_view, first_right, (SDL_Color){ 200, 160, 0, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK);
+            RAD_ContextMenuItem_t *attack = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK);
             if(attack != NULL)
             {
                 RAD_ContextMenuItemSetHighlighted(attack, true);
@@ -655,7 +751,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
         case RAD_CONTEXT_MENU_STATE_WAITING_FOR_MOVE_ACKNOWLEDGEMENT:
         {
             // Der Weg steht: Move bestaetigt ihn, hervorgehoben -- blau.
-            RAD_ContextMenuItem_t *move = RAD_ContextMenuViewAddItem(context_menu_view, first_right, (SDL_Color){ 0, 96, 200, 255 }, RAD_CONTEXT_MENU_ITEM_ACTION_MOVE);
+            RAD_ContextMenuItem_t *move = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_MOVE);
             if(move != NULL)
             {
                 RAD_ContextMenuItemSetHighlighted(move, true);
@@ -676,7 +772,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
 /// Um wie viel Grad zwei benachbarte Eintraege auf dem Ring auseinander
 /// stehen: so weit, dass ihre Mittelpunkte -- beide auf dem Radius -- zwei
 /// Eintragsradien plus RAD_CONTEXT_MENU_VIEW_ITEM_GAP voneinander entfernt
-/// sind. Bei 60 Pixeln Radius sind das 60 Grad. Ist der Ring dafuer zu klein,
+/// sind. Bei 200 Pixeln Radius sind das gut 57 Grad. Ist der Ring dafuer zu klein,
 /// 180 Grad: gegenueber.
 ///
 static float RAD_ContextMenuViewItemStep(const RAD_ContextMenuView_t *context_menu_view)
@@ -714,6 +810,14 @@ static void RAD_ContextMenuViewPlaceItem(const RAD_ContextMenuView_t *context_me
 ///
 static void RAD_ContextMenuViewRunAction(RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuItemAction_t action, const SDL_MouseButtonEvent *button)
 {
+    // War das Menue noch offen, als das Spiel endete, schliesst jeder Klick es nur
+    // noch -- hinaus geht nichts mehr.
+    if(context_menu_view->world != NULL && RAD_ClientWorldIsFinished(context_menu_view->world))
+    {
+        RAD_ContextMenuStateMachineOnCancel(context_menu_view->state_machine);
+        return;
+    }
+
     switch(action)
     {
         case RAD_CONTEXT_MENU_ITEM_ACTION_CLOSE:
@@ -727,11 +831,20 @@ static void RAD_ContextMenuViewRunAction(RAD_ContextMenuView_t *context_menu_vie
             context_menu_view->deployment_y = button->y;
 
             // Wartet sie auf die Bestaetigung des Spielers, ist dieser Klick
-            // sie: dann geht das Kommando hinaus (control/deploy_unit.h).
+            // sie: dann geht das Kommando hinaus (control/deploy_unit.h) --
+            // aber nur auf ein Feld, das der Server annehmen wuerde, wie
+            // markiert (RAD_ContextMenuViewDeployRejection). Sonst nur ins
+            // Log; der Server prueft ohnehin selbst.
             const bool confirmed = RAD_ContextMenuStateMachineState(context_menu_view->state_machine)
                 == RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT;
             RAD_ContextMenuStateMachineOnDeploymentRequested(context_menu_view->state_machine);
-            if(confirmed && context_menu_view->deploy_unit != RAD_NET_ENTITY_NONE)
+            const char *rejected = RAD_ContextMenuViewDeployRejection(context_menu_view, context_menu_view->tile_x, context_menu_view->tile_y);
+            if(confirmed && rejected != NULL)
+            {
+                printf("[ContextMenuView] Deploy auf (%d, %d) nicht geschickt: %s\n",
+                       (int)context_menu_view->tile_x, (int)context_menu_view->tile_y, rejected);
+            }
+            if(confirmed && rejected == NULL && context_menu_view->deploy_unit != RAD_NET_ENTITY_NONE)
             {
                 RAD_ControlDeployUnit(context_menu_view->session, context_menu_view->deploy_unit,
                                       (int16_t)context_menu_view->tile_x, (int16_t)context_menu_view->tile_y);
@@ -838,8 +951,8 @@ static void RAD_ContextMenuViewTakeDeployment(RAD_ContextMenuView_t *context_men
 ///     Schritt hat: der Weg steht (OnPathCompleted). Das Feld der Einheit
 ///     kommt hier nicht an, es bricht den Weg ab
 ///     (RAD_ContextMenuViewOnTileSelected).
-///   - ein waagerecht oder senkrecht angrenzendes, freies Feld, das noch
-///     nicht im Weg ist, solange der Weg kuerzer als RAD_NET_PATH_MAX_STEPS
+///   - ein waagerecht oder senkrecht angrenzendes, freies und begehbares Feld
+///     (RAD_ControlTerrainImpassable), das noch nicht im Weg ist, solange der Weg kuerzer als RAD_NET_PATH_MAX_STEPS
 ///     Felder ist und seine Kosten (RAD_ControlTerrainMovementCost) zusammen
 ///     mit denen der Felder davor die Reichweite der Einheit nicht
 ///     uebersteigen: haengt es an.
@@ -862,11 +975,7 @@ static void RAD_ContextMenuViewExtendPath(RAD_ContextMenuView_t *context_menu_vi
         return;
     }
 
-    bool in_path = false;
-    for(int8_t i = 0; i < path->number_of_steps; i++)
-    {
-        in_path = in_path || (tile->x == path->steps_to[i].x && tile->y == path->steps_to[i].y);
-    }
+    const bool in_path = RAD_ContextMenuViewPathContains(context_menu_view, tile->x, tile->y);
 
     const int32_t cost = RAD_ControlTerrainMovementCost(tile);
     const char *rejected = NULL;
@@ -881,6 +990,10 @@ static void RAD_ContextMenuViewExtendPath(RAD_ContextMenuView_t *context_menu_vi
     else if(RAD_ClientTileHasUnit(tile))
     {
         rejected = "besetzt";
+    }
+    else if(RAD_ControlTerrainImpassable(tile))
+    {
+        rejected = "unbegehbar";
     }
     else if(path->number_of_steps >= RAD_NET_PATH_MAX_STEPS)
     {
@@ -952,12 +1065,7 @@ static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_
     const int32_t distance = abs(tile->x - context_menu_view->tile_x) + abs(tile->y - context_menu_view->tile_y);
     const RAD_ClientPlayerId_t own = (RAD_ClientPlayerId_t)context_menu_view->session->own_player_id;
 
-    bool in_range = false;
-    for(int32_t i = 0; i < context_menu_view->attack_range_count; i++)
-    {
-        const RAD_ContextMenuViewWeaponRange_t range = context_menu_view->attack_ranges[i];
-        in_range = in_range || (distance >= range.min_range && distance <= range.max_range);
-    }
+    const bool in_range = RAD_ContextMenuViewInRange(context_menu_view, distance);
 
     const char *rejected = NULL;
     if(tile->unit != NULL && own != RAD_CLIENT_PLAYER_NONE && tile->unit->owner == own)
@@ -1079,4 +1187,315 @@ static void RAD_ContextMenuViewFillTile(SDL_Renderer *renderer, float center_x, 
     const int indices[6] = { 0, 1, 2, 0, 2, 3 };
 
     SDL_RenderGeometry(renderer, NULL, vertices, 4, indices, 6);
+}
+
+///
+/// Deckt wenigstens eine Waffe der Einheit die Entfernung "distance" ab, in
+/// Feldern waagerecht plus senkrecht, zwischen min_range und max_range
+/// (attack_ranges)? Dieselbe Frage fuer die Zielwahl
+/// (RAD_ContextMenuViewSelectTarget) und die Markierung
+/// (RAD_ContextMenuViewDrawAttackRange) -- so markiert sie genau, was sie als
+/// Ziel annimmt.
+///
+static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu_view, int32_t distance)
+{
+    for(int32_t i = 0; i < context_menu_view->attack_range_count; i++)
+    {
+        const RAD_ContextMenuViewWeaponRange_t range = context_menu_view->attack_ranges[i];
+        if(distance >= range.min_range && distance <= range.max_range)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+///
+/// Markiert den Weg der ziehenden Einheit: jedes Feld gelb, das Ziel
+/// kraeftiger, das Feld der Einheit nicht. Den Blend-Modus setzt der Aufrufer.
+///
+static void RAD_ContextMenuViewDrawPath(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer)
+{
+    const RAD_NetPath_t *path = &context_menu_view->move_path;
+
+    // Ab 1: das Feld der Einheit bleibt unmarkiert.
+    for(int8_t i = 1; i < path->number_of_steps; i++)
+    {
+        const bool target = (i == path->number_of_steps - 1);
+        RAD_ContextMenuViewMarkTile(context_menu_view, renderer, path->steps_to[i].x, path->steps_to[i].y,
+                                    target ? RAD_CONTEXT_MENU_VIEW_PATH_TARGET_COLOR : RAD_CONTEXT_MENU_VIEW_PATH_COLOR);
+    }
+}
+
+///
+/// Markiert die Felder in Reichweite der angreifenden Einheit rot
+/// (RAD_ContextMenuViewInRange), das Feld der Einheit nicht -- und mit
+/// "with_target" das gewaehlte Ziel kraeftiger. Abgesucht wird die Raute bis zur
+/// groessten Reichweite um die Einheit; was die Karte nicht zeichnet, faellt weg
+/// (RAD_ContextMenuViewMarkTile). Ob dort eine eigene Einheit steht, weiss die
+/// ContextMenuView nicht -- ein solches Feld ist markiert, als Ziel aber
+/// abgelehnt (RAD_ContextMenuViewSelectTarget). Den Blend-Modus setzt der
+/// Aufrufer.
+///
+static void RAD_ContextMenuViewDrawAttackRange(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer, bool with_target)
+{
+    int32_t reach = 0;
+    for(int32_t i = 0; i < context_menu_view->attack_range_count; i++)
+    {
+        if(context_menu_view->attack_ranges[i].max_range > reach)
+        {
+            reach = context_menu_view->attack_ranges[i].max_range;
+        }
+    }
+
+    for(int32_t dy = -reach; dy <= reach; dy++)
+    {
+        for(int32_t dx = -reach; dx <= reach; dx++)
+        {
+            const int32_t distance = abs(dx) + abs(dy);
+            if(distance == 0 || !RAD_ContextMenuViewInRange(context_menu_view, distance))
+            {
+                continue;
+            }
+
+            const int32_t x = context_menu_view->tile_x + dx;
+            const int32_t y = context_menu_view->tile_y + dy;
+            const bool target = with_target && (x == context_menu_view->target_x) && (y == context_menu_view->target_y);
+            RAD_ContextMenuViewMarkTile(context_menu_view, renderer, x, y,
+                                        target ? RAD_CONTEXT_MENU_VIEW_RANGE_TARGET_COLOR : RAD_CONTEXT_MENU_VIEW_RANGE_COLOR);
+        }
+    }
+}
+
+///
+/// Liegt (x, y) in der Aufstellzone des Spielers dieses Clients, wie der Server
+/// sie geschickt hat (RAD_ClientWorldInDeployZone)? false, solange keine da ist.
+/// Dieselbe Frage fuer die Markierung (RAD_ContextMenuViewDrawDeployZone) und die
+/// Bestaetigung (RAD_ContextMenuViewRunAction) -- so schickt sie genau, was sie
+/// als annehmbar markiert.
+///
+static bool RAD_ContextMenuViewInDeployZone(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y)
+{
+    if(context_menu_view->world == NULL || context_menu_view->session == NULL)
+    {
+        return false;
+    }
+    return RAD_ClientWorldInDeployZone(context_menu_view->world,
+                                       (RAD_ClientPlayerId_t)context_menu_view->session->own_player_id, x, y);
+}
+
+///
+/// Warum der Server ein Deploy auf (x, y) ablehnen wuerde, NULL, wenn er es
+/// annimmt -- dieselben Gruende in derselben Reihenfolge wie im Spiel
+/// (RAD_GameCheckDeployUnit), soweit sie am Feld haengen:
+///
+///   - ausserhalb der eigenen Aufstellzone (RAD_ContextMenuViewInDeployZone)
+///   - ein Feld, das der Client nicht kennt
+///   - kein Gelaende oder unbegehbar (RAD_ControlTerrainImpassable)
+///   - schon besetzt
+///
+/// Ein statischer Text fuers Log. Dieselbe Frage fuer die Markierung
+/// (RAD_ContextMenuViewDrawDeployZone), die Hervorhebung von Deploy und die
+/// Bestaetigung (RAD_ContextMenuViewRunAction) -- so schickt sie genau, was
+/// sie als annehmbar markiert.
+///
+static const char* RAD_ContextMenuViewDeployRejection(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y)
+{
+    if(!RAD_ContextMenuViewInDeployZone(context_menu_view, x, y))
+    {
+        return "ausserhalb der Aufstellzone";
+    }
+
+    const RAD_ClientTile_t *tile = RAD_ClientWorldTileAt(context_menu_view->world, x, y);
+    if(tile == NULL)
+    {
+        return "Feld unbekannt";
+    }
+    if(tile->type == RAD_CLIENT_TILE_TYPE_VOID)
+    {
+        return "kein Gelaende";
+    }
+    if(RAD_ControlTerrainImpassable(tile))
+    {
+        return "unbegehbar";
+    }
+    if(RAD_ClientTileHasUnit(tile))
+    {
+        return "besetzt";
+    }
+    return NULL;
+}
+
+///
+/// Markiert die Felder der eigenen Aufstellzone gruen, auf die sich aufstellen
+/// laesst -- unbegehbare, besetzte und solche ohne Gelaende bleiben frei -- und
+/// das ausgewaehlte Feld kraeftiger: gruen, wenn Deploy es annimmt, rot, wenn
+/// nicht (RAD_ContextMenuViewDeployRejection). Ohne Zone bleibt es beim
+/// ausgewaehlten Feld, rot. Was die Karte
+/// nicht zeichnet, faellt weg (RAD_ContextMenuViewMarkTile). Den Blend-Modus
+/// setzt der Aufrufer.
+///
+static void RAD_ContextMenuViewDrawDeployZone(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer)
+{
+    const RAD_ClientDeployZone_t *zone = NULL;
+    if(context_menu_view->world != NULL && context_menu_view->session != NULL)
+    {
+        zone = RAD_ClientWorldDeployZone(context_menu_view->world,
+                                         (RAD_ClientPlayerId_t)context_menu_view->session->own_player_id);
+    }
+
+    const int32_t tile_x = context_menu_view->tile_x;
+    const int32_t tile_y = context_menu_view->tile_y;
+    if(zone != NULL)
+    {
+        for(int32_t y = zone->min_y; y <= zone->max_y; y++)
+        {
+            for(int32_t x = zone->min_x; x <= zone->max_x; x++)
+            {
+                // Das ausgewaehlte Feld bekommt unten seine eigene Farbe.
+                if((x == tile_x && y == tile_y) || RAD_ContextMenuViewDeployRejection(context_menu_view, x, y) != NULL)
+                {
+                    continue;
+                }
+                RAD_ContextMenuViewMarkTile(context_menu_view, renderer, x, y, RAD_CONTEXT_MENU_VIEW_DEPLOY_ZONE_COLOR);
+            }
+        }
+    }
+
+    const bool accepted = (RAD_ContextMenuViewDeployRejection(context_menu_view, tile_x, tile_y) == NULL);
+    RAD_ContextMenuViewMarkTile(context_menu_view, renderer, tile_x, tile_y,
+                                accepted ? RAD_CONTEXT_MENU_VIEW_DEPLOY_TARGET_COLOR : RAD_CONTEXT_MENU_VIEW_DEPLOY_OUTSIDE_TARGET_COLOR);
+}
+
+///
+/// Markiert das Feld (x, y) in "color" (RAD_ContextMenuViewFillTile), wenn die
+/// Karte es zeichnet (RAD_IsoMapTileScreenCenter); sonst nichts.
+///
+static void RAD_ContextMenuViewMarkTile(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer, int32_t x, int32_t y, SDL_Color color)
+{
+    int32_t center_x = 0, center_y = 0;
+    if(RAD_IsoMapTileScreenCenter(context_menu_view->map, x, y, &center_x, &center_y))
+    {
+        RAD_ContextMenuViewFillTile(renderer, (float)center_x, (float)center_y, color);
+    }
+}
+
+///
+/// Markiert blau, welche Felder die ziehende Einheit vom Ende ihres Weges aus
+/// noch erreicht -- nach denselben Regeln, nach denen ein Klick den Weg
+/// verlaengert (RAD_ContextMenuViewExtendPath): Schritt fuer Schritt zu einem
+/// waagerechten oder senkrechten Nachbarn, nur auf bekannte, freie und begehbare
+/// Felder, die noch nicht im Weg sind, mit den Kosten des Terrains
+/// (RAD_ControlTerrainMovementCost) im verbleibenden Budget und hoechstens bis
+/// RAD_NET_PATH_MAX_STEPS Felder. Das Ende des Weges selbst nicht.
+///
+/// Gesucht wird in Schichten: nach k Durchgaengen steht in "cost", was jedes
+/// Feld mit hoechstens k Schritten mindestens kostet. So zaehlen Kosten und
+/// Schritte beide, und ein teurerer Umweg mit weniger Schritten geht nicht
+/// verloren. Den Blend-Modus setzt der Aufrufer.
+///
+static void RAD_ContextMenuViewDrawReach(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer)
+{
+    const RAD_NetPath_t *path = &context_menu_view->move_path;
+    if(path->number_of_steps <= 0 || context_menu_view->world == NULL)
+    {
+        return;
+    }
+
+    const int32_t budget = context_menu_view->move_budget - context_menu_view->move_cost;
+    const int32_t steps = RAD_NET_PATH_MAX_STEPS - path->number_of_steps;
+    const int32_t origin_x = path->steps_to[path->number_of_steps - 1].x;
+    const int32_t origin_y = path->steps_to[path->number_of_steps - 1].y;
+    const int32_t radius = RAD_CONTEXT_MENU_VIEW_REACH_RADIUS;
+    if(budget <= 0 || steps <= 0)
+    {
+        return;
+    }
+
+    // Unerreicht ist teurer als jedes Budget.
+    int32_t cost[RAD_CONTEXT_MENU_VIEW_REACH_SIDE][RAD_CONTEXT_MENU_VIEW_REACH_SIDE];
+    for(int32_t j = 0; j < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; j++)
+    {
+        for(int32_t i = 0; i < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; i++)
+        {
+            cost[j][i] = INT32_MAX;
+        }
+    }
+    cost[radius][radius] = 0;
+
+    static const int32_t neighbours[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+    for(int32_t k = 0; k < steps; k++)
+    {
+        // Eine Schicht weiter: gelesen wird der Stand davor, damit ein Feld in
+        // diesem Durchgang nur einen Schritt weiter kommt.
+        int32_t next[RAD_CONTEXT_MENU_VIEW_REACH_SIDE][RAD_CONTEXT_MENU_VIEW_REACH_SIDE];
+        memcpy(next, cost, sizeof(next));
+
+        for(int32_t j = 0; j < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; j++)
+        {
+            for(int32_t i = 0; i < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; i++)
+            {
+                if(cost[j][i] == INT32_MAX)
+                {
+                    continue;
+                }
+
+                for(int32_t n = 0; n < 4; n++)
+                {
+                    const int32_t ni = i + neighbours[n][0];
+                    const int32_t nj = j + neighbours[n][1];
+                    if(ni < 0 || nj < 0 || ni >= RAD_CONTEXT_MENU_VIEW_REACH_SIDE || nj >= RAD_CONTEXT_MENU_VIEW_REACH_SIDE)
+                    {
+                        continue;
+                    }
+
+                    const int32_t x = origin_x + ni - radius;
+                    const int32_t y = origin_y + nj - radius;
+                    const RAD_ClientTile_t *tile = RAD_ClientWorldTileAt(context_menu_view->world, x, y);
+                    if(tile == NULL || RAD_ClientTileHasUnit(tile) || RAD_ControlTerrainImpassable(tile)
+                       || RAD_ContextMenuViewPathContains(context_menu_view, x, y))
+                    {
+                        continue;
+                    }
+
+                    const int32_t reached = cost[j][i] + RAD_ControlTerrainMovementCost(tile);
+                    if(reached <= budget && reached < next[nj][ni])
+                    {
+                        next[nj][ni] = reached;
+                    }
+                }
+            }
+        }
+
+        memcpy(cost, next, sizeof(cost));
+    }
+
+    for(int32_t j = 0; j < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; j++)
+    {
+        for(int32_t i = 0; i < RAD_CONTEXT_MENU_VIEW_REACH_SIDE; i++)
+        {
+            if(cost[j][i] == INT32_MAX || (i == radius && j == radius))
+            {
+                continue;
+            }
+            RAD_ContextMenuViewMarkTile(context_menu_view, renderer, origin_x + i - radius, origin_y + j - radius,
+                                        RAD_CONTEXT_MENU_VIEW_REACH_COLOR);
+        }
+    }
+}
+
+///
+/// Steht (x, y) schon im Weg der ziehenden Einheit?
+///
+static bool RAD_ContextMenuViewPathContains(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y)
+{
+    const RAD_NetPath_t *path = &context_menu_view->move_path;
+    for(int8_t i = 0; i < path->number_of_steps; i++)
+    {
+        if(path->steps_to[i].x == x && path->steps_to[i].y == y)
+        {
+            return true;
+        }
+    }
+    return false;
 }

@@ -62,12 +62,31 @@ typedef enum
     RAD_UNIT_TYPE_NPC
 } RAD_UnitType_t;
 
+///
+/// Das Gelaende eines Feldes. Neue Typen kommen hinten dazu, damit die Werte der
+/// vorhandenen bleiben. Das Zeichen dahinter ist das in einer Weltdefinition
+/// (game/schema/world.schema.json).
+///
 typedef enum
 {
-    RAD_TILE_TYPE_VOID = 0,
-    RAD_TILE_TYPE_GROUND,
-    RAD_TILE_TYPE_WATER
+    RAD_TILE_TYPE_VOID = 0,         // '_' kein Gelaende
+    RAD_TILE_TYPE_GROUND,           // '.' Boden
+    RAD_TILE_TYPE_WATER_SHALLOW,    // '~' seichtes Wasser
+    RAD_TILE_TYPE_MUD,              // ',' matschiger Boden
+    RAD_TILE_TYPE_MEADOW,           // ':' Wiese
+    RAD_TILE_TYPE_FOREST,           // '^' Wald
+    RAD_TILE_TYPE_WATER_DEEP,       // '=' tiefes Wasser
+    RAD_TILE_TYPE_CITY,             // 'H' Stadt
+    RAD_TILE_TYPE_ROAD,             // '+' Strasse
+    RAD_TILE_TYPE_FORTIFICATION     // '*' befestigte Stellung
 } RAD_TileType_t;
+
+///
+/// Wie viele Tile-Typen es gibt -- die Groesse einer Tabelle, die je Typ einen
+/// Eintrag hat (RAD_Terrain_t, model/tile/tile.h). Kein letzter Wert in der
+/// Aufzaehlung: ein switch ohne default muesste ihn sonst auffuehren.
+///
+#define RAD_NUMBER_OF_TILE_TYPES (RAD_TILE_TYPE_FORTIFICATION + 1)
 
 ///
 /// Die drei Strukturen, die nur Namen bleiben: angekuendigt, definiert je einmal

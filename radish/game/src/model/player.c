@@ -11,6 +11,9 @@ struct RAD_Player
 {
     RAD_UserId_t id;
 
+    /// Wo er aufstellt (RAD_GameDeployZone); gesetzt beim Anlegen, danach fest.
+    RAD_PlayerEdge_t edge;
+
     RAD_Unit_t *units[RAD_MAX_UNITS];
     int32_t number_of_units;
 
@@ -20,7 +23,7 @@ struct RAD_Player
 
 static int32_t RAD_PlayerIndexOf(const RAD_Player_t *player, const RAD_Unit_t *unit);
 
-RAD_Player_t* RAD_CreatePlayer(RAD_UserId_t id)
+RAD_Player_t* RAD_CreatePlayer(RAD_UserId_t id, RAD_PlayerEdge_t edge)
 {
     if(id == RAD_USER_NONE)
     {
@@ -41,6 +44,7 @@ RAD_Player_t* RAD_CreatePlayer(RAD_UserId_t id)
     }
 
     player->id = id;
+    player->edge = edge;
     player->number_of_units = 0;
     return player;
 }
@@ -59,6 +63,11 @@ void RAD_DestroyPlayer(RAD_Player_t **player)
 RAD_UserId_t RAD_PlayerId(const RAD_Player_t *player)
 {
     return player == NULL ? RAD_USER_NONE : player->id;
+}
+
+RAD_PlayerEdge_t RAD_PlayerEdge(const RAD_Player_t *player)
+{
+    return player == NULL ? RAD_PLAYER_EDGE_WEST : player->edge;
 }
 
 RAD_Reserve_t* RAD_PlayerReserve(const RAD_Player_t *player)

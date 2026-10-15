@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <radish/game/control/command/command.h>
+#include <radish/game/control/events/event_manager.h>
 #include <radish/game/model/tile/tile.h>
 #include <radish/game/model/unit/unit.h>
 
@@ -235,6 +236,48 @@ RAD_NetCodecResult_t RAD_SerializeUnitDeployedEventToMessage(const RAD_Unit_t *u
                                                                uint16_t *out_size);
 
 ///
+/// Eine Einheit ist gezogen (NetServerMessage -> NetEvent -> NetGameEvent mit
+/// unit_moved, protobuf/game.proto): ihre Id und der Weg, den sie wirklich
+/// gegangen ist (RAD_OnUnitMoved_t), Feld fuer Feld. Geschickt wird es, wenn das
+/// Spiel einen Zug meldet, der wenigstens ein Feld weit kam.
+///
+/// Liefert RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT bei einem Weg ausserhalb von
+/// [2, RAD_PATH_MAX_STEPS] -- ein Weg aus einem Feld ist kein Zug --, sonst
+/// Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitMovedEventToMessage(RAD_UnitId_t unit,
+                                                           const RAD_Path_t *path,
+                                                           uint8_t *out_message,
+                                                           uint16_t capacity,
+                                                           uint16_t *out_size);
+
+///
+/// Eine Einheit hat ein Feld angegriffen (NetServerMessage -> NetEvent ->
+/// NetGameEvent mit unit_attacked, protobuf/game.proto): wer, wohin und was es
+/// bewirkt hat (RAD_AttackResult_t). Geschickt wird es, wenn das Spiel einen
+/// angenommenen Angriff meldet (RAD_OnUnitAttacked_t). x und y liegen in der Welt
+/// und gehen als uint32 hinaus wie beim Aufstellen; ein Ziel nur, wenn eines da
+/// war (has_target). Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitAttackedEventToMessage(const RAD_AttackResult_t *result,
+                                                              uint8_t *out_message,
+                                                              uint16_t capacity,
+                                                              uint16_t *out_size);
+
+///
+/// Eine Einheit ist zerstoert und vom Feld (x, y) genommen (NetServerMessage ->
+/// NetEvent -> NetGameEvent mit unit_destroyed, protobuf/game.proto). Geschickt
+/// wird es, wenn das Spiel es meldet (RAD_OnUnitDestroyed_t) -- das tut es nur
+/// fuer Einheiten auf dem Feld. Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitDestroyedEventToMessage(RAD_UnitId_t unit,
+                                                               int32_t x,
+                                                               int32_t y,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size);
+
+///
 /// Schreibt eine Antwort als ausgehende Nachricht (NetServerMessage mit
 /// gesetztem command_response, protobuf/message.proto).
 ///
@@ -259,6 +302,11 @@ RAD_NetCodecResult_t RAD_SerializeUnitDeployedEventToMessage(const RAD_Unit_t *u
 ///   RAD_SerializePlayersEventToMessage        players -- "users" in Zugreihenfolge,
 ///                                             "number_of_users" darf 0 sein
 ///   RAD_SerializeWorldSizeEventToMessage      world_size -- Breite und Hoehe in Feldern
+///   RAD_SerializeRoundEventToMessage          round -- die laufende Runde und
+///                                             nach wie vielen gewertet wird
+///   RAD_SerializeDeployZoneEventToMessage     deploy_zone -- die Aufstellzone von
+///                                             "user", beide Ecken eingeschlossen
+///                                             (RAD_GameDeployZone)
 ///   RAD_SerializeTilesEventToMessage          tiles -- "number_of_tiles" Felder mit
 ///                                             ihren Attributen, darf 0 sein
 ///
@@ -281,6 +329,34 @@ RAD_NetCodecResult_t RAD_SerializeWorldSizeEventToMessage(uint32_t width,
                                                             uint8_t *out_message,
                                                             uint16_t capacity,
                                                             uint16_t *out_size);
+RAD_NetCodecResult_t RAD_SerializeRoundEventToMessage(uint32_t round,
+                                                        uint32_t rounds,
+                                                        uint8_t *out_message,
+                                                        uint16_t capacity,
+                                                        uint16_t *out_size);
+
+///
+/// Das Ende des Spiels (NetGameFinishedEvent): "winner" -- RAD_USER_NONE bei einem
+/// Unentschieden --, der Grund und je Mitspieler seine Punkte, "users" und
+/// "scores" gleich lang, "number_of_players" darf 0 sein. Sonst wie oben.
+///
+RAD_NetCodecResult_t RAD_SerializeGameFinishedEventToMessage(RAD_UserId_t winner,
+                                                               RAD_GameEndReason_t reason,
+                                                               const RAD_UserId_t *users,
+                                                               const int32_t *scores,
+                                                               size_t number_of_players,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size);
+
+RAD_NetCodecResult_t RAD_SerializeDeployZoneEventToMessage(RAD_UserId_t user,
+                                                             uint32_t min_x,
+                                                             uint32_t min_y,
+                                                             uint32_t max_x,
+                                                             uint32_t max_y,
+                                                             uint8_t *out_message,
+                                                             uint16_t capacity,
+                                                             uint16_t *out_size);
 
 
 ///
@@ -290,6 +366,7 @@ RAD_NetCodecResult_t RAD_SerializeWorldSizeEventToMessage(uint32_t width,
 ///   type       RAD_TileType_t auf NetTileType, VOID eingeschlossen
 ///   unit_id    die Id der Figur, unveraendert, RAD_UNIT_NONE (-1)
 ///              eingeschlossen -- welche Ids es gibt, bestimmt das Spiel.
+///   victory    ob es ein Siegfeld ist (RAD_Tile_t.victory)
 ///
 /// Wie viele Felder in eine Nachricht passen, entscheidet der Aufrufer ueber
 /// "number_of_tiles"; reicht "capacity" nicht, kommt

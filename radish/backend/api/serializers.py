@@ -11,6 +11,7 @@ from .models import (
     Game,
     GameServer,
     Species,
+    TerrainType,
     Unit,
     UnitEntity,
     UnitEntityEquipment,
@@ -44,7 +45,7 @@ UNIT_WEAPON_LIMITS = {
 class GameServerSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameServer
-        fields = ["id", "name", "address", "port", "is_occupied", "control_url"]
+        fields = ["id", "name", "address", "port", "is_occupied", "control_url", "instance_name"]
 
 
 class GameListSerializer(serializers.ModelSerializer):
@@ -94,6 +95,38 @@ class GameJoinSerializer(serializers.Serializer):
     name = serializers.CharField()
     password = serializers.CharField()
     army_id = serializers.IntegerField()
+
+
+class GameFinishedSerializer(serializers.Serializer):
+    """
+    Eingabe fuer das Ende eines Spiels, wie die Spielinstanz es meldet (siehe
+    server_views.GameFinishedView): wer gewonnen und wer verloren hat, je
+    ueber die Spieler-Id (Player.identifier), und welche Instanz es meldet
+    (GameServer.name). Bei einem Unentschieden sind winner und loser beide
+    null -- nur einer von beiden null ist kein Ergebnis.
+
+    "game-instance" ist kein gueltiger Python-Name und wird deshalb in
+    __init__ eingehaengt statt als Klassenattribut. Ob die Ids zu den
+    Spielern des Spiels gehoeren, prueft die View -- das Spiel kennt nur sie.
+    """
+
+    # Pflicht, aber null erlaubt: fehlen darf keiner, null heisst unentschieden.
+    winner = serializers.CharField(max_length=8, allow_null=True)
+    loser = serializers.CharField(max_length=8, allow_null=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["game-instance"] = serializers.CharField(max_length=255)
+
+    def validate(self, attrs):
+        winner, loser = attrs["winner"], attrs["loser"]
+        if (winner is None) != (loser is None):
+            raise serializers.ValidationError(
+                "winner und loser sind entweder beide gesetzt oder bei einem Unentschieden beide null."
+            )
+        if winner is not None and winner == loser:
+            raise serializers.ValidationError("winner und loser muessen verschiedene Spieler sein.")
+        return attrs
 
 
 class GameDetailSerializer(serializers.ModelSerializer):
@@ -161,6 +194,7 @@ class EntityProfileSerializer(serializers.ModelSerializer):
             "name",
             "health",
             "armor",
+            "toughness",
             "strength",
             "accuracy",
             "equipment_slots",
@@ -575,6 +609,7 @@ class AdminEntityProfileSerializer(_CatalogAdminSerializer):
             "name",
             "health",
             "armor",
+            "toughness",
             "strength",
             "accuracy",
             "equipment_slots",
@@ -699,3 +734,18 @@ class AdminEquipmentSerializer(_CatalogAdminSerializer):
     class Meta:
         model = Equipment
         fields = ["id", "species_id", "species_name", "name", "cost", "in_use"]
+
+
+class AdminTerrainTypeSerializer(serializers.ModelSerializer):
+    """
+    Ein Tile-Typ mit seinen Werten. Der Typ selbst (code) steht fest -- er
+    gehoert zum Spiel --, aenderbar sind nur MV, CV und unbegehbar. "label"
+    ist die Bezeichnung fuer den Adminbereich.
+    """
+
+    label = serializers.CharField(source="get_code_display", read_only=True)
+
+    class Meta:
+        model = TerrainType
+        fields = ["code", "label", "movement_modifier", "cover", "impassable"]
+        read_only_fields = ["code"]

@@ -11,6 +11,11 @@ urlpatterns = [
         server_views.ServerView.as_view(),
         name="server-unregister",
     ),
+    path(
+        "servers/<str:name>/game-finished/",
+        server_views.GameFinishedView.as_view(),
+        name="server-game-finished",
+    ),
     path("client/game/", client_views.GameCreateView.as_view(), name="client-game-create"),
     path("client/game/start/", client_views.GameStartView.as_view(), name="client-game-start"),
     path("client/game/join/", client_views.GameJoinView.as_view(), name="client-game-join"),
@@ -75,6 +80,16 @@ urlpatterns = [
         "admin/catalog/equipment/<int:pk>/",
         admin_views.AdminEquipmentDetailView.as_view(),
         name="admin-catalog-equipment-detail",
+    ),
+    path(
+        "admin/terrain/",
+        admin_views.AdminTerrainTypeListView.as_view(),
+        name="admin-terrain-list",
+    ),
+    path(
+        "admin/terrain/<str:code>/",
+        admin_views.AdminTerrainTypeDetailView.as_view(),
+        name="admin-terrain-detail",
     ),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("login/callback/", auth_views.LoginCallbackView.as_view(), name="login-callback"),

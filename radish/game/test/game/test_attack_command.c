@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <string.h>
 #include <radish/game/game.h>
 
 // Der Test gehoert zum Modul und sieht deshalb den Spielzustand: er liest an der
@@ -9,9 +10,12 @@
 
 ///
 /// Der Angriff auf ein Feld (RAD_COMMAND_TYPE_ATTACK): die Fabrik, die Regel
-/// (RAD_GameCheckAttack) und was er an der Einheit hinterlaesst
-/// (RAD_Unit_t.turn). Einen Kampf gibt es noch nicht -- gezaehlt wird nur, dass
-/// sie angegriffen hat.
+/// (RAD_GameCheckAttack), was er an der Einheit hinterlaesst (RAD_Unit_t.turn),
+/// und der Kampf selbst (RAD_AttackResult_t).
+///
+/// **Die Kampftests kennen die Wuerfelfolge nicht und brauchen sie nicht.** Ein
+/// W10 zeigt 1 bis 10: gegen 1 gelingt jeder Wurf, gegen 11 keiner. So laesst
+/// sich jede Stufe eines Schusses erzwingen oder verhindern.
 ///
 /// Ein Spieler genuegt: gibt er ab, ist er wieder dran, und es ist ein neuer Zug
 /// (RAD_GameEndTurn).
@@ -66,6 +70,8 @@ static RAD_UnitId_t bewaffnete_figur(int16_t x, int16_t y, int16_t max_range)
     const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
     bewaffne(figur, 0, max_range);
+    // Ein Feld weit ziehen koennen, wie eine aus einer Armee.
+    RAD_WorldUnitById(&game->world, figur)->movement = 1;
     return figur;
 }
 
@@ -253,6 +259,435 @@ void test_attack_prueft_die_reichweite(void)
     // Ohne Waffen reicht nichts.
     const RAD_UnitId_t unbewaffnet = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 6, 6);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_TARGET_OUT_OF_RANGE, RAD_GameCheckAttack(game, unbewaffnet, 6, 5));
+
+    abbauen();
+}
+
+///
+/// Mitschrift des attacked-Ereignisses (event_manager.h).
+///
+typedef struct
+{
+    int32_t attacked;
+    int32_t destroyed;
+    RAD_AttackResult_t result;
+} RAD_AngriffMitschrift_t;
+
+static RAD_AngriffMitschrift_t angriffe;
+
+static void notiere_angriff(void *user_argument, const RAD_AttackResult_t *result)
+{
+    RAD_AngriffMitschrift_t *m = user_argument;
+    m->attacked++;
+    m->result = *result;
+}
+
+static void notiere_zerstoerung(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    RAD_AngriffMitschrift_t *m = user_argument;
+    (void)unit; (void)x; (void)y;
+    m->destroyed++;
+}
+
+static void ohne_belang(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    (void)user_argument; (void)unit; (void)x; (void)y;
+}
+
+static void ohne_zug(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
+{
+    (void)user_argument; (void)unit; (void)path; (void)result;
+}
+
+/// Meldet die Ereignisse der Einheiten in "angriffe", vorher geleert.
+static void mitschreiben(void)
+{
+    memset(&angriffe, 0, sizeof(angriffe));
+    RAD_EventManagerSubscribeToUnitEvents(events, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &angriffe,
+        .spawned = ohne_belang,
+        .destroyed = notiere_zerstoerung,
+        .moved = ohne_zug,
+        .attacked = notiere_angriff
+    });
+}
+
+///
+/// **Ein angenommener Angriff wird gemeldet** -- einmal, mit Einheit und Ziel,
+/// und erst, nachdem er gezaehlt ist. Ein abgelehnter wird nicht gemeldet.
+///
+void test_attack_meldet_den_angriff(void)
+{
+    aufbauen();
+
+    const RAD_UnitId_t figur = bewaffnete_figur(2, 2, 3);
+
+    mitschreiben();
+
+    // Ausser Reichweite: abgelehnt, nichts gemeldet.
+    greife_an(figur, 7, 7);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.attacked);
+
+    greife_an(figur, 4, 2);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
+    TEST_ASSERT_EQUAL_INT(figur, angriffe.result.attacker);
+    TEST_ASSERT_EQUAL_INT(4, angriffe.result.x);
+    TEST_ASSERT_EQUAL_INT(2, angriffe.result.y);
+
+    // Ein zweiter im selben Zug ist abgelehnt.
+    greife_an(figur, 3, 2);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
+
+    abbauen();
+}
+
+///
+/// Ein Schuetze auf (x, y): ein Mitglied mit Genauigkeit "accuracy" und einer
+/// Waffe, die bis 5 Felder reicht, mit "shots" Schuessen, Staerke "strength"
+/// und Durchschlag "penetration".
+///
+static RAD_UnitId_t schuetze(int16_t x, int16_t y, int16_t accuracy, int16_t shots, int16_t strength, int16_t penetration)
+{
+    const RAD_UnitId_t figur = bewaffnete_figur(x, y, 5);
+    RAD_UnitMember_t *member = &RAD_WorldUnitById(&game->world, figur)->members[0];
+    member->accuracy = accuracy;
+    member->weapons[0].shots = shots;
+    member->weapons[0].strength = strength;
+    member->weapons[0].penetration = penetration;
+    return figur;
+}
+
+///
+/// Ein Ziel auf (x, y) mit "members" Mitgliedern, jedes mit "health"
+/// Lebenspunkten, Ruestung "armor" und Widerstand "toughness". Die Profile
+/// heissen "A", "B", "C" ... in ihrer Reihenfolge.
+///
+static RAD_UnitId_t ziel(int16_t x, int16_t y, int32_t members, int16_t health, int16_t armor, int16_t toughness)
+{
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, figur);
+    unit->number_of_members = members;
+    for(int32_t m = 0; m < members; ++m)
+    {
+        unit->members[m].profile[0] = (char)('A' + m);
+        unit->members[m].health = health;
+        unit->members[m].health_max = health;
+        unit->members[m].armor = armor;
+        unit->members[m].toughness = toughness;
+    }
+    return figur;
+}
+
+static const RAD_Unit_t* einheit(RAD_UnitId_t figur)
+{
+    return RAD_WorldUnitById(&game->world, figur);
+}
+
+/// Stufe 1 scheitert immer: kein Treffer, keine weitere Stufe, kein Schaden.
+void test_kampf_verfehlt(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 11, 5, 10, 10);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 3, 0, 0);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(angreifende, angriffe.result.attacker);
+    TEST_ASSERT_EQUAL_INT(getroffene, angriffe.result.target);
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.hits);
+    TEST_ASSERT_EQUAL_INT(3, einheit(getroffene)->members[0].health);
+
+    abbauen();
+}
+
+/// Stufe 2 scheitert immer: getroffen, aber nicht durch die Ruestung.
+void test_kampf_prallt_an_der_ruestung_ab(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 5, 10, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 3, 11, 0);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.hits);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.penetrations);
+    TEST_ASSERT_EQUAL_INT(3, einheit(getroffene)->members[0].health);
+
+    abbauen();
+}
+
+/// Durchschlag zaehlt zum Wurf: gegen Ruestung 11 kommt Durchschlag 10 immer durch.
+void test_kampf_durchschlag_hilft_gegen_ruestung(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 5, 0, 10);
+    ziel(4, 2, 1, 3, 11, 11);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.penetrations);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.wounds);
+
+    abbauen();
+}
+
+/// Stufe 3 scheitert immer: durch die Ruestung, aber ohne Wirkung.
+void test_kampf_ohne_wirkung_gegen_den_widerstand(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 5, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 3, 0, 11);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.penetrations);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.wounds);
+    TEST_ASSERT_EQUAL_INT(3, einheit(getroffene)->members[0].health);
+
+    abbauen();
+}
+
+/// Alles gelingt: jeder Schuss kostet einen Lebenspunkt, der Hoechstwert bleibt.
+void test_kampf_jeder_wirkende_schuss_kostet_einen_lebenspunkt(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 3, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 5, 0, 0);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(3, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(3, angriffe.result.hits);
+    TEST_ASSERT_EQUAL_INT(3, angriffe.result.penetrations);
+    TEST_ASSERT_EQUAL_INT(3, angriffe.result.wounds);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.members_killed);
+    TEST_ASSERT_FALSE(angriffe.result.target_destroyed);
+    TEST_ASSERT_EQUAL_INT(2, einheit(getroffene)->members[0].health);
+    TEST_ASSERT_EQUAL_INT(5, einheit(getroffene)->members[0].health_max);
+
+    abbauen();
+}
+
+///
+/// Ein Mitglied ohne Lebenspunkte ist weg; die anderen ruecken auf, in ihrer
+/// Reihenfolge. Welches getroffen wird, entscheidet der Wurf -- geprueft wird
+/// deshalb, was davon unabhaengig gilt.
+///
+void test_kampf_ein_mitglied_faellt_und_die_anderen_ruecken_auf(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 1, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 3, 1, 0, 0);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.members_killed);
+    TEST_ASSERT_FALSE(angriffe.result.target_destroyed);
+
+    const RAD_Unit_t *unit = einheit(getroffene);
+    TEST_ASSERT_EQUAL_INT(2, unit->number_of_members);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, unit->state);
+    TEST_ASSERT_TRUE(unit->members[0].profile[0] < unit->members[1].profile[0]);
+    TEST_ASSERT_EQUAL_INT(1, unit->members[0].health);
+    TEST_ASSERT_EQUAL_INT(1, unit->members[1].health);
+    TEST_ASSERT_EQUAL_INT(0, unit->members[2].profile[0]);
+
+    abbauen();
+}
+
+///
+/// Das letzte Mitglied faellt: die Einheit ist zerstoert und vom Feld, und der
+/// Angriff ist zu Ende -- die uebrigen neun Schuesse werden nicht abgegeben.
+///
+void test_kampf_die_einheit_faellt_und_der_angriff_endet(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 10, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 1, 0, 0);
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.members_killed);
+    TEST_ASSERT_TRUE(angriffe.result.target_destroyed);
+    TEST_ASSERT_EQUAL_INT(getroffene, angriffe.result.target);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.destroyed);
+
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DESTROYED, einheit(getroffene)->state);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&game->world, 4, 2)->unit);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
+
+    abbauen();
+}
+
+/// Faellt die letzte Einheit eines Spielers, hat er verloren.
+void test_kampf_die_letzte_einheit_faellt_und_das_spiel_endet(void)
+{
+    aufbauen();
+    const RAD_UserId_t verteidiger = (RAD_UserId_t)0x0815;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, verteidiger));
+
+    RAD_Unit_t values = { .number_of_members = 1 };
+    RAD_UnitId_t angreifende = RAD_UNIT_NONE;
+    RAD_UnitId_t getroffene = RAD_UNIT_NONE;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &angreifende));
+    values.members[0].health = 1;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, verteidiger, &values, &getroffene));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, getroffene, 4, 2));
+
+    bewaffne(angreifende, 0, 5);
+    RAD_UnitMember_t *member = &RAD_WorldUnitById(&game->world, angreifende)->members[0];
+    member->accuracy = 1;
+    member->weapons[0].shots = 1;
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_TRUE(RAD_GameIsFinished(game));
+    TEST_ASSERT_EQUAL_UINT64(angreifer, RAD_GameWinner(game));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_END_ELIMINATED, RAD_GameEndReason(game));
+
+    abbauen();
+}
+
+///
+/// Es feuert jede Waffe jedes Mitglieds, die das Feld erreicht -- mit allen
+/// ihren Schuessen und der Genauigkeit ihres Traegers. Eine Waffe ausser
+/// Reichweite schweigt.
+///
+void test_kampf_jede_waffe_in_reichweite_feuert(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 11, 2, 0, 0);
+    ziel(4, 2, 1, 100, 11, 11);
+
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, angreifende);
+    // Das erste Mitglied traegt dazu eine Waffe, die nur das Nachbarfeld erreicht.
+    unit->members[0].number_of_weapons = 2;
+    unit->members[0].weapons[1].max_range = 1;
+    unit->members[0].weapons[1].shots = 7;
+    // Ein zweites Mitglied, das immer trifft, mit drei Schuessen.
+    unit->number_of_members = 2;
+    unit->members[1] = unit->members[0];
+    unit->members[1].accuracy = 1;
+    unit->members[1].number_of_weapons = 1;
+    unit->members[1].weapons[0].shots = 3;
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(3, angriffe.result.hits);
+
+    abbauen();
+}
+
+/// Ein leeres Feld: der Angriff zaehlt, aber es wird nicht gewuerfelt.
+void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 5, 0, 0);
+    const uint64_t vorher = game->dice.state;
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_TRUE(hat_angegriffen(angreifende));
+    TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, angriffe.result.target);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_UINT64(vorher, game->dice.state);
+
+    abbauen();
+}
+
+/// Eine eigene Einheit wird getroffen wie jede andere.
+void test_kampf_trifft_auch_eigene_einheiten(void)
+{
+    aufbauen();
+    mitschreiben();
+
+    RAD_Unit_t values = { .number_of_members = 1 };
+    RAD_UnitId_t angreifende = RAD_UNIT_NONE;
+    RAD_UnitId_t eigene = RAD_UNIT_NONE;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &angreifende));
+    values.members[0].health = 4;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &eigene));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 4, 2));
+
+    bewaffne(angreifende, 0, 5);
+    RAD_UnitMember_t *member = &RAD_WorldUnitById(&game->world, angreifende)->members[0];
+    member->accuracy = 1;
+    member->weapons[0].shots = 1;
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(eigene, angriffe.result.target);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.wounds);
+    TEST_ASSERT_EQUAL_INT(3, einheit(eigene)->members[0].health);
+
+    abbauen();
+}
+
+/// Zum selben Seed derselbe Kampf: der Wuerfel ist der einzige Zufall.
+void test_kampf_derselbe_seed_derselbe_kampf(void)
+{
+    RAD_AttackResult_t ergebnisse[2];
+    for(int32_t lauf = 0; lauf < 2; ++lauf)
+    {
+        aufbauen();
+        mitschreiben();
+        RAD_DiceSeed(&game->dice, 42);
+        const RAD_UnitId_t angreifende = schuetze(2, 2, 5, 20, 3, 2);
+        ziel(4, 2, 5, 3, 5, 5);
+
+        greife_an(angreifende, 4, 2);
+        ergebnisse[lauf] = angriffe.result;
+        abbauen();
+    }
+
+    TEST_ASSERT_EQUAL_INT(ergebnisse[0].hits, ergebnisse[1].hits);
+    TEST_ASSERT_EQUAL_INT(ergebnisse[0].penetrations, ergebnisse[1].penetrations);
+    TEST_ASSERT_EQUAL_INT(ergebnisse[0].wounds, ergebnisse[1].wounds);
+    TEST_ASSERT_EQUAL_INT(ergebnisse[0].members_killed, ergebnisse[1].members_killed);
+    // Bei 20 Schuessen mit 60 % Trefferchance faellt nicht alles auf eine Stufe.
+    TEST_ASSERT_TRUE(ergebnisse[0].hits > 0);
+    TEST_ASSERT_TRUE(ergebnisse[0].hits < 20);
+}
+
+///
+/// **Deckung erschwert den Treffer** (RAD_Terrain_t.cover): gezaehlt wird die des
+/// Zielfeldes, nicht die des Schuetzen. Genauigkeit 1 trifft offen immer; mit
+/// Deckung 10 braucht es eine 11, und die wuerfelt kein W10.
+///
+void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t offen = schuetze(2, 2, 1, 5, 0, 0);
+    ziel(4, 2, 1, 3, 11, 0);
+
+    // Deckung unter dem Schuetzen zaehlt nicht.
+    RAD_WorldTileAt(&game->world, 2, 2)->terrain.cover = 10;
+    greife_an(offen, 4, 2);
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.hits);
+
+    const RAD_UnitId_t gedeckt = schuetze(2, 4, 1, 5, 0, 0);
+    ziel(4, 4, 1, 3, 11, 0);
+    RAD_WorldTileAt(&game->world, 4, 4)->terrain.cover = 10;
+    greife_an(gedeckt, 4, 4);
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.hits);
 
     abbauen();
 }

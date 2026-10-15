@@ -18,7 +18,7 @@
     "\"min_reichweite\":0,\"max_reichweite\":24,\"durchschlag\":2}"
 
 #define MITGLIED(profil, waffen) \
-    "{\"profil\":\"" profil "\",\"leben\":1,\"ruestung\":3,\"staerke\":3,\"genauigkeit\":4," \
+    "{\"profil\":\"" profil "\",\"leben\":1,\"ruestung\":3,\"widerstand\":3,\"staerke\":3,\"genauigkeit\":4," \
     "\"waffen\":[" waffen "],\"ausruestung\":[]}"
 
 #define EINHEIT(typ, mitglieder) \
@@ -32,8 +32,26 @@
     "{\"name\":\"" name "\",\"kennung\":\"" kennung "\"," \
     "\"armee\":{\"name\":\"Armee " name "\",\"spezies\":\"Menschen\",\"einheiten\":[" einheiten "]}}"
 
+/// Ein Eintrag in "gelaende", und alle zehn Typen je einmal.
+#define TERRAIN(typ, mv, cv, unbegehbar) \
+    "{\"typ\":\"" typ "\",\"bewegung\":" mv ",\"deckung\":" cv ",\"unbegehbar\":" unbegehbar "}"
+
+#define TERRAIN_OHNE_ROAD \
+    TERRAIN("void", "0", "0", "true") "," TERRAIN("ground", "0", "1", "false") "," \
+    TERRAIN("water_shallow", "-1", "0", "false") "," TERRAIN("mud", "-1", "0", "false") "," \
+    TERRAIN("meadow", "0", "0", "false") "," TERRAIN("forest", "-1", "2", "false") "," \
+    TERRAIN("water_deep", "0", "0", "true") "," TERRAIN("city", "0", "2", "false") "," \
+    TERRAIN("fortification", "-1", "3", "false")
+
+#define GELAENDE "[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "0", "false") "]"
+
 #define ZWEI_SPIELER(erster) \
-    "{\"spieldaten\":[" erster "," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]}"
+    "{\"spieldaten\":[" erster "," SPIELER("b", "bbbbbbbb", EINHEIT_1) "],\"gelaende\":" GELAENDE "}"
+
+/// Zwei Spieler wie immer, und "gelaende" so, wie der Test es will.
+#define MIT_GELAENDE(gelaende) \
+    "{\"spieldaten\":[" SPIELER("a", "aaaaaaaa", EINHEIT_1) "," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]," \
+    "\"gelaende\":" gelaende "}"
 
 /// Ein Spielstart ist zu gross fuer den Stapel (start_game.h) -- einer fuer alle
 /// Tests, frisch vor jedem.
@@ -53,7 +71,7 @@ void test_spielstart_liest_beide_spieler(void)
         "{\"spieldaten\":["
         SPIELER("test-user", "aB3xK9pQ", EINHEIT_1 "," EINHEIT_2) ","
         SPIELER("test-user-2", "Zz1Yy2Xx", EINHEIT_1)
-        "]}"));
+        "],\"gelaende\":" GELAENDE "}"));
 
     TEST_ASSERT_EQUAL_STRING("test-user", start->players[0].name);
     TEST_ASSERT_EQUAL_STRING("aB3xK9pQ", start->players[0].identifier);
@@ -76,7 +94,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
         SPIELER("a", "aaaaaaaa",
             "{\"typ\":\"Transporter\",\"bewegung\":12,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
             "\"entitaeten\":["
-              "{\"profil\":\"Anfuehrer\",\"leben\":2,\"ruestung\":3,\"staerke\":4,\"genauigkeit\":5,"
+              "{\"profil\":\"Anfuehrer\",\"leben\":2,\"ruestung\":3,\"widerstand\":6,\"staerke\":4,\"genauigkeit\":5,"
               "\"waffen\":["
                 "{\"name\":\"Kanone\",\"klasse\":\"super_heavy\",\"schuesse\":7,\"staerke\":9,"
                 "\"min_reichweite\":6,\"max_reichweite\":48,\"durchschlag\":3}"
@@ -99,6 +117,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
     TEST_ASSERT_EQUAL_STRING("Anfuehrer", member->profile);
     TEST_ASSERT_EQUAL_INT(2, member->health);
     TEST_ASSERT_EQUAL_INT(3, member->armor);
+    TEST_ASSERT_EQUAL_INT(6, member->toughness);
     TEST_ASSERT_EQUAL_INT(4, member->strength);
     TEST_ASSERT_EQUAL_INT(5, member->accuracy);
     TEST_ASSERT_EQUAL_INT(1, member->number_of_weapons);
@@ -125,14 +144,79 @@ void test_spielstart_uebergeht_unbekannte_schluessel(void)
         "{\"rang\":3,\"name\":\"a\",\"kennung\":\"aaaaaaaa\","
         " \"armee\":{\"farbe\":\"rot\",\"name\":\"x\",\"einheiten\":["
         "{\"rolle\":\"x\",\"typ\":\"Trupp\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
-        "\"entitaeten\":[{\"rang\":1,\"profil\":\"S\",\"leben\":1,\"ruestung\":1,\"staerke\":1,\"genauigkeit\":1,"
+        "\"entitaeten\":[{\"rang\":1,\"profil\":\"S\",\"leben\":1,\"ruestung\":1,\"widerstand\":3,\"staerke\":1,\"genauigkeit\":1,"
         "\"waffen\":[],\"ausruestung\":[{\"name\":\"M\",\"wirkung\":2}]}]}"
         "]}},"
         SPIELER("b", "bbbbbbbb", EINHEIT_1)
-        "]}"));
+        "],\"gelaende\":[" TERRAIN_OHNE_ROAD ","
+        "{\"farbe\":\"grau\",\"typ\":\"road\",\"bewegung\":1,\"deckung\":0,\"unbegehbar\":false}]}"));
 
     TEST_ASSERT_EQUAL_STRING("a", start->players[0].name);
     TEST_ASSERT_EQUAL_STRING("S", start->players[0].units[0].members[0].profile);
+
+    RAD_DestroyGameStart(&start);
+}
+
+///
+/// Das Gelaende landet je Typ in der Tabelle (RAD_GameStart_t.terrain), MV mit
+/// Vorzeichen.
+///
+void test_spielstart_liest_das_gelaende(void)
+{
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_1))));
+
+    const RAD_Terrain_t *wald = &start->terrain[RAD_TILE_TYPE_FOREST];
+    TEST_ASSERT_EQUAL_INT(-1, wald->movement_modifier);
+    TEST_ASSERT_EQUAL_INT(2, wald->cover);
+    TEST_ASSERT_FALSE(wald->impassable);
+
+    const RAD_Terrain_t *strasse = &start->terrain[RAD_TILE_TYPE_ROAD];
+    TEST_ASSERT_EQUAL_INT(1, strasse->movement_modifier);
+    TEST_ASSERT_EQUAL_INT(0, strasse->cover);
+
+    TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_WATER_DEEP].impassable);
+    TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_VOID].impassable);
+    TEST_ASSERT_EQUAL_INT(3, start->terrain[RAD_TILE_TYPE_FORTIFICATION].cover);
+
+    RAD_DestroyGameStart(&start);
+}
+
+///
+/// Jeder Typ genau einmal, jeder Eintrag mit allen vier Schluesseln -- sonst ist
+/// es kein Spielstart.
+///
+void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void)
+{
+    static const char *const fehlerhaft[] = {
+        // ohne "gelaende"
+        "{\"spieldaten\":[" SPIELER("a", "aaaaaaaa", EINHEIT_1) "," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]}",
+        // kein Array
+        MIT_GELAENDE("{}"),
+        // ein Typ fehlt
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "]"),
+        // ein Typ doppelt
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "0", "false") "," TERRAIN("road", "1", "0", "false") "]"),
+        // unbekannter Typ
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("lava", "1", "0", "false") "]"),
+        // ohne "deckung"
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD ",{\"typ\":\"road\",\"bewegung\":1,\"unbegehbar\":false}]"),
+        // Deckung negativ, Bewegung keine ganze Zahl, unbegehbar kein Wahrheitswert
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "-1", "false") "]"),
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1.5", "0", "false") "]"),
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "0", "0") "]"),
+        // Bewegung ausserhalb von int16_t
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "-32769", "0", "false") "]"),
+    };
+
+    for(size_t i=0;i < sizeof(fehlerhaft) / sizeof(fehlerhaft[0]); ++i)
+    {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(RAD_GAME_START_ERROR_SCHEMA, lade(fehlerhaft[i]), fehlerhaft[i]);
+    }
+
+    // Die Grenzen selbst gehen.
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK,
+        lade(MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "-32768", "32767", "true") "]")));
+    TEST_ASSERT_EQUAL_INT(-32768, start->terrain[RAD_TILE_TYPE_ROAD].movement_modifier);
 
     RAD_DestroyGameStart(&start);
 }
@@ -167,7 +251,11 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // Mitglied ohne "ausruestung"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("Trupp",
-            "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"staerke\":3,\"genauigkeit\":4,\"waffen\":[]}"))),
+            "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"widerstand\":3,\"staerke\":3,\"genauigkeit\":4,\"waffen\":[]}"))),
+        // Mitglied ohne "widerstand"
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("Trupp",
+            "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"staerke\":3,\"genauigkeit\":4,"
+            "\"waffen\":[],\"ausruestung\":[]}"))),
         // leerer Einheitentyp
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("", MITGLIED("S", "")))),
         // Wert negativ, zu gross, keine ganze Zahl, ein String
@@ -191,7 +279,7 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED("S", WAFFE("G", "gigantisch"))))),
         // Ausruestung ohne Namen
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T",
-            "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"staerke\":3,\"genauigkeit\":4,"
+            "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"widerstand\":3,\"staerke\":3,\"genauigkeit\":4,"
             "\"waffen\":[],\"ausruestung\":[{}]}"))),
     };
 
@@ -297,6 +385,11 @@ void test_spielstart_aus_datei(void)
     TEST_ASSERT_EQUAL_STRING("Transporter", transporter->name);
     TEST_ASSERT_EQUAL_INT(2, transporter->transport_capacity);
     TEST_ASSERT_EQUAL_INT(0, transporter->members[0].number_of_weapons);
+
+    // Und das Gelaende.
+    TEST_ASSERT_EQUAL_INT(-1, gelesen->terrain[RAD_TILE_TYPE_FOREST].movement_modifier);
+    TEST_ASSERT_EQUAL_INT(2, gelesen->terrain[RAD_TILE_TYPE_FOREST].cover);
+    TEST_ASSERT_TRUE(gelesen->terrain[RAD_TILE_TYPE_WATER_DEEP].impassable);
 
     RAD_DestroyGameStart(&gelesen);
 }

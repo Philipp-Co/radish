@@ -7,8 +7,8 @@
 /// Weltdefinition; diese zwei Zahlen bemessen nur den Speicher dafuer, und der
 /// Loader weist eine groessere Welt ab.
 ///
-#define RAD_WORLD_WIDTH  8
-#define RAD_WORLD_HEIGHT 8
+#define RAD_WORLD_WIDTH  16
+#define RAD_WORLD_HEIGHT 16
 
 ///
 /// Plaetze im Einheitenpool, ueber das ganze Spiel. Gezaehlt wird jede Einheit, die
@@ -25,13 +25,40 @@
 
 ///
 /// Obergrenze der Mitspieler. Mehr als RAD_MAX_UNITS koennten es ohnehin nie
-/// werden, aber viel frueher ist Schluss: acht Spieler auf 8x8 Tiles.
+/// werden, aber viel frueher ist Schluss: acht Spieler.
 ///
 /// Sie steht hier neben der Groesse der Welt und nicht beim Server, seit das
 /// Spiel selbst weiss, wer mitspielt (turn.h) -- wie viele das sein duerfen,
 /// ist damit eine Festlegung der Regeln und keine des Programms, das sie haelt.
 ///
 #define RAD_MAX_PLAYERS 8
+
+///
+/// Wie viele mitspielen duerfen: genau zwei, einer je Kante (RAD_PlayerEdge_t,
+/// model/player/player.h). Eine Regel des Spiels, enger als RAD_MAX_PLAYERS --
+/// die Reihe des Zuges (turn.h) bleibt allgemein, die Grenze zieht
+/// RAD_GameAddPlayer.
+///
+#define RAD_GAME_NUMBER_OF_PLAYERS 2
+
+///
+/// Wie tief die Aufstellzone eines Spielers von seiner Kante ins Feld reicht, in
+/// Spalten: die Kante selbst mitgezaehlt (RAD_GameDeployZone).
+///
+#define RAD_DEPLOY_ZONE_DEPTH 4
+
+///
+/// Nach wie vielen Runden gewertet wird (RAD_GameScore): ist die letzte davon
+/// um, ist das Spiel vorbei.
+///
+#define RAD_GAME_NUMBER_OF_ROUNDS 10
+
+///
+/// Punkte je Siegfeld (RAD_GameScore): eine punktende Einheit auf dem Feld, und
+/// je eine auf einem der vier Nachbarfelder.
+///
+#define RAD_VICTORY_TILE_POINTS 20
+#define RAD_VICTORY_NEIGHBOUR_POINTS 5
 
 
 #endif

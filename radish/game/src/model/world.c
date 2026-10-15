@@ -3,7 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t previous_type, int32_t previous_z, const RAD_Tile_t *tile);
+static void RAD_WorldPublishTileTransition(RAD_World_t *world, const RAD_Tile_t *previous, const RAD_Tile_t *tile);
+static bool RAD_WorldTerrainEqual(const RAD_Terrain_t *a, const RAD_Terrain_t *b);
 static bool RAD_WorldUnitValuesFit(const RAD_Unit_t *unit, int32_t min_members);
 static bool RAD_WorldNameFits(const char name[RAD_UNIT_NAME_MAX]);
 
@@ -13,6 +14,9 @@ void RAD_CreateWorld(RAD_World_t *world, RAD_EventManager_t *event_manager, RAD_
     world->height = RAD_WORLD_HEIGHT;
     world->units = units;
     world->event_manager = event_manager;
+
+    // Kein Gelaende hat Werte, bis der Spielstart sie bringt (world.h).
+    memset(world->terrain, 0, sizeof(world->terrain));
 }
 
 void RAD_InitWorld(RAD_World_t *world)
@@ -53,12 +57,15 @@ bool RAD_ResetWorldToSize(RAD_World_t *world, int32_t width, int32_t height)
         for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
         {
             const bool inside = (x < width) && (y < height);
+            const RAD_TileType_t type = inside ? RAD_TILE_TYPE_GROUND : RAD_TILE_TYPE_VOID;
             world->tiles[y][x] = (RAD_Tile_t){
                 .x = x,
                 .y = y,
                 .z = 0,
-                .type = inside ? RAD_TILE_TYPE_GROUND : RAD_TILE_TYPE_VOID,
-                .unit = RAD_UNIT_NONE
+                .type = type,
+                .unit = RAD_UNIT_NONE,
+                .victory = false,
+                .terrain = RAD_WorldTerrainOf(world, type)
             };
         }
     }
@@ -112,19 +119,19 @@ bool RAD_WorldAddTile(RAD_World_t *world, int32_t x, int32_t y, int32_t z, RAD_T
         return false;
     }
 
-    const RAD_TileType_t previous = tile->type;
-    if((previous == type) && (tile->z == z))
+    if((tile->type == type) && (tile->z == z))
     {
         // Derselbe Stand: geschrieben wird nichts und gemeldet auch nichts. Ein
         // Ereignis ohne Aenderung waere eine Nachricht ohne Inhalt.
         return true;
     }
 
-    const int32_t previous_z = tile->z;
+    const RAD_Tile_t before = *tile;
     tile->type = type;
     tile->z = z;
+    tile->terrain = RAD_WorldTerrainOf(world, type);
 
-    RAD_WorldPublishTileTransition(world, previous, previous_z, tile);
+    RAD_WorldPublishTileTransition(world, &before, tile);
 
     return true;
 }
@@ -151,12 +158,13 @@ bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y)
         return false;
     }
 
-    // Nur der Typ. x, y, z und die Einheit bleiben stehen: weggenommen wird das
-    // Gelaende und nicht das Feld.
-    const RAD_TileType_t previous = tile->type;
+    // Nur der Typ und seine Werte. x, y, z und die Einheit bleiben stehen:
+    // weggenommen wird das Gelaende und nicht das Feld.
+    const RAD_Tile_t before = *tile;
     tile->type = RAD_TILE_TYPE_VOID;
+    tile->terrain = RAD_WorldTerrainOf(world, RAD_TILE_TYPE_VOID);
 
-    RAD_WorldPublishTileTransition(world, previous, tile->z, tile);
+    RAD_WorldPublishTileTransition(world, &before, tile);
 
     return true;
 }
@@ -177,9 +185,13 @@ void RAD_WorldPublishTileChanges(
             // Ausserhalb der alten Welt war nichts. Ausserhalb der neuen steht nach
             // RAD_ResetWorldToSize schon VOID im Speicher, das Feld selbst sagt es.
             const bool was_inside = (x < previous_width) && (y < previous_height);
-            const RAD_TileType_t previous_type = was_inside ? previous[y][x].type : RAD_TILE_TYPE_VOID;
+            RAD_Tile_t before = previous[y][x];
+            if(!was_inside)
+            {
+                before.type = RAD_TILE_TYPE_VOID;
+            }
 
-            RAD_WorldPublishTileTransition(world, previous_type, previous[y][x].z, &world->tiles[y][x]);
+            RAD_WorldPublishTileTransition(world, &before, &world->tiles[y][x]);
         }
     }
 }
@@ -187,12 +199,13 @@ void RAD_WorldPublishTileChanges(
 ///
 /// Die Tabelle aus world.h, an einer Stelle: RAD_WorldAddTile, RAD_WorldRemoveTile
 /// und RAD_WorldPublishTileChanges melden alle ueber sie, damit ein Uebergang nicht
-/// je nach Weg anders heisst. Die Hoehe zaehlt nur zwischen zwei Feldern mit
-/// Gelaende -- was nicht da ist, hat keine Hoehe zu melden.
+/// je nach Weg anders heisst. Hoehe, Siegfeld und die Werte des Gelaendes zaehlen
+/// nur zwischen zwei Feldern mit Gelaende -- was nicht da ist, hat nichts davon zu
+/// melden. "previous" ist der Stand davor, als Kopie.
 ///
-static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t previous_type, int32_t previous_z, const RAD_Tile_t *tile)
+static void RAD_WorldPublishTileTransition(RAD_World_t *world, const RAD_Tile_t *previous, const RAD_Tile_t *tile)
 {
-    const bool was_void = (previous_type == RAD_TILE_TYPE_VOID);
+    const bool was_void = (previous->type == RAD_TILE_TYPE_VOID);
     const bool is_void = (tile->type == RAD_TILE_TYPE_VOID);
 
     if(was_void && is_void)
@@ -208,10 +221,52 @@ static void RAD_WorldPublishTileTransition(RAD_World_t *world, RAD_TileType_t pr
     {
         RAD_EventManagerPublishTileRemovedFromGameEvent(world->event_manager, tile);
     }
-    else if((previous_type != tile->type) || (previous_z != tile->z))
+    else if((previous->type != tile->type) || (previous->z != tile->z) || (previous->victory != tile->victory)
+            || !RAD_WorldTerrainEqual(&previous->terrain, &tile->terrain))
     {
         RAD_EventManagerPublishTileStateChangeEvent(world->event_manager, tile);
     }
+}
+
+RAD_Terrain_t RAD_WorldTerrainOf(const RAD_World_t *world, RAD_TileType_t type)
+{
+    const int32_t index = (int32_t)type;
+    if(index < 0 || index >= RAD_NUMBER_OF_TILE_TYPES)
+    {
+        return world->terrain[RAD_TILE_TYPE_VOID];
+    }
+    return world->terrain[index];
+}
+
+void RAD_WorldSetTerrain(RAD_World_t *world, const RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES])
+{
+    memcpy(world->terrain, terrain, sizeof(world->terrain));
+
+    // Der ganze Speicher, wie in RAD_ResetWorldToSize: auch ein Feld ausserhalb der
+    // Welt soll nicht mit alten Werten dastehen. Melden kann sich davon keins -- es
+    // ist VOID, und VOID meldet nichts.
+    for(int32_t y=0;y < RAD_WORLD_HEIGHT; ++y)
+    {
+        for(int32_t x=0;x < RAD_WORLD_WIDTH; ++x)
+        {
+            RAD_Tile_t *tile = &world->tiles[y][x];
+            const RAD_Tile_t before = *tile;
+            tile->terrain = RAD_WorldTerrainOf(world, tile->type);
+
+            RAD_WorldPublishTileTransition(world, &before, tile);
+        }
+    }
+}
+
+///
+/// Feld fuer Feld und nicht mit memcmp: zwischen den Feldern der Struktur liegt
+/// Fuellung, und die ist nicht zugesagt gleich.
+///
+static bool RAD_WorldTerrainEqual(const RAD_Terrain_t *a, const RAD_Terrain_t *b)
+{
+    return (a->movement_modifier == b->movement_modifier)
+        && (a->cover == b->cover)
+        && (a->impassable == b->impassable);
 }
 
 RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *values, RAD_UserId_t owner)
@@ -246,6 +301,13 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
     unit->turn.deployed = 0;
     unit->turn.moved = 0;
     unit->turn.attacked = 0;
+
+    // Mit vollen Lebenspunkten ins Spiel: was ein Mitglied hoechstens hat, ist,
+    // was es mitbringt. Ab hier sinkt nur noch "health" (control/attack_unit.c).
+    for(int32_t m = 0; m < unit->number_of_members; ++m)
+    {
+        unit->members[m].health_max = unit->members[m].health;
+    }
 
     return id;
 }

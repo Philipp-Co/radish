@@ -1,16 +1,22 @@
 #include <radish/view/terrain_info_view.h>
 #include <radish/control/terrain.h>
 #include <radish/view/abbreviations.h>
-#include <radish/view/text_view.h>
+#include <radish/view/typewriter_view.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 
 ///
-/// Abstand zum Rand und zwischen den Zeilen, in Pixeln.
+/// Abstand zum Rand und zwischen den Zeilen, in Pixeln. Der Abstand zum Rand
+/// zaehlt ab der Aussenkante, der Rahmen liegt also darin.
 ///
-#define RAD_TERRAIN_INFO_VIEW_PADDING 4
-#define RAD_TERRAIN_INFO_VIEW_GAP 4
+#define RAD_TERRAIN_INFO_VIEW_PADDING 12
+#define RAD_TERRAIN_INFO_VIEW_GAP 6
+
+///
+/// Wie dick der weisse Rahmen ist, in Pixeln, nach innen gezeichnet.
+///
+#define RAD_TERRAIN_INFO_VIEW_BORDER 2
 
 ///
 /// Platz fuer einen Wert als Text samt abschliessender Null: "MV -2147483648".
@@ -29,15 +35,13 @@
 struct RAD_TerrainInfoView
 {
     ///
-    /// Die Breite, die sie hoechstens belegt (RAD_CreateTerrainInfoView), und die
-    /// Flaeche, die sie gerade belegt: so breit wie ihr breitester Text samt
-    /// Rand (RAD_TerrainInfoViewFitWidth).
+    /// Die Flaeche, die sie belegt: so breit wie die aus
+    /// RAD_CreateTerrainInfoView, so hoch wie ihr Inhalt.
     ///
-    int32_t max_width;
     SDL_Rect area;
-    RAD_TextView_t *name;
-    RAD_TextView_t *movement_modifier;
-    RAD_TextView_t *cover;
+    RAD_TypewriterView_t *name;
+    RAD_TypewriterView_t *movement_modifier;
+    RAD_TypewriterView_t *cover;
 
     ///
     /// Was gerade im Fokus steht (model/focus.h). Gehoert dem Aufrufer.
@@ -57,9 +61,8 @@ struct RAD_TerrainInfoView
 };
 
 
-static void RAD_TerrainInfoViewFitWidth(RAD_TerrainInfoView_t *terrain_info_view);
 static bool RAD_TerrainInfoViewSyncFocus(RAD_TerrainInfoView_t *terrain_info_view);
-static bool RAD_TerrainInfoViewSetValue(RAD_TerrainInfoView_t *terrain_info_view, RAD_TextView_t *text_view, const char *abbreviation, const char *value);
+static bool RAD_TerrainInfoViewSetValue(RAD_TypewriterView_t *typewriter_view, const char *abbreviation, const char *value);
 
 
 RAD_TerrainInfoView_t* RAD_CreateTerrainInfoView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font, const RAD_ClientFocus_t *focus)
@@ -86,14 +89,11 @@ RAD_TerrainInfoView_t* RAD_CreateTerrainInfoView(int32_t x, int32_t y, int32_t w
     const int32_t text_width = width - 2 * RAD_TERRAIN_INFO_VIEW_PADDING;
     const int32_t first_top = top + RAD_TERRAIN_INFO_VIEW_PADDING;
 
-    // Die TextViews bekommen die volle Breite; was die TerrainInfoView schmaler
-    // ist, schneidet RAD_UpdateTerrainInfoView ab.
     *terrain_info_view = (struct RAD_TerrainInfoView){
-        .max_width = width,
         .area = { .x = x, .y = top, .w = width, .h = content_height },
-        .name = RAD_CreateTextView(text_x, first_top, text_width, line, font),
-        .movement_modifier = RAD_CreateTextView(text_x, first_top + step, text_width, line, font),
-        .cover = RAD_CreateTextView(text_x, first_top + 2 * step, text_width, line, font),
+        .name = RAD_CreateTypewriterView(text_x, first_top, text_width, line),
+        .movement_modifier = RAD_CreateTypewriterView(text_x, first_top + step, text_width, line),
+        .cover = RAD_CreateTypewriterView(text_x, first_top + 2 * step, text_width, line),
         .focus = focus,
         .synced = false,
         .shown_tile = NULL,
@@ -102,8 +102,17 @@ RAD_TerrainInfoView_t* RAD_CreateTerrainInfoView(int32_t x, int32_t y, int32_t w
         .shown_cover = 0
     };
 
-    if(terrain_info_view->name == NULL || terrain_info_view->movement_modifier == NULL || terrain_info_view->cover == NULL
-       || !RAD_TerrainInfoViewSyncFocus(terrain_info_view))
+    if(terrain_info_view->name == NULL || terrain_info_view->movement_modifier == NULL || terrain_info_view->cover == NULL)
+    {
+        RAD_DestroyTerrainInfoView(&terrain_info_view);
+        return NULL;
+    }
+
+    RAD_TypewriterViewSetFont(terrain_info_view->name, font);
+    RAD_TypewriterViewSetFont(terrain_info_view->movement_modifier, font);
+    RAD_TypewriterViewSetFont(terrain_info_view->cover, font);
+
+    if(!RAD_TerrainInfoViewSyncFocus(terrain_info_view))
     {
         RAD_DestroyTerrainInfoView(&terrain_info_view);
         return NULL;
@@ -114,7 +123,7 @@ RAD_TerrainInfoView_t* RAD_CreateTerrainInfoView(int32_t x, int32_t y, int32_t w
 
 ///
 /// Baut auch eine halb angelegte TerrainInfoView ab (RAD_CreateTerrainInfoView
-/// im Fehlerfall): einzelne TextViews sind dann womoeglich NULL.
+/// im Fehlerfall): einzelne TypewriterViews sind dann womoeglich NULL.
 ///
 void RAD_DestroyTerrainInfoView(RAD_TerrainInfoView_t **terrain_info_view)
 {
@@ -122,15 +131,15 @@ void RAD_DestroyTerrainInfoView(RAD_TerrainInfoView_t **terrain_info_view)
 
     if(v->name != NULL)
     {
-        RAD_DestroyTextView(&v->name);
+        RAD_DestroyTypewriterView(&v->name);
     }
     if(v->movement_modifier != NULL)
     {
-        RAD_DestroyTextView(&v->movement_modifier);
+        RAD_DestroyTypewriterView(&v->movement_modifier);
     }
     if(v->cover != NULL)
     {
-        RAD_DestroyTextView(&v->cover);
+        RAD_DestroyTypewriterView(&v->cover);
     }
 
     free(v);
@@ -142,8 +151,17 @@ void RAD_UpdateTerrainInfoView(RAD_TerrainInfoView_t *terrain_info_view, SDL_Ren
     // Scheitert es, bleibt der alte Text stehen; der naechste Frame versucht es neu.
     RAD_TerrainInfoViewSyncFocus(terrain_info_view);
 
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-    SDL_RenderFillRect(renderer, &terrain_info_view->area);
+    const SDL_Rect *area = &terrain_info_view->area;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(renderer, area);
+
+    // Der Rahmen: je Pixel Dicke ein Rechteck, eins weiter innen als das davor.
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    for(int32_t i = 0; i < RAD_TERRAIN_INFO_VIEW_BORDER; ++i)
+    {
+        const SDL_Rect frame = { .x = area->x + i, .y = area->y + i, .w = area->w - 2 * i, .h = area->h - 2 * i };
+        SDL_RenderDrawRect(renderer, &frame);
+    }
 
     // Ist die Flaeche kleiner als der Inhalt, schneidet sie ihn ab; danach die
     // Clip-Flaeche des Aufrufers wiederherstellen.
@@ -152,40 +170,17 @@ void RAD_UpdateTerrainInfoView(RAD_TerrainInfoView_t *terrain_info_view, SDL_Ren
     SDL_RenderGetClipRect(renderer, &previous_clip);
     SDL_RenderSetClipRect(renderer, &terrain_info_view->area);
 
-    RAD_UpdateTextView(terrain_info_view->name, renderer);
-    RAD_UpdateTextView(terrain_info_view->movement_modifier, renderer);
-    RAD_UpdateTextView(terrain_info_view->cover, renderer);
+    RAD_UpdateTypewriterView(terrain_info_view->name, renderer);
+    RAD_UpdateTypewriterView(terrain_info_view->movement_modifier, renderer);
+    RAD_UpdateTypewriterView(terrain_info_view->cover, renderer);
 
     SDL_RenderSetClipRect(renderer, was_clipping ? &previous_clip : NULL);
 }
 
 
 ///
-/// Passt die Breite von "area" dem breitesten Text an, samt Rand, hoechstens
-/// "max_width"; die linke Kante bleibt. Nach jedem Setter zu rufen -- die
-/// Texte aendern sich nur dort. Waehrend RAD_CreateTerrainInfoView sind noch
-/// nicht alle TextViews angelegt; dann geschieht nichts.
-///
-static void RAD_TerrainInfoViewFitWidth(RAD_TerrainInfoView_t *terrain_info_view)
-{
-    if(terrain_info_view->name == NULL || terrain_info_view->movement_modifier == NULL || terrain_info_view->cover == NULL)
-    {
-        return;
-    }
-
-    int32_t widest = RAD_TextViewTextWidth(terrain_info_view->name);
-    const int32_t movement_modifier = RAD_TextViewTextWidth(terrain_info_view->movement_modifier);
-    const int32_t cover = RAD_TextViewTextWidth(terrain_info_view->cover);
-    widest = (movement_modifier > widest) ? movement_modifier : widest;
-    widest = (cover > widest) ? cover : widest;
-
-    const int32_t width = widest + 2 * RAD_TERRAIN_INFO_VIEW_PADDING;
-    terrain_info_view->area.w = (width < terrain_info_view->max_width) ? width : terrain_info_view->max_width;
-}
-
-///
-/// Setzt Name, MV und CV auf das Feld im Fokus (control/terrain.h), bzw. auf "-",
-/// wenn nichts im Fokus steht -- nur, wenn sich seit dem letzten Mal etwas
+/// Setzt Name, MV und CV auf das Feld im Fokus (control/terrain.h) -- bzw. auf
+/// "-", wenn nichts im Fokus steht -- nur, wenn sich seit dem letzten Mal etwas
 /// geaendert hat: jeder neue Text muss neu gerendert werden. false, wenn fuer
 /// einen Text kein Speicher da ist; dann gilt sie als nicht auf Stand.
 ///
@@ -215,9 +210,9 @@ static bool RAD_TerrainInfoViewSyncFocus(RAD_TerrainInfoView_t *terrain_info_vie
     }
 
     terrain_info_view->synced =
-        RAD_TextViewSetText(terrain_info_view->name, name)
-        && RAD_TerrainInfoViewSetValue(terrain_info_view, terrain_info_view->movement_modifier, RAD_VIEW_ABBREVIATION_MOVEMENT_RANGE, movement_modifier_text)
-        && RAD_TerrainInfoViewSetValue(terrain_info_view, terrain_info_view->cover, RAD_VIEW_ABBREVIATION_COVER, cover_text);
+        RAD_TypewriterViewSetText(terrain_info_view->name, name)
+        && RAD_TerrainInfoViewSetValue(terrain_info_view->movement_modifier, RAD_VIEW_ABBREVIATION_MOVEMENT_RANGE, movement_modifier_text)
+        && RAD_TerrainInfoViewSetValue(terrain_info_view->cover, RAD_VIEW_ABBREVIATION_COVER, cover_text);
     terrain_info_view->shown_tile = tile;
     terrain_info_view->shown_name = name;
     terrain_info_view->shown_movement_modifier = movement_modifier;
@@ -226,14 +221,12 @@ static bool RAD_TerrainInfoViewSyncFocus(RAD_TerrainInfoView_t *terrain_info_vie
 }
 
 ///
-/// Setzt "text_view" auf "<abbreviation> <value>", z.B. "MV +1" oder "CV -".
-/// false, wenn kein Speicher da ist (RAD_TextViewSetText).
+/// Setzt "typewriter_view" auf "<abbreviation> <value>", z.B. "MV +1" oder "CV -".
+/// false, wenn kein Speicher da ist (RAD_TypewriterViewSetText).
 ///
-static bool RAD_TerrainInfoViewSetValue(RAD_TerrainInfoView_t *terrain_info_view, RAD_TextView_t *text_view, const char *abbreviation, const char *value)
+static bool RAD_TerrainInfoViewSetValue(RAD_TypewriterView_t *typewriter_view, const char *abbreviation, const char *value)
 {
     char text[RAD_TERRAIN_INFO_VIEW_VALUE_MAX];
     snprintf(text, sizeof(text), "%s %s", abbreviation, value);
-    const bool set = RAD_TextViewSetText(text_view, text);
-    RAD_TerrainInfoViewFitWidth(terrain_info_view);
-    return set;
+    return RAD_TypewriterViewSetText(typewriter_view, text);
 }

@@ -57,10 +57,11 @@ typedef struct
 
 
 ///
-/// Spielereignisse (event.proto NetGameEvent -> game.proto). created und
-/// finished tragen nichts (NetGameCreatedEvent/NetGameFinishedEvent haben nur ein
-/// bedeutungsloses "reserved"), ihre Callbacks bekommen also nur den Abonnenten
-/// selbst.
+/// Spielereignisse (event.proto NetGameEvent -> game.proto). created traegt
+/// nichts (NetGameCreatedEvent hat nur ein bedeutungsloses "reserved"), sein
+/// Callback bekommt also nur den Abonnenten selbst. finished traegt Sieger, Grund
+/// und Punkte (RAD_NetGameFinished_t), round die laufende Runde und wie viele es
+/// gibt -- round kommt mit jedem Zugwechsel und auf eine Discover-Anfrage.
 ///
 /// Die vier uebrigen schickt der Server auf eine Discover-Anfrage:
 ///
@@ -70,6 +71,8 @@ typedef struct
 ///                   solange der Callback laeuft, und ist bei
 ///                   "number_of_users" == 0 nicht zu lesen
 ///   world_size      Breite und Hoehe der Welt in Feldern
+///   deploy_zone     wo ein Mitspieler aufstellen darf -- je Mitspieler ein
+///                   Aufruf, nach world_size
 ///   tiles           Felder des angefragten Ausschnitts mit ihren Attributen,
 ///                   als Stand und nicht als Aenderung. Der Server schickt je
 ///                   Feld eine Nachricht, "number_of_tiles" ist dann 1 -- darauf
@@ -79,10 +82,14 @@ typedef struct
 /// Die Uuids kommen als uint64 an, ungekuerzt.
 ///
 typedef void (*RAD_OnNetGameCreated_t)(void *user_argument);
-typedef void (*RAD_OnNetGameFinished_t)(void *user_argument);
+typedef void (*RAD_OnNetGameFinished_t)(void *user_argument, const RAD_NetGameFinished_t *finished);
+typedef void (*RAD_OnNetRound_t)(void *user_argument, uint32_t round, uint32_t rounds);
 typedef void (*RAD_OnNetCurrentPlayer_t)(void *user_argument, uint64_t user_id);
 typedef void (*RAD_OnNetPlayers_t)(void *user_argument, const uint64_t *user_ids, size_t number_of_users);
 typedef void (*RAD_OnNetWorldSize_t)(void *user_argument, uint32_t width, uint32_t height);
+
+// RAD_NetDeployZone_t steht in io/net_types.h.
+typedef void (*RAD_OnNetDeployZone_t)(void *user_argument, const RAD_NetDeployZone_t *zone);
 
 // RAD_NetTile_t steht in io/net_types.h.
 typedef void (*RAD_OnNetTiles_t)(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
@@ -99,18 +106,33 @@ typedef void (*RAD_OnNetUnitDeployed_t)(void *user_argument, const RAD_NetUnitDe
 // Einheiten-Anfrage -- je Einheit ein Aufruf, wie bei der Reserve.
 typedef void (*RAD_OnNetUnit_t)(void *user_argument, const RAD_NetUnit_t *unit);
 
+// Eine Einheit ist gezogen, mit dem Weg, den sie wirklich gegangen ist -- gleich,
+// wessen Einheit.
+typedef void (*RAD_OnNetUnitMoved_t)(void *user_argument, const RAD_NetUnitMoved_t *moved);
+
+// Eine Einheit hat ein Feld angegriffen -- gleich, wessen Einheit.
+typedef void (*RAD_OnNetUnitAttacked_t)(void *user_argument, const RAD_NetUnitAttacked_t *attacked);
+
+// Eine Einheit ist zerstoert und vom Feld -- gleich, wessen Einheit.
+typedef void (*RAD_OnNetUnitDestroyed_t)(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
+
 typedef struct
 {
     void *user_argument;
     RAD_OnNetGameCreated_t created;
     RAD_OnNetGameFinished_t finished;
+    RAD_OnNetRound_t round;
     RAD_OnNetCurrentPlayer_t current_player;
     RAD_OnNetPlayers_t players;
     RAD_OnNetWorldSize_t world_size;
+    RAD_OnNetDeployZone_t deploy_zone;
     RAD_OnNetTiles_t tiles;
     RAD_OnNetReserveUnit_t reserve_unit;
     RAD_OnNetUnitDeployed_t unit_deployed;
     RAD_OnNetUnit_t unit;
+    RAD_OnNetUnitMoved_t unit_moved;
+    RAD_OnNetUnitAttacked_t unit_attacked;
+    RAD_OnNetUnitDestroyed_t unit_destroyed;
 } RAD_NetEventsGameCallback_t;
 
 
@@ -152,14 +174,19 @@ void RAD_NetEventManagerPublishAttackResponse(RAD_NetEventManager_t *manager, co
 
 void RAD_NetEventManagerSubscribeToGameEvents(RAD_NetEventManager_t *manager, RAD_NetEventsGameCallback_t callbacks);
 void RAD_NetEventManagerPublishGameCreated(RAD_NetEventManager_t *manager);
-void RAD_NetEventManagerPublishGameFinished(RAD_NetEventManager_t *manager);
+void RAD_NetEventManagerPublishGameFinished(RAD_NetEventManager_t *manager, const RAD_NetGameFinished_t *finished);
+void RAD_NetEventManagerPublishRound(RAD_NetEventManager_t *manager, uint32_t round, uint32_t rounds);
 void RAD_NetEventManagerPublishCurrentPlayer(RAD_NetEventManager_t *manager, uint64_t user_id);
 void RAD_NetEventManagerPublishPlayers(RAD_NetEventManager_t *manager, const uint64_t *user_ids, size_t number_of_users);
 void RAD_NetEventManagerPublishWorldSize(RAD_NetEventManager_t *manager, uint32_t width, uint32_t height);
+void RAD_NetEventManagerPublishDeployZone(RAD_NetEventManager_t *manager, const RAD_NetDeployZone_t *zone);
 void RAD_NetEventManagerPublishTiles(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 void RAD_NetEventManagerPublishReserveUnit(RAD_NetEventManager_t *manager, const RAD_NetReserveUnit_t *unit);
 void RAD_NetEventManagerPublishUnitDeployed(RAD_NetEventManager_t *manager, const RAD_NetUnitDeployed_t *deployed);
 void RAD_NetEventManagerPublishUnit(RAD_NetEventManager_t *manager, const RAD_NetUnit_t *unit);
+void RAD_NetEventManagerPublishUnitMoved(RAD_NetEventManager_t *manager, const RAD_NetUnitMoved_t *moved);
+void RAD_NetEventManagerPublishUnitAttacked(RAD_NetEventManager_t *manager, const RAD_NetUnitAttacked_t *attacked);
+void RAD_NetEventManagerPublishUnitDestroyed(RAD_NetEventManager_t *manager, const RAD_NetUnitDestroyed_t *destroyed);
 
 void RAD_NetEventManagerSubscribeToTileEvents(RAD_NetEventManager_t *manager, RAD_NetEventsTileCallback_t callbacks);
 void RAD_NetEventManagerPublishTileCreated(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tile);

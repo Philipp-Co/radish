@@ -1,13 +1,15 @@
 #include <radish/game/game.h>
 
 #include <radish/server/interface/message.h>
+#include <radish/server/interface/game_report.h>
 #include <radish/server/control/execute.h>
 #include <radish/server/control/loader.h>
+#include <radish/server/control/message_timing.h>
 #include <radish/game/control/start_game.h>
 #include <radish/server/control/events/tiles.h>
 
 #include <zucchini/api/api.h>
-#include <zucchini/ipc/ring_buffer.h>
+#include <zucchini/ipc/message.h>
 
 #include <inttypes.h>
 #include <signal.h>
@@ -31,10 +33,11 @@
 ///
 /// Der Name unten muss zu dem passen, unter dem die Zucchini-Instanz laeuft --
 /// aus ihm leiten beide Seiten die Namen der Ringpuffer und der Wakeup-FIFO ab.
-/// "zucchini" ist der Default von zucchini_server (ZUC_SERVER_NAME in dessen
-/// main.c); ein anderer laesst sich als erstes Argument uebergeben.
+/// Einen Default gibt es nicht, auch zucchini_server verlangt den Namen
+/// (-n). Im Container reicht game-instance-entrypoint.sh beiden denselben
+/// durch.
 ///
-///     server [zucchini-name]
+///     server <zucchini-name>
 ///
 /// Die Welt, mit der das Spiel beginnt, kommt aus der Umgebung:
 ///
@@ -62,8 +65,13 @@
 /// Django gibt es nicht -- was ankam, steht nur im Log. Fehlen die beiden
 /// Variablen (meist auf dem Host), gibt es weder PID-Datei noch Spielstart.
 ///
-#define RAD_SERVER_DEFAULT_INTERFACE_NAME "zucchini"
-
+/// Das Ende eines Spiels meldet der Server dem Backend ueber ein Programm, das
+/// er dafuer startet (interface/game_report.h):
+///
+///     RADISH_GAME_FINISHED_COMMAND=/usr/local/bin/register_instance.py
+///
+/// Fehlt die Variable, wird nicht gemeldet.
+///
 /// Die Umgebungsvariable mit dem Pfad der Weltdefinition (siehe main).
 #define RAD_SERVER_WORLD_PATH_VARIABLE "RADISH_WORLD_PATH"
 
@@ -72,11 +80,19 @@
 #define RAD_SERVER_PID_PATH_VARIABLE "RADISH_GAME_PID_PATH"
 
 ///
-/// Obergrenze eines Ringpuffer-Slots und damit einer Nachricht. Kommt aus
-/// zucchini, statt hier als 1024 zu stehen -- laenger kann ohnehin nichts
-/// ankommen.
+/// Das Programm, das das Ende eines Spiels an das Backend meldet
+/// (interface/game_report.h) -- im Container docker/game-server/
+/// register_instance.py. Fehlt sie (meist auf dem Host), wird nicht gemeldet.
 ///
-#define RAD_SERVER_MESSAGE_SIZE ZUC_RING_BUFFER_SLOT_SIZE
+#define RAD_SERVER_GAME_FINISHED_COMMAND_VARIABLE "RADISH_GAME_FINISHED_COMMAND"
+
+///
+/// Obergrenze einer Nachricht: ein Ringpuffer-Slot abzueglich des Kopfes, den
+/// zucchini selbst davorsetzt (Ziel bzw. Absender, zucchini/ipc/message.h).
+/// Kommt aus zucchini, statt hier als Zahl zu stehen -- laenger kann ohnehin
+/// nichts ankommen und nichts hinausgehen.
+///
+#define RAD_SERVER_MESSAGE_SIZE ZUC_MESSAGE_MAX_PAYLOAD
 
 ///
 /// Wie lange auf die Wakeup-FIFO gewartet wird, bevor die Schleife ohnehin
@@ -115,6 +131,8 @@ static volatile sig_atomic_t game_start_changed = 0;
 
 
 static void log_unit_path(const RAD_Path_t *path);
+static void send_game_finished(RAD_Control_t control, ZUC_Api_t api, uint64_t target);
+static void report_game_finished(RAD_Control_t control, RAD_UserId_t winner, const char *command);
 
 ///
 /// Was der Zugwechsel braucht (on_turn_changed): die Api, um zu senden, und die
@@ -122,10 +140,14 @@ static void log_unit_path(const RAD_Path_t *path);
 /// main und nicht ihre Werte -- abonniert wird, bevor es beide gibt; solange
 /// eine NULL ist, geht das Entsprechende nicht hinaus.
 ///
+/// Dazu fuer das Spielende (on_game_finished) das Programm, das es ans Backend
+/// meldet, NULL fuer keins (RAD_SERVER_GAME_FINISHED_COMMAND_VARIABLE).
+///
 typedef struct
 {
     const ZUC_Api_t *api;
     const RAD_Control_t *control;
+    const char *game_finished_command;
 } RAD_ServerTurnTarget_t;
 
 static void handle_signal(int signum)
@@ -177,19 +199,18 @@ static bool write_pid_file(const char *path)
 /// steht nur, was ins Log geht. Wer danach dran ist, meldet das Spiel selbst
 /// (on_turn_changed).
 ///
-/// Ein zweites Signal fuer einen Start, der schon eingerichtet ist, aendert
-/// nichts -- das Spiel lehnt es ab (RAD_GAME_ERROR_STARTED), und das Log sagt
-/// es. Eine geloeschte Datei (Abbruch im Backend) nimmt nichts zurueck: aus einem
-/// angefangenen Spiel wird kein leeres, das ist eine neue Instanz.
+/// Vorher setzt die Hauptschleife das Spiel zurueck (RAD_ControlResetGame):
+/// ein neuer Start trifft immer auf ein leeres Spiel, gleich was vorher war --
+/// ein beendetes, ein abgebrochenes oder eines, dem nach dem Ende noch jemand
+/// mit einem Kommando beigetreten ist. Das Ende eines Spiels und ein Abbruch im
+/// Backend (die Datei ist weg) setzen dagegen nichts zurueck: das alte Spiel
+/// bleibt mit Sieger und Punkten stehen, bis das naechste kommt.
+///
+/// Ist die Datei ungueltig, bleibt es beim leeren Spiel -- das Backend wollte
+/// ein neues, das alte gilt nicht mehr --, und das Log sagt, warum.
 ///
 static void load_game_start(RAD_Control_t control, const char *path)
 {
-    if(access(path, F_OK) != 0)
-    {
-        printf("Spielstart: keine Datei unter %s -- kein Spiel angesetzt.\n", path);
-        return;
-    }
-
     RAD_GameResult_t game_result = RAD_GAME_OK;
     const RAD_GameStartResult_t result = RAD_ControlStartGameFromFile(control, path, &game_result);
     if(result == RAD_GAME_START_ERROR_REJECTED)
@@ -368,10 +389,19 @@ static void log_unit_path(const RAD_Path_t *path)
 /// Legt eine Nachricht in den Sendepuffer und wartet, solange er voll ist
 /// (RAD_SERVER_SEND_RETRY_LIMIT). false erst, wenn er auch danach voll ist --
 /// oder die Nachricht fuer einen Slot zu gross ist, was kein Warten behebt;
-/// ZUC_ApiSend unterscheidet beides nicht, deshalb wird die Groesse vorher
+/// ZUC_ApiSendTo unterscheidet beides nicht, deshalb wird die Groesse vorher
 /// geprueft.
 ///
-static bool send_message(ZUC_Api_t api, const uint8_t *message, uint16_t message_size)
+/// "target" ist der Zucchini-Code des Empfaengers, ZUC_MESSAGE_BROADCAST fuer
+/// jeden Client. **An einen geht, was nur der Anfragende braucht** -- die Antwort
+/// auf sein Kommando oder seine Discover-Anfrage; der Code ist der, den
+/// ZUC_ApiReceive als Absender geliefert hat. **An alle geht, was sich am Spiel
+/// geaendert hat** -- die Ereignisse, der Zugwechsel, das Ende. Ob ein Code noch
+/// erreichbar ist, weiss erst zucchini_server; eine Nachricht an einen
+/// unbekannten verwirft es mit einer Zeile im eigenen Log, hier gilt sie als
+/// abgeschickt.
+///
+static bool send_message(ZUC_Api_t api, uint64_t target, const uint8_t *message, uint16_t message_size)
 {
     if(message_size > RAD_SERVER_MESSAGE_SIZE)
     {
@@ -385,7 +415,7 @@ static bool send_message(ZUC_Api_t api, const uint8_t *message, uint16_t message
 
     for(int32_t attempt = 0; attempt <= RAD_SERVER_SEND_RETRY_LIMIT; ++attempt)
     {
-        if(0 == ZUC_ApiSend(api, message, message_size))
+        if(0 == ZUC_ApiSendTo(api, target, message, message_size))
         {
             return true;
         }
@@ -395,7 +425,7 @@ static bool send_message(ZUC_Api_t api, const uint8_t *message, uint16_t message
     return false;
 }
 
-static void send_packed(ZUC_Api_t api, RAD_NetCodecResult_t result,
+static void send_packed(ZUC_Api_t api, uint64_t target, RAD_NetCodecResult_t result,
                         const uint8_t *message, uint16_t message_size, const char *label)
 {
     if(result != RAD_NET_CODEC_OK)
@@ -404,13 +434,16 @@ static void send_packed(ZUC_Api_t api, RAD_NetCodecResult_t result,
         return;
     }
 
-    if(!send_message(api, message, message_size))
+    if(!send_message(api, target, message, message_size))
     {
         printf("%s nicht abgeschickt -- Ringpuffer voll?\n", label);
         return;
     }
 
-    printf("-> %s, %u Bytes\n", label, message_size);
+    // Nur ob an alle oder an einen, nicht an wen: der Code ist das Geheimnis, mit
+    // dem das Backend Nachrichten durch zucchini_server bringt (message.h), und
+    // gehoert nicht ins Log.
+    printf("-> %s%s, %u Bytes\n", label, (target == ZUC_MESSAGE_BROADCAST) ? "" : " (an Anfragenden)", message_size);
 }
 
 ///
@@ -435,7 +468,7 @@ static void send_packed(ZUC_Api_t api, RAD_NetCodecResult_t result,
 /// Ausschnitt ist, was ein Client geschickt hat. Die Felder selbst liest
 /// RAD_ControlTileAt, das die Grenzen noch einmal prueft.
 ///
-static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, const RAD_DiscoverRequest_t *request)
+static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, uint64_t target, const RAD_DiscoverRequest_t *request)
 {
     const uint64_t width = (uint64_t)RAD_ControlWorldWidth(control);
     const uint64_t height = (uint64_t)RAD_ControlWorldHeight(control);
@@ -473,7 +506,7 @@ static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, const RAD_
                 continue;
             }
 
-            if(!send_message(api, message, message_size))
+            if(!send_message(api, target, message, message_size))
             {
                 printf("Feld (%" PRIu64 ",%" PRIu64 ") nicht abgeschickt -- Ringpuffer voll, Rest der Antwort entfaellt\n", x, y);
                 stalled = true;
@@ -503,11 +536,11 @@ static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, const RAD_
 }
 
 ///
-/// Wer gerade dran ist (NetCurrentPlayerEvent), an jeden Client -- als Teil der
-/// Antwort auf eine Discover-Anfrage. Ein Zugwechsel geht ueber on_turn_changed
-/// hinaus.
+/// Wer gerade dran ist (NetCurrentPlayerEvent), an den Anfragenden -- als Teil
+/// der Antwort auf eine Discover-Anfrage. Ein Zugwechsel geht ueber
+/// on_turn_changed an alle hinaus.
 ///
-static void send_current_player(RAD_Control_t control, ZUC_Api_t api)
+static void send_current_player(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
@@ -515,27 +548,53 @@ static void send_current_player(RAD_Control_t control, ZUC_Api_t api)
     const RAD_UserId_t current = RAD_ControlCurrentUser(control);
     const RAD_NetCodecResult_t result =
         RAD_SerializeCurrentPlayerEventToMessage(current, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, result, message, message_size, "current_player");
+    send_packed(api, target, result, message, message_size, "current_player");
 }
 
 ///
-/// Die Antwort auf eine Discover-Anfrage, je eine Nachricht: wer dran ist, wer
-/// mitspielt, wie gross die Welt ist -- und danach die Felder des angefragten
+/// Die laufende Runde und nach wie vielen gewertet wird -- mit jedem Zugwechsel
+/// an alle und auf eine Discover-Anfrage an den Anfragenden.
+///
+static void send_round(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
+{
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+
+    const RAD_NetCodecResult_t result =
+        RAD_SerializeRoundEventToMessage((uint32_t)RAD_ControlRound(control),
+                                         (uint32_t)RAD_ControlNumberOfRounds(control),
+                                         message, (uint16_t)sizeof(message), &message_size);
+    send_packed(api, target, result, message, message_size, "round");
+}
+
+///
+/// Die Antwort auf eine Discover-Anfrage, je eine Nachricht: wer dran ist, die
+/// Runde, wie das Spiel ausgegangen ist (nur, wenn es vorbei ist), wer
+/// mitspielt, wie gross die Welt ist, wo jeder Mitspieler aufstellen darf -- und
+/// danach die Felder des angefragten
 /// Ausschnitts (send_discover_tiles). Die Groesse kommt vor den Feldern, damit ein
 /// Client sie einordnen kann.
 ///
-/// Sie gehen, wie alles, was der Server schickt, an jeden Client (zucchini
-/// verteilt an die ganze Whitelist) und nicht nur an den, der gefragt hat. Das
-/// schadet nicht: es sind Zustaende, keine Aenderungen, und jeder bekommt
-/// dieselben.
+/// Sie gehen nur an den, der gefragt hat ("target"): es sind Zustaende, keine
+/// Aenderungen, und jeder Client fragt sie selbst an, sobald er verbunden ist.
+/// Bei einer ganzen Welt ist das eine Nachricht je Feld -- an alle verschickt,
+/// liefe jeder Beitritt einmal durch jeden Client.
 ///
-static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, const RAD_DiscoverRequest_t *request)
+static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, uint64_t target, const RAD_DiscoverRequest_t *request)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
     RAD_NetCodecResult_t result;
 
-    send_current_player(control, api);
+    send_current_player(control, api, target);
+    send_round(control, api, target);
+
+    // Ist es schon vorbei, steht das gleich hinter der Runde -- dieselbe
+    // Nachricht wie beim Ende selbst (on_game_finished).
+    if(RAD_ControlIsFinished(control))
+    {
+        send_game_finished(control, api, target);
+    }
 
     // Ohne feste Obergrenze von hier aus: wie viele mitspielen koennen, steht
     // privat im Spiel. Mindestens ein Platz, weil ein Array der Laenge null
@@ -548,23 +607,38 @@ static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, const RAD
     }
     result = RAD_SerializePlayersEventToMessage(players, (size_t)number_of_players,
                                                 message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, result, message, message_size, "players");
+    send_packed(api, target, result, message, message_size, "players");
 
     result = RAD_SerializeWorldSizeEventToMessage((uint32_t)RAD_ControlWorldWidth(control),
                                                   (uint32_t)RAD_ControlWorldHeight(control),
                                                   message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, result, message, message_size, "world_size");
+    send_packed(api, target, result, message, message_size, "world_size");
 
-    send_discover_tiles(control, api, request);
+    // Nach der Groesse: die Zone an der Ostkante haengt an der Breite.
+    for(int32_t i = 0; i < number_of_players; ++i)
+    {
+        int32_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+        if(!RAD_ControlDeployZone(control, players[i], &min_x, &min_y, &max_x, &max_y))
+        {
+            continue;
+        }
+        result = RAD_SerializeDeployZoneEventToMessage(players[i],
+                                                       (uint32_t)min_x, (uint32_t)min_y,
+                                                       (uint32_t)max_x, (uint32_t)max_y,
+                                                       message, (uint16_t)sizeof(message), &message_size);
+        send_packed(api, target, result, message, message_size, "deploy_zone");
+    }
+
+    send_discover_tiles(control, api, target, request);
 }
 
 ///
-/// Die Antwort auf eine Reserve-Anfrage: jede Einheit, die noch in der Reserve
-/// steht, als eigene Nachricht, in der Reihenfolge ihrer Ids -- beide Spieler,
-/// denn zucchini schickt ohnehin an alle (protobuf/discover.proto). Steht keine
-/// in der Reserve, geht nichts hinaus.
+/// Die Antwort auf eine Reserve-Anfrage, an den Anfragenden: jede Einheit, die
+/// noch in der Reserve steht, als eigene Nachricht, in der Reihenfolge ihrer Ids
+/// -- beide Spieler, der Client zeigt auch die fremde Reserve
+/// (protobuf/discover.proto). Steht keine in der Reserve, geht nichts hinaus.
 ///
-static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api)
+static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     int32_t sent = 0;
@@ -580,7 +654,7 @@ static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api)
         uint16_t message_size = 0;
         const RAD_NetCodecResult_t result =
             RAD_SerializeReserveUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
-        send_packed(api, result, message, message_size, "reserve_unit");
+        send_packed(api, target, result, message, message_size, "reserve_unit");
         sent++;
     }
 
@@ -588,12 +662,13 @@ static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api)
 }
 
 ///
-/// Die Antwort auf eine Einheiten-Anfrage: jede Einheit, die einem Spieler
-/// gehoert, als eigene Nachricht, in der Reihenfolge ihrer Ids -- gleich ob sie
-/// in der Reserve oder auf dem Feld steht (protobuf/discover.proto). Gehoert
-/// keine einem Spieler, geht nichts hinaus.
+/// Jede Einheit, die einem Spieler gehoert, als eigene Nachricht, in der
+/// Reihenfolge ihrer Ids -- gleich ob sie in der Reserve oder auf dem Feld steht
+/// (protobuf/discover.proto). Gehoert keine einem Spieler, geht nichts hinaus.
+/// Als Antwort auf eine Einheiten-Anfrage an den Anfragenden, nach einem
+/// Zugwechsel an alle (on_turn_changed).
 ///
-static void send_units(RAD_Control_t control, ZUC_Api_t api)
+static void send_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     int32_t sent = 0;
@@ -609,7 +684,7 @@ static void send_units(RAD_Control_t control, ZUC_Api_t api)
         uint16_t message_size = 0;
         const RAD_NetCodecResult_t result =
             RAD_SerializeUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
-        send_packed(api, result, message, message_size, "unit");
+        send_packed(api, target, result, message, message_size, "unit");
         sent++;
     }
 
@@ -636,8 +711,28 @@ static void send_unit(RAD_Control_t control, ZUC_Api_t api, RAD_UnitId_t id)
         uint16_t message_size = 0;
         const RAD_NetCodecResult_t result =
             RAD_SerializeUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
-        send_packed(api, result, message, message_size, "unit");
+        send_packed(api, ZUC_MESSAGE_BROADCAST, result, message, message_size, "unit");
         return;
+    }
+}
+
+///
+/// Die Einheit, die auf (x, y) steht, mit ihrem jetzigen Stand an jeden Client
+/// (NetUnitEvent) -- nach einem Angriff fuer die getroffene, damit die Clients
+/// sehen, was ihr an Mitgliedern und Lebenspunkten bleibt. Steht dort keine
+/// (mehr), geht nichts hinaus: eine zerstoerte hat das Spiel schon gemeldet.
+///
+static void send_unit_at(RAD_Control_t control, ZUC_Api_t api, int32_t x, int32_t y)
+{
+    for(int32_t i = 0; i < RAD_ControlNumberOfUnits(control); ++i)
+    {
+        RAD_Unit_t unit;
+        if(RAD_ControlUnitAt(control, i, &unit) && (unit.state == RAD_UNIT_STATE_DEPLOYED)
+           && (unit.x == x) && (unit.y == y))
+        {
+            send_unit(control, api, unit.id);
+            return;
+        }
     }
 }
 
@@ -665,27 +760,94 @@ static void on_unit_deployed(void *user_argument, const RAD_Unit_t *unit, int32_
     uint16_t message_size = 0;
     const RAD_NetCodecResult_t result =
         RAD_SerializeUnitDeployedEventToMessage(unit, x, y, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, result, message, message_size, "unit_deployed");
+    send_packed(api, ZUC_MESSAGE_BROADCAST, result, message, message_size, "unit_deployed");
 }
 
 ///
-/// Zerstoeren und Bewegen gehen nicht als eigenes Ereignis hinaus: einen Zug
-/// traegt der Client aus der Antwort nach, und den neuen Stand der Einheit
-/// schickt handle_message danach als NetUnitEvent (send_unit). Sie stehen hier,
-/// weil der Event-Manager alle Zeiger einer Gruppe braucht -- und im Log, damit
-/// man sieht, dass es sie gab.
+/// Eine Einheit ist zerstoert und vom Feld (RAD_OnUnitDestroyed_t): als
+/// NetUnitDestroyedEvent an jeden Client -- "user_argument" wie bei
+/// on_unit_deployed. Im Kampf geschieht das mitten im Angriff, also vor dessen
+/// Meldung (on_unit_attacked).
 ///
 static void on_unit_destroyed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
-    (void)user_argument;
-    printf("Einheit %d auf (%d,%d) zerstoert -- nicht gemeldet\n", (int)unit->id, (int)x, (int)y);
+    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
+    if(api == NULL)
+    {
+        printf("Einheit %d auf (%d,%d) zerstoert -- noch keine Verbindung, nicht gemeldet\n",
+               (int)unit->id, (int)x, (int)y);
+        return;
+    }
+
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t packed =
+        RAD_SerializeUnitDestroyedEventToMessage(unit->id, x, y, message, (uint16_t)sizeof(message), &message_size);
+    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_destroyed");
 }
 
+///
+/// Ein Zug (RAD_OnUnitMoved_t): der Weg, den die Einheit wirklich gegangen ist,
+/// als NetUnitMovedEvent an jeden Client -- "user_argument" wie bei
+/// on_unit_deployed. Nur wenn sie wenigstens ein Feld weit kam: ein Zug, der
+/// nicht losging, meldet das Spiel mit leerem Weg, und ein abgelehnter ohne
+/// Einheit (NULL).
+///
+/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus, also vor dem
+/// neuen Stand der Einheit (send_unit) und vor der Antwort auf das Kommando.
+///
 static void on_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
-    (void)user_argument;
-    (void)path;
-    printf("Einheit %d bewegt (%d) -- nicht gemeldet\n", (int)unit->id, (int)result);
+    if((unit == NULL) || (path == NULL) || (path->number_of_steps < 2))
+    {
+        printf("Zug ohne Bewegung (%d) -- nicht gemeldet\n", (int)result);
+        return;
+    }
+
+    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
+    if(api == NULL)
+    {
+        printf("Einheit %d gezogen -- noch keine Verbindung, nicht gemeldet\n", (int)unit->id);
+        return;
+    }
+
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t packed =
+        RAD_SerializeUnitMovedEventToMessage(unit->id, path, message, (uint16_t)sizeof(message), &message_size);
+    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_moved");
+}
+
+///
+/// Ein Angriff (RAD_OnUnitAttacked_t): wer, wohin und was er bewirkt hat, als
+/// NetUnitAttackedEvent an jeden Client -- "user_argument" wie bei
+/// on_unit_deployed. Das Spiel meldet nur angenommene Angriffe, und erst nach dem
+/// Kampf.
+///
+/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus, also vor dem
+/// neuen Stand der beiden Einheiten (send_unit, send_unit_at) und vor der
+/// Antwort auf das Kommando.
+///
+static void on_unit_attacked(void *user_argument, const RAD_AttackResult_t *result)
+{
+    printf("Einheit %d greift (%d,%d) an: %d Schuesse, %d Treffer, %d durch, %d Schaden, %d gefallen%s\n",
+           (int)result->attacker, (int)result->x, (int)result->y,
+           (int)result->shots, (int)result->hits, (int)result->penetrations,
+           (int)result->wounds, (int)result->members_killed,
+           result->target_destroyed ? ", Ziel zerstoert" : "");
+
+    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
+    if(api == NULL)
+    {
+        printf("   noch keine Verbindung, nicht gemeldet\n");
+        return;
+    }
+
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t packed =
+        RAD_SerializeUnitAttackedEventToMessage(result, message, (uint16_t)sizeof(message), &message_size);
+    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_attacked");
 }
 
 ///
@@ -699,6 +861,103 @@ static void on_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD
 /// mit dem ersten Kommando und beim Spielstart. Beim Abgeben und Beitreten geht
 /// das Ereignis damit vor der Antwort auf das Kommando hinaus.
 ///
+///
+/// Das Ende des Spiels (RAD_OnGameFinished_t): erst Sieger, Grund und die Punkte
+/// jedes Mitspielers an jeden Client (send_game_finished), dann an das Backend
+/// (report_game_finished) -- die Clients sollen das Ergebnis haben, bevor das
+/// Backend aufraeumt. Ans Backend auch ohne Verbindung zu den Clients: das Spiel
+/// ist vorbei, ob es jemand sieht oder nicht.
+///
+/// Danach nimmt die Steuerung kein Kommando mehr an
+/// (RAD_CONTROL_ERROR_GAME_FINISHED). Zurueckgesetzt wird erst vor dem naechsten
+/// Start (RAD_ControlResetGame).
+///
+static void on_game_finished(void *user_argument, RAD_UserId_t winner, RAD_GameEndReason_t reason)
+{
+    const RAD_ServerTurnTarget_t *target = (const RAD_ServerTurnTarget_t *)user_argument;
+    printf("Spiel vorbei: Sieger 0x%" PRIx64 ", Grund %d\n", winner, (int)reason);
+
+    const ZUC_Api_t api = *target->api;
+    const RAD_Control_t control = *target->control;
+    if(control == NULL)
+    {
+        printf("   keine Steuerung, nicht gemeldet\n");
+        return;
+    }
+
+    if(api != NULL)
+    {
+        send_game_finished(control, api, ZUC_MESSAGE_BROADCAST);
+    }
+    else
+    {
+        printf("   noch keine Verbindung, nicht an die Clients gemeldet\n");
+    }
+
+    report_game_finished(control, winner, target->game_finished_command);
+}
+
+///
+/// Das Spielende an das Backend (interface/game_report.h): wer gewonnen und
+/// wer verloren hat, ueber ihre Kennungen, oder "draw". Das Programm laeuft
+/// neben dem Server weiter; was daraus wurde, holt die Hauptschleife ab
+/// (RAD_ReportCollectFinished).
+///
+static void report_game_finished(RAD_Control_t control, RAD_UserId_t winner, const char *command)
+{
+    if(command == NULL)
+    {
+        printf("   %s nicht gesetzt -- Spielende nicht ans Backend gemeldet\n",
+               RAD_SERVER_GAME_FINISHED_COMMAND_VARIABLE);
+        return;
+    }
+
+    const int32_t number_of_players = RAD_ControlNumberOfPlayers(control);
+    RAD_UserId_t players[(number_of_players > 0) ? number_of_players : 1];
+    for(int32_t i = 0; i < number_of_players; ++i)
+    {
+        players[i] = RAD_ControlPlayerAt(control, i);
+    }
+
+    RAD_GameReport_t report;
+    if(!RAD_GameReportFromResult(winner, players, number_of_players, &report))
+    {
+        printf("   Spielende nicht ans Backend gemeldet: keine zwei Mitspieler mit Kennung\n");
+        return;
+    }
+    RAD_ReportGameFinished(command, &report);
+}
+
+///
+/// Wie das Spiel ausgegangen ist (NetGameFinishedEvent): Sieger, Grund und die
+/// Punkte jedes Mitspielers -- an jeden Client in dem Moment, in dem es endet
+/// (on_game_finished), und danach an den Anfragenden mit jeder Antwort auf eine
+/// Discover-Anfrage (send_discover_events), damit es auch erfaehrt, wer erst
+/// spaeter verbindet. Nur fuer ein Spiel, das vorbei ist.
+///
+static void send_game_finished(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
+{
+    const RAD_UserId_t winner = RAD_ControlWinner(control);
+    const RAD_GameEndReason_t reason = RAD_ControlEndReason(control);
+
+    const int32_t number_of_players = RAD_ControlNumberOfPlayers(control);
+    RAD_UserId_t players[(number_of_players > 0) ? number_of_players : 1];
+    int32_t scores[(number_of_players > 0) ? number_of_players : 1];
+    for(int32_t i = 0; i < number_of_players; ++i)
+    {
+        players[i] = RAD_ControlPlayerAt(control, i);
+        scores[i] = RAD_ControlScore(control, players[i]);
+        printf("   0x%" PRIx64 ": %d Punkte\n", players[i], (int)scores[i]);
+    }
+
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t result =
+        RAD_SerializeGameFinishedEventToMessage(winner, reason, players, scores, (size_t)number_of_players,
+                                                message, (uint16_t)sizeof(message), &message_size);
+    send_packed(api, target, result, message, message_size, "finished");
+}
+
 static void on_turn_changed(void *user_argument, RAD_UserId_t current_user)
 {
     const RAD_ServerTurnTarget_t *target = (const RAD_ServerTurnTarget_t *)user_argument;
@@ -713,16 +972,23 @@ static void on_turn_changed(void *user_argument, RAD_UserId_t current_user)
     uint16_t message_size = 0;
     const RAD_NetCodecResult_t result =
         RAD_SerializeCurrentPlayerEventToMessage(current_user, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, result, message, message_size, "current_player");
+    send_packed(api, ZUC_MESSAGE_BROADCAST, result, message, message_size, "current_player");
 
     const RAD_Control_t control = *target->control;
     if(control != NULL)
     {
-        send_units(control, api);
+        send_round(control, api, ZUC_MESSAGE_BROADCAST);
+        send_units(control, api, ZUC_MESSAGE_BROADCAST);
     }
 }
 
-static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *raw, uint16_t raw_size)
+///
+/// "source" ist der Zucchini-Code, von dem die Nachricht kam (ZUC_ApiReceive) --
+/// dorthin geht die Antwort, auf eine Discover-Anfrage wie auf ein Kommando. Wer
+/// der Absender im Spiel ist, sagt er nicht: das steht in den ersten 8 Byte der
+/// Nachricht (RAD_ParseSenderFromMessage).
+///
+static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source, const uint8_t *raw, uint16_t raw_size)
 {
     // Zuerst der Absender: die ersten 8 Byte setzt das Backend, nicht der Client
     // (RAD_ParseSenderFromMessage). Was danach kommt, ist die NetUserRequest.
@@ -746,7 +1012,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
     {
         printf("<- discover      (%" PRIu32 ",%" PRIu32 ") %" PRIu32 "x%" PRIu32 "\n",
                discover.x, discover.y, discover.w, discover.h);
-        send_discover_events(control, api, &discover);
+        send_discover_events(control, api, source, &discover);
         return;
     }
 
@@ -755,7 +1021,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
     if(RAD_ParseDiscoverReserveFromMessage(data, size) == RAD_NET_CODEC_OK)
     {
         printf("<- discover_reserve\n");
-        send_reserve_units(control, api);
+        send_reserve_units(control, api, source);
         return;
     }
 
@@ -763,7 +1029,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
     if(RAD_ParseDiscoverUnitsFromMessage(data, size) == RAD_NET_CODEC_OK)
     {
         printf("<- discover_units\n");
-        send_units(control, api);
+        send_units(control, api, source);
         return;
     }
 
@@ -785,7 +1051,8 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
     // Wer sendet, spielt mit -- und das entscheidet sich hier, nicht in control/:
     // einen Beitritt gibt es im Protokoll nicht. Es gibt kein Kommando dafuer, und
     // eine getrennte Verbindung meldet Zucchini dem Server auch nicht --
-    // ZUC_ApiReceive bringt Bytes und sonst nichts. Solange das so bleibt, ist das
+    // ZUC_ApiReceive bringt die Bytes und den Code des Absenders, aber kein
+    // Kommen und Gehen. Solange das so bleibt, ist das
     // erste Kommando eines Benutzers sein Beitritt, und gehen tut niemand mehr;
     // RAD_ControlRemoveUser hat keinen Aufrufer. Sobald das Protokoll ein Join und
     // ein Leave kennt, stehen die beiden Aufrufe an dessen Stelle -- an dieser
@@ -813,7 +1080,8 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
 
     // Hat eine Einheit gezogen oder angegriffen, geht ihr neuer Stand vor der
     // Antwort hinaus, wie beim Aufstellen (on_unit_deployed): die Clients sehen
-    // daran, was sie in diesem Zug noch darf.
+    // daran, was sie in diesem Zug noch darf. Nach einem Angriff dazu die
+    // getroffene, mit dem, was ihr geblieben ist.
     if(success && (command.header.type == RAD_COMMAND_TYPE_MOVE_UNIT))
     {
         send_unit(control, api, command.command.move_unit.unit);
@@ -821,6 +1089,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
     else if(success && (command.header.type == RAD_COMMAND_TYPE_ATTACK))
     {
         send_unit(control, api, command.command.attack.unit);
+        send_unit_at(control, api, command.command.attack.x, command.command.attack.y);
     }
 
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
@@ -835,7 +1104,10 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, const uint8_t *
         return;
     }
 
-    if(!send_message(api, message, message_size))
+    // Nur an den Absender: die Antwort traegt seine Sequenznummer, ein anderer
+    // Client koennte mit ihr nichts anfangen. Was sich am Spiel geaendert hat,
+    // ist vorher schon als Ereignis an alle gegangen.
+    if(!send_message(api, source, message, message_size))
     {
         printf("Antwort nicht abgeschickt -- Ringpuffer voll?\n");
         return;
@@ -854,7 +1126,12 @@ int main(int argc, char **argv)
     signal(SIGTERM, handle_signal);
     signal(SIGUSR1, handle_game_start_signal);
 
-    const char *interface_name = (argc > 1) ? argv[1] : RAD_SERVER_DEFAULT_INTERFACE_NAME;
+    if((argc != 2) || (argv[1][0] == '\0'))
+    {
+        printf("Aufruf: %s <zucchini-name>\n", argv[0]);
+        return 1;
+    }
+    const char *interface_name = argv[1];
 
     // Die Welt, mit der das Spiel beginnt, aus der Umgebung und nicht als zweites
     // Argument: sie ist eine Einstellung des Betriebs und keine des einzelnen
@@ -880,7 +1157,12 @@ int main(int argc, char **argv)
     // Ebenso die Steuerung fuer den Zugwechsel (on_turn_changed).
     ZUC_Api_t api = NULL;
     RAD_Control_t control = NULL;
-    const RAD_ServerTurnTarget_t turn_target = { .api = &api, .control = &control };
+    const char *game_finished_command = path_from_environment(RAD_SERVER_GAME_FINISHED_COMMAND_VARIABLE);
+    const RAD_ServerTurnTarget_t turn_target = {
+        .api = &api,
+        .control = &control,
+        .game_finished_command = game_finished_command
+    };
 
     RAD_EventCallbacks_t event_callbacks = {
         .tile_changed = {
@@ -892,11 +1174,16 @@ int main(int argc, char **argv)
             .user_argument = &api,
             .spawned = on_unit_deployed,
             .destroyed = on_unit_destroyed,
-            .moved = on_unit_moved
+            .moved = on_unit_moved,
+            .attacked = on_unit_attacked
         },
         .turn_changed = {
             .user_argument = (void *)&turn_target,
             .changed = on_turn_changed
+        },
+        .game_changed = {
+            .user_argument = (void *)&turn_target,
+            .finished = on_game_finished
         }
     };
     RAD_ControlGame_t loaded = RAD_ControlCreateGame(world_path, & event_callbacks);
@@ -939,25 +1226,64 @@ int main(int argc, char **argv)
 
     printf("An Zucchini-Instanz '%s' angebunden. Beenden mit SIGINT/SIGTERM.\n", interface_name);
 
+    // Ungleich 0 nur, wenn der Server ohne Spiel dasteht (RAD_ControlResetGame) --
+    // supervisord startet ihn dann neu.
+    int exit_code = 0;
+
+    // Wie lange eine Nachricht dauert, seit dem Start (control/message_timing.h).
+    RAD_MessageTiming_t timing;
+    RAD_MessageTimingInitialize(&timing);
+
     while(!terminate)
     {
         uint8_t message[RAD_SERVER_MESSAGE_SIZE];
         uint16_t size = 0;
+        uint64_t source = 0;
+        const uint64_t measured_before = timing.count;
 
         // Erst den Ringpuffer leerraeumen, dann warten: ein Wakeup steht fuer
         // "es liegt etwas an", nicht fuer "genau eine Nachricht".
-        while(0 == ZUC_ApiReceive(api, message, &size))
+        while(0 == ZUC_ApiReceive(api, &source, message, &size))
         {
-            handle_message(control, api, message, size);
+            const uint64_t start = RAD_MessageTimingNow();
+            handle_message(control, api, source, message, size);
+            RAD_MessageTimingAdd(&timing, RAD_MessageTimingNow() - start);
         }
 
+        // Meldungen des Spielendes, die inzwischen fertig sind, ins Log.
+        RAD_ReportCollectFinished();
+
+        // Ein neuer Spielstart: erst zuruecksetzen, dann einrichten. Ohne Datei
+        // ist kein Spiel angesetzt (Abbruch im Backend) -- dann bleibt das Spiel,
+        // wie es ist, auch ein beendetes (load_game_start).
         if(game_start_changed)
         {
             game_start_changed = 0;
-            if(game_start_path != NULL)
+            if(game_start_path != NULL && access(game_start_path, F_OK) == 0)
             {
+                if(!RAD_ControlResetGame(&loaded, &control, world_path, &event_callbacks))
+                {
+                    printf("Ohne Spiel geht es nicht weiter -- Abbruch.\n");
+                    exit_code = 1;
+                    break;
+                }
                 load_game_start(control, game_start_path);
             }
+            else if(game_start_path != NULL)
+            {
+                printf("Spielstart: keine Datei unter %s -- kein Spiel angesetzt.\n", game_start_path);
+            }
+        }
+
+        // Die Werte seit dem Start, aber nur, wenn in diesem Durchlauf eine
+        // Nachricht dazukam: sonst stuende ohne Verkehr jede Sekunde dieselbe Zeile
+        // im Log.
+        if(timing.count != measured_before)
+        {
+            printf("Bearbeitung seit Start: %" PRIu64 " Nachrichten, max %.3f ms, avg %.3f ms\n",
+                   timing.count,
+                   (double)timing.max_ns / 1e6,
+                   (double)RAD_MessageTimingAverage(&timing) / 1e6);
         }
 
         // Ein Signal unterbricht das Warten (poll in ZUC_ApiWait) -- ein Spielstart
@@ -976,5 +1302,5 @@ int main(int argc, char **argv)
     RAD_DestroyControl(&control);
     RAD_ControlDestroyGame(&loaded);
 
-    return 0;
+    return exit_code;
 }

@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <radish/io/net_session.h>
 #include <radish/model/reserve.h>
+#include <radish/model/world.h>
 #include <radish/rendering/iso_map.h>
 #include <radish/view/context_menu/context_menu_item.h>
 #include <radish/view/context_menu/context_menu_state_machine.h>
@@ -40,7 +41,11 @@
 ///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, blau hervorgehoben
 ///     (RAD_ContextMenuItemSetHighlighted).
 ///   - TILE_WITH_OWN_ENTITY_SELECTED: Move (RAD_CONTEXT_MENU_ITEM_ACTION_MOVE)
-///     und Attack (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK).
+///     und Attack (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK) -- jeder nur, solange
+///     die Einheit ihn in diesem Zug noch darf: nicht in diesem Zug aufgestellt
+///     und nicht schon gezogen bzw. angegriffen (RAD_ClientUnit_t.deployed,
+///     moved, attacked, gelesen beim Oeffnen). Darf sie keins von beiden, steht
+///     nur Schliessen da.
 ///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, blau hervorgehoben.
 ///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, blau hervorgehoben.
 ///   - TILE_WITH_FOREIGN_ENTITY_SELECTED -- die Einheit gehoert nicht dem
@@ -70,10 +75,20 @@
 /// Zustandsmaschine erfaehrt es als OnEntityFromReserveSelected. Sie bleibt
 /// stehen, wo sie geoeffnet wurde, auch wenn der Ring sich verschiebt.
 ///
+/// **Ist das Spiel vorbei** (RAD_ClientWorldIsFinished), oeffnet sie sich
+/// nicht mehr, und ein Klick in ein noch offenes Menue schliesst es nur.
+///
 /// **Bestaetigt der Spieler die gewaehlte Einheit** -- ein Klick auf Deploy in
 /// WAITING_FOR_USER_ACKNOWLEDGEMENT --, schickt sie das Kommando, diese
 /// Einheit auf das ausgewaehlte Feld zu stellen (RAD_ControlDeployUnit,
-/// control/deploy_unit.h), ueber die Session aus RAD_CreateContextMenuView.
+/// control/deploy_unit.h), ueber die Session aus RAD_CreateContextMenuView --
+/// **nur, wenn der Server das Feld annehmen wuerde**: es liegt in der eigenen
+/// Aufstellzone, wie der Server sie geschickt hat (RAD_ClientWorldDeployZone),
+/// hat Gelaende, ist begehbar (RAD_ControlTerrainImpassable) und frei -- dieselben
+/// Gruende wie im Spiel (RAD_GameCheckDeployUnit). Sonst geht der Grund ins Log,
+/// kein Kommando hinaus, und Deploy ist vorher auch nicht blau hervorgehoben.
+/// Angeboten wird Deploy trotzdem auf jedem freien Feld: so sieht der Spieler
+/// die Zone auch, wenn er daneben geklickt hat.
 ///
 /// **Ein Klick auf Move laesst den Spieler den Weg der Einheit
 /// zusammenklicken** (ENTITY_MOVE): sie verschwindet, und jedes Feld, das der
@@ -112,11 +127,32 @@
 /// und auf die Bestaetigung wartet (ENTITY_MOVE,
 /// WAITING_FOR_MOVE_ACKNOWLEDGEMENT): jedes Feld darauf als durchscheinend
 /// gelbe Raute, das Ziel -- das letzte Feld, dessen zweiter Klick den Weg
-/// abschliesst -- kraeftiger; das Feld der Einheit nicht. Wo die Felder auf
+/// abschliesst -- kraeftiger; das Feld der Einheit nicht. Solange er
+/// zusammengeklickt wird, liegen darunter blau die Felder, die die Einheit vom
+/// Ende des Weges aus noch erreicht -- nach denselben Regeln wie ein Klick,
+/// mit dem Budget, das ihr bleibt; die Welt aus RAD_CreateContextMenuView sagt,
+/// welche Felder bekannt und frei sind und was sie kosten. Wo die Felder auf
 /// dem Bildschirm liegen, fragt sie die Karte aus RAD_CreateContextMenuView
 /// (RAD_IsoMapTileScreenCenter); was dort nicht gezeichnet wird, markiert sie
-/// nicht. Gezeichnet wird das Overlay fuer sich
-/// (RAD_UpdateContextMenuViewPathOverlay), damit der Aufrufer es unter seine
+/// nicht.
+///
+/// **Beim Angriff markiert sie die Felder in Reichweite**, solange das Ziel
+/// gesucht wird und auf die Bestaetigung wartet (ENTITY_ATTACK,
+/// WAITING_FOR_ATTACK_ACKNOWLEDGEMENT): jedes Feld, das wenigstens eine Waffe
+/// der Einheit erreicht -- dieselbe Regel wie bei der Zielwahl --, als
+/// durchscheinend rote Raute, das gewaehlte Ziel kraeftiger; das Feld der
+/// Einheit nicht.
+///
+/// **Beim Deployen markiert sie die eigene Aufstellzone**, ab dem Klick auf
+/// Deploy bis zur Bestaetigung (SELECT_ENTITY_FROM_RESERVE,
+/// DEPLOY_FROM_RESERVE, WAITING_FOR_USER_ACKNOWLEDGEMENT): jedes Feld der Zone,
+/// auf das sich aufstellen laesst, durchscheinend gruen -- unbegehbare, besetzte
+/// und solche ohne Gelaende bleiben frei --, das ausgewaehlte Feld kraeftiger:
+/// gruen, wenn Deploy es annimmt, rot, wenn nicht. Die Zone kommt aus der Welt, fuer den
+/// Spieler dieses Clients (own_player_id der Session).
+///
+/// Gezeichnet werden alle Markierungen als Overlay fuer sich
+/// (RAD_UpdateContextMenuViewOverlay), damit der Aufrufer es unter seine
 /// anderen Views legen kann.
 ///
 /// **Was sie zeichnet, folgt aus ihrer Zustandsmaschine**
@@ -148,14 +184,16 @@ typedef struct RAD_ContextMenuView RAD_ContextMenuView_t;
 /// deployment_width x deployment_height Pixel gross und schreibt in "font";
 /// die Schrift gehoert dem Aufrufer (view/view.h, RAD_ViewFont) und muss die
 /// ContextMenuView ueberleben, ebenso "session", ueber die Deploy-,
-/// Move- und Attack-Kommandos hinausgehen, und "map", auf der sie den Weg markiert -- nur
-/// gelesen. NULL, wenn kein Speicher da ist.
+/// Move- und Attack-Kommandos hinausgehen, "map", auf der sie Weg und
+/// Reichweite markiert, und "world", aus der sie liest, wohin eine Einheit
+/// ziehen kann -- beide nur gelesen. NULL, wenn kein Speicher da ist.
 /// RAD_DestroyContextMenuView baut auch alle Eintraege, die UnitDeploymentView
 /// und die Zustandsmaschine ab und nullt den Zeiger des Aufrufers.
 ///
 RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t center_y, int32_t radius,
                                                  TTF_Font *font, int32_t deployment_width, int32_t deployment_height,
-                                                 RAD_IoNetSession_t *session, const RAD_IsoMap_t *map);
+                                                 RAD_IoNetSession_t *session, const RAD_IsoMap_t *map,
+                                                 const RAD_ClientWorld_t *world);
 void RAD_DestroyContextMenuView(RAD_ContextMenuView_t **context_menu_view);
 
 ///
@@ -259,12 +297,15 @@ bool RAD_ContextMenuViewHandleMouseButton(RAD_ContextMenuView_t *context_menu_vi
 void RAD_UpdateContextMenuView(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 
 ///
-/// Zeichnet die Markierung des Weges (siehe oben) mit "renderer" -- ausser in
-/// ENTITY_MOVE und WAITING_FOR_MOVE_ACKNOWLEDGEMENT: nichts, ebenso, solange
-/// der Weg nur aus dem Feld der Einheit besteht. Unabhaengig davon, ob sie
-/// selbst zu sehen ist (RAD_ContextMenuViewIsVisible). Einmal je Frame zu
-/// rufen, nach der Karte und vor allem, was darueber liegen soll.
+/// Zeichnet die Markierungen (siehe oben) mit "renderer": in ENTITY_MOVE und
+/// WAITING_FOR_MOVE_ACKNOWLEDGEMENT den Weg -- nichts, solange er nur aus dem
+/// Feld der Einheit besteht --, in ENTITY_ATTACK und
+/// WAITING_FOR_ATTACK_ACKNOWLEDGEMENT die Felder in Reichweite, ab dem Klick
+/// auf Deploy bis zur Bestaetigung die eigene Aufstellzone, sonst nichts.
+/// Unabhaengig davon, ob sie selbst zu sehen ist (RAD_ContextMenuViewIsVisible).
+/// Einmal je Frame zu rufen, nach der Karte und vor allem, was darueber liegen
+/// soll.
 ///
-void RAD_UpdateContextMenuViewPathOverlay(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
+void RAD_UpdateContextMenuViewOverlay(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 
 #endif

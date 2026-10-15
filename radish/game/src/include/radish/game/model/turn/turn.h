@@ -97,6 +97,13 @@ struct RAD_Turn
     /// und zeigt auf nichts.
     ///
     int32_t number;
+
+    ///
+    /// Die laufende Runde, ab 1. Weitergezaehlt wird beim Rundenwechsel in
+    /// RAD_TurnEnd -- wenn auf den letzten in der Reihe wieder der erste folgt.
+    /// Beitritt und Austritt zaehlen nicht.
+    ///
+    int32_t round;
 };
 
 ///
@@ -185,8 +192,13 @@ bool RAD_TurnIsUsersTurn(const RAD_Turn_t *turn, RAD_UserId_t user);
 /// ist (RAD_TURN_ERROR_NOT_YOUR_TURN).
 ///
 /// Steht nur einer in der Reihe, ist danach wieder er dran -- es ist ja ein
-/// neuer Zug.
+/// neuer Zug, und eine neue Runde.
 ///
 RAD_TurnResult_t RAD_TurnEnd(RAD_Turn_t *turn, RAD_UserId_t user);
+
+///
+/// Die laufende Runde, ab 1 (RAD_Turn_t.round).
+///
+int32_t RAD_TurnRound(const RAD_Turn_t *turn);
 
 #endif

@@ -385,7 +385,46 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             return RAD_NET_CODEC_OK;
 
         case NET_GAME_EVENT__EVENT_FINISHED:
-            RAD_NetEventManagerPublishGameFinished(events);
+        {
+            const NetGameFinishedEvent *net_finished = game_event->finished;
+            if(net_finished == NULL)
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            RAD_NetGameFinished_t finished = {
+                .winner = net_finished->winner_id,
+                .reason = RAD_NET_GAME_END_NONE,
+                .number_of_players = 0
+            };
+            switch(net_finished->reason)
+            {
+                case NET_GAME_END_REASON__GAME_END_ROUNDS:     finished.reason = RAD_NET_GAME_END_ROUNDS;     break;
+                case NET_GAME_END_REASON__GAME_END_ELIMINATED: finished.reason = RAD_NET_GAME_END_ELIMINATED; break;
+                default:                                       finished.reason = RAD_NET_GAME_END_NONE;       break;
+            }
+            // Mehr Mitspieler, als das Spiel kennt, fallen weg (net_types.h).
+            for(size_t i = 0; (i < net_finished->n_scores) && (finished.number_of_players < RAD_NET_GAME_FINISHED_PLAYERS_MAX); ++i)
+            {
+                if(net_finished->scores[i] == NULL)
+                {
+                    return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+                }
+                finished.users[finished.number_of_players] = net_finished->scores[i]->user_id;
+                finished.scores[finished.number_of_players] = net_finished->scores[i]->score;
+                finished.number_of_players++;
+            }
+
+            RAD_NetEventManagerPublishGameFinished(events, &finished);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_ROUND:
+            if(game_event->round == NULL)
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+            RAD_NetEventManagerPublishRound(events, game_event->round->round, game_event->round->rounds);
             return RAD_NET_CODEC_OK;
 
         case NET_GAME_EVENT__EVENT_CURRENT_PLAYER:
@@ -414,6 +453,31 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             }
             RAD_NetEventManagerPublishWorldSize(events, game_event->world_size->width, game_event->world_size->height);
             return RAD_NET_CODEC_OK;
+
+        case NET_GAME_EVENT__EVENT_DEPLOY_ZONE:
+        {
+            const NetDeployZoneEvent *deploy_zone = game_event->deploy_zone;
+            if(deploy_zone == NULL)
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            // Wie bei einem aufgestellten Feld: was in keine Position (int16)
+            // passt, liegt in keiner Welt, die der Client halten kann.
+            if((deploy_zone->min_x > INT16_MAX) || (deploy_zone->min_y > INT16_MAX)
+               || (deploy_zone->max_x > INT16_MAX) || (deploy_zone->max_y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            const RAD_NetDeployZone_t zone = {
+                .user = deploy_zone->user_id,
+                .min = { .x = (int16_t)deploy_zone->min_x, .y = (int16_t)deploy_zone->min_y },
+                .max = { .x = (int16_t)deploy_zone->max_x, .y = (int16_t)deploy_zone->max_y }
+            };
+            RAD_NetEventManagerPublishDeployZone(events, &zone);
+            return RAD_NET_CODEC_OK;
+        }
 
         case NET_GAME_EVENT__EVENT_TILES:
             return RAD_NetDispatchTiles(events, game_event->tiles);
@@ -462,6 +526,84 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             deployed.position.y = (int16_t)unit_deployed->y;
 
             RAD_NetEventManagerPublishUnitDeployed(events, &deployed);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT_MOVED:
+        {
+            const NetUnitMovedEvent *unit_moved = game_event->unit_moved;
+            if(unit_moved == NULL)
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            // Dieselbe Grenze wie beim Kommando: unter zwei Feldern ist es kein
+            // Zug, und mehr, als ein Weg fasst, schickt der Server nicht.
+            if((unit_moved->n_steps < 2) || (unit_moved->n_steps > RAD_NET_PATH_MAX_STEPS))
+            {
+                return RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT;
+            }
+
+            RAD_NetUnitMoved_t moved;
+            memset(&moved, 0, sizeof(moved));
+            moved.entity = (RAD_NetEntityId_t)unit_moved->unit_id;
+            moved.path.number_of_steps = (int8_t)unit_moved->n_steps;
+            for(size_t i = 0; i < unit_moved->n_steps; ++i)
+            {
+                // Wie beim Aufstellen: ein Feld, das in keine Position passt,
+                // gibt es in keiner Welt des Clients.
+                const NetPathStep *step = unit_moved->steps[i];
+                if((step == NULL) || (step->x > INT16_MAX) || (step->y > INT16_MAX))
+                {
+                    return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+                }
+                moved.path.steps_to[i].x = (int16_t)step->x;
+                moved.path.steps_to[i].y = (int16_t)step->y;
+            }
+
+            RAD_NetEventManagerPublishUnitMoved(events, &moved);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT_ATTACKED:
+        {
+            const NetUnitAttackedEvent *unit_attacked = game_event->unit_attacked;
+            // Wie beim Aufstellen: ein Feld, das in keine Position passt, gibt es
+            // in keiner Welt des Clients.
+            if((unit_attacked == NULL) || (unit_attacked->x > INT16_MAX) || (unit_attacked->y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            const RAD_NetUnitAttacked_t attacked = {
+                .entity = (RAD_NetEntityId_t)unit_attacked->unit_id,
+                .target = { .x = (int16_t)unit_attacked->x, .y = (int16_t)unit_attacked->y },
+                .victim = unit_attacked->has_target ? (RAD_NetEntityId_t)unit_attacked->target_id : RAD_NET_ENTITY_NONE,
+                .shots = unit_attacked->shots,
+                .hits = unit_attacked->hits,
+                .penetrations = unit_attacked->penetrations,
+                .wounds = unit_attacked->wounds,
+                .members_killed = unit_attacked->members_killed,
+                .victim_destroyed = unit_attacked->target_destroyed
+            };
+            RAD_NetEventManagerPublishUnitAttacked(events, &attacked);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT_DESTROYED:
+        {
+            const NetUnitDestroyedEvent *unit_destroyed = game_event->unit_destroyed;
+            // Wie beim Angriff: ein Feld, das in keine Position passt, gibt es nicht.
+            if((unit_destroyed == NULL) || (unit_destroyed->x > INT16_MAX) || (unit_destroyed->y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            const RAD_NetUnitDestroyed_t destroyed = {
+                .entity = (RAD_NetEntityId_t)unit_destroyed->unit_id,
+                .position = { .x = (int16_t)unit_destroyed->x, .y = (int16_t)unit_destroyed->y }
+            };
+            RAD_NetEventManagerPublishUnitDestroyed(events, &destroyed);
             return RAD_NET_CODEC_OK;
         }
 
@@ -543,7 +685,9 @@ static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *u
         RAD_NetUnitMember_t *net_member = &out->members[m];
         RAD_NetCopyName(net_member->profile, member->profile);
         net_member->health = member->health;
+        net_member->health_max = member->health_max;
         net_member->armor = member->armor;
+        net_member->toughness = member->toughness;
         net_member->strength = member->strength;
         net_member->accuracy = member->accuracy;
 
@@ -575,7 +719,7 @@ static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *u
 /// NetTile (tile.proto) -> RAD_NetTile_t (io/net_types.h). Eine reine
 /// Feldkopie, das Wire-Enum eingeschlossen -- NET_TILE_TYPE__* und
 /// RAD_NET_TILE_TYPE_* zaehlen absichtlich gleich (0 unbekannt, 1 ground,
-/// 2 water, 3 void), trotzdem uebersetzt ein switch statt eines nackten Casts.
+/// 2 water, 3 void, ab 4 die spaeteren), trotzdem uebersetzt ein switch statt eines nackten Casts.
 /// Der default faengt Wire-Werte ab, die dieser Client noch nicht kennt: ein
 /// neuerer Server darf einen Typ schicken, den es hier noch nicht gibt, und der
 /// ist dann "unbekannt" und kein Fehler.
@@ -586,14 +730,25 @@ static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile)
     out->y = tile->y;
     out->z = tile->z;
     out->entity_id = (RAD_NetEntityId_t)tile->unit_id;
+    out->victory = tile->victory;
+    out->movement_modifier = tile->movement_modifier;
+    out->cover = tile->cover;
+    out->impassable = tile->impassable;
 
     switch(tile->type)
     {
-        case NET_TILE_TYPE__TILE_TYPE_GROUND: out->type = RAD_NET_TILE_TYPE_GROUND;   break;
-        case NET_TILE_TYPE__TILE_TYPE_WATER:  out->type = RAD_NET_TILE_TYPE_WATER;    break;
-        case NET_TILE_TYPE__TILE_TYPE_VOID:   out->type = RAD_NET_TILE_TYPE_VOID;     break;
+        case NET_TILE_TYPE__TILE_TYPE_GROUND:        out->type = RAD_NET_TILE_TYPE_GROUND;         break;
+        case NET_TILE_TYPE__TILE_TYPE_WATER:         out->type = RAD_NET_TILE_TYPE_WATER;          break;
+        case NET_TILE_TYPE__TILE_TYPE_VOID:          out->type = RAD_NET_TILE_TYPE_VOID;           break;
+        case NET_TILE_TYPE__TILE_TYPE_MUD:           out->type = RAD_NET_TILE_TYPE_MUD;            break;
+        case NET_TILE_TYPE__TILE_TYPE_MEADOW:        out->type = RAD_NET_TILE_TYPE_MEADOW;         break;
+        case NET_TILE_TYPE__TILE_TYPE_FOREST:        out->type = RAD_NET_TILE_TYPE_FOREST;         break;
+        case NET_TILE_TYPE__TILE_TYPE_WATER_DEEP:    out->type = RAD_NET_TILE_TYPE_WATER_DEEP;     break;
+        case NET_TILE_TYPE__TILE_TYPE_CITY:          out->type = RAD_NET_TILE_TYPE_CITY;           break;
+        case NET_TILE_TYPE__TILE_TYPE_ROAD:          out->type = RAD_NET_TILE_TYPE_ROAD;           break;
+        case NET_TILE_TYPE__TILE_TYPE_FORTIFICATION: out->type = RAD_NET_TILE_TYPE_FORTIFICATION;  break;
         case NET_TILE_TYPE__TILE_TYPE_UNKNOWN:
-        default:                              out->type = RAD_NET_TILE_TYPE_UNKNOWN;  break;
+        default:                                     out->type = RAD_NET_TILE_TYPE_UNKNOWN;        break;
     }
 }
 

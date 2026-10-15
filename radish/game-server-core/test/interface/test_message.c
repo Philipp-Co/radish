@@ -416,8 +416,10 @@ void test_message_packt_die_ganze_einheit(void)
 
     RAD_UnitMember_t *offizier = &unit.members[0];
     strcpy(offizier->profile, "Offizier");
-    offizier->health = 10;
+    offizier->health = 7;
+    offizier->health_max = 10;
     offizier->armor = 2;
+    offizier->toughness = 5;
     offizier->strength = 3;
     offizier->accuracy = 4;
 
@@ -458,8 +460,10 @@ void test_message_packt_die_ganze_einheit(void)
 
     const NetUnitMember *erstes = net_unit->members[0];
     TEST_ASSERT_EQUAL_STRING("Offizier", erstes->profile);
-    TEST_ASSERT_EQUAL_UINT32(10, erstes->health);
+    TEST_ASSERT_EQUAL_UINT32(7, erstes->health);
+    TEST_ASSERT_EQUAL_UINT32(10, erstes->health_max);
     TEST_ASSERT_EQUAL_UINT32(2, erstes->armor);
+    TEST_ASSERT_EQUAL_UINT32(5, erstes->toughness);
     TEST_ASSERT_EQUAL_UINT32(3, erstes->strength);
     TEST_ASSERT_EQUAL_UINT32(4, erstes->accuracy);
     TEST_ASSERT_EQUAL_size_t(0, erstes->n_weapons);
@@ -572,5 +576,264 @@ void test_message_packt_die_antwort_auf_ein_attack(void)
     TEST_ASSERT_EQUAL_UINT32(5, command_request->attack->x);
     TEST_ASSERT_EQUAL_UINT32(7, command_request->attack->y);
 
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Ein Zug als Ereignis (NetUnitMovedEvent): die Id der Einheit und der Weg,
+/// den sie wirklich gegangen ist, Feld fuer Feld. Unter zwei Feldern ist es
+/// kein Zug.
+///
+void test_message_packt_einen_zug(void)
+{
+    const RAD_Path_t weg = {
+        .steps_to = { { .x = 2, .y = 3 }, { .x = 3, .y = 3 }, { .x = 3, .y = 4 } },
+        .number_of_steps = 3
+    };
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitMovedEventToMessage(5, &weg, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_SERVER_MESSAGE__DATA_EVENT, message->data_case);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_UNIT_MOVED, message->event->game->event_case);
+
+    const NetUnitMovedEvent *zug = message->event->game->unit_moved;
+    TEST_ASSERT_EQUAL_UINT32(5, zug->unit_id);
+    TEST_ASSERT_EQUAL_size_t(3, zug->n_steps);
+    TEST_ASSERT_EQUAL_UINT32(2, zug->steps[0]->x);
+    TEST_ASSERT_EQUAL_UINT32(3, zug->steps[0]->y);
+    TEST_ASSERT_EQUAL_UINT32(3, zug->steps[1]->x);
+    TEST_ASSERT_EQUAL_UINT32(3, zug->steps[1]->y);
+    TEST_ASSERT_EQUAL_UINT32(3, zug->steps[2]->x);
+    TEST_ASSERT_EQUAL_UINT32(4, zug->steps[2]->y);
+
+    net_server_message__free_unpacked(message, NULL);
+
+    // Ein Feld ist der Standort und kein Zug.
+    const RAD_Path_t stehen = { .steps_to = { { .x = 2, .y = 3 } }, .number_of_steps = 1 };
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT,
+        RAD_SerializeUnitMovedEventToMessage(5, &stehen, buffer, sizeof(buffer), &size));
+}
+
+///
+/// Ein Angriff als Ereignis (NetUnitAttackedEvent): wer, auf welches Feld und
+/// was er bewirkt hat.
+///
+void test_message_packt_einen_angriff(void)
+{
+    const RAD_AttackResult_t result = {
+        .attacker = 7, .target = 9, .x = 4, .y = 6,
+        .shots = 10, .hits = 6, .penetrations = 4, .wounds = 3,
+        .members_killed = 2, .target_destroyed = true
+    };
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitAttackedEventToMessage(&result, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_SERVER_MESSAGE__DATA_EVENT, message->data_case);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_UNIT_ATTACKED, message->event->game->event_case);
+
+    const NetUnitAttackedEvent *angriff = message->event->game->unit_attacked;
+    TEST_ASSERT_EQUAL_UINT32(7, angriff->unit_id);
+    TEST_ASSERT_EQUAL_UINT32(4, angriff->x);
+    TEST_ASSERT_EQUAL_UINT32(6, angriff->y);
+    TEST_ASSERT_TRUE(angriff->has_target);
+    TEST_ASSERT_EQUAL_UINT32(9, angriff->target_id);
+    TEST_ASSERT_EQUAL_UINT32(10, angriff->shots);
+    TEST_ASSERT_EQUAL_UINT32(6, angriff->hits);
+    TEST_ASSERT_EQUAL_UINT32(4, angriff->penetrations);
+    TEST_ASSERT_EQUAL_UINT32(3, angriff->wounds);
+    TEST_ASSERT_EQUAL_UINT32(2, angriff->members_killed);
+    TEST_ASSERT_TRUE(angriff->target_destroyed);
+
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Ein Angriff ins Leere: ohne Ziel, und die Id bleibt 0 statt eines
+/// umgedeuteten RAD_UNIT_NONE.
+///
+void test_message_packt_einen_angriff_ohne_ziel(void)
+{
+    const RAD_AttackResult_t result = { .attacker = 7, .target = RAD_UNIT_NONE, .x = 4, .y = 6 };
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitAttackedEventToMessage(&result, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetUnitAttackedEvent *angriff = message->event->game->unit_attacked;
+    TEST_ASSERT_FALSE(angriff->has_target);
+    TEST_ASSERT_EQUAL_UINT32(0, angriff->target_id);
+    TEST_ASSERT_EQUAL_UINT32(0, angriff->shots);
+
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Eine zerstoerte Einheit als Ereignis (NetUnitDestroyedEvent): ihre Id und das
+/// Feld, auf dem sie stand.
+///
+void test_message_packt_eine_zerstoerung(void)
+{
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitDestroyedEventToMessage(9, 4, 6, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_UNIT_DESTROYED, message->event->game->event_case);
+
+    const NetUnitDestroyedEvent *zerstoerung = message->event->game->unit_destroyed;
+    TEST_ASSERT_EQUAL_UINT32(9, zerstoerung->unit_id);
+    TEST_ASSERT_EQUAL_UINT32(4, zerstoerung->x);
+    TEST_ASSERT_EQUAL_UINT32(6, zerstoerung->y);
+
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Die Aufstellzone als Ereignis (NetDeployZoneEvent): wem sie gehoert, ungekuerzt
+/// als uint64, und ihr Rechteck mit beiden Ecken.
+///
+void test_message_packt_eine_aufstellzone(void)
+{
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    const RAD_UserId_t user = (RAD_UserId_t)0x1122334455667788ULL;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeDeployZoneEventToMessage(user, 4, 0, 7, 7, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_SERVER_MESSAGE__DATA_EVENT, message->data_case);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_DEPLOY_ZONE, message->event->game->event_case);
+
+    const NetDeployZoneEvent *zone = message->event->game->deploy_zone;
+    TEST_ASSERT_EQUAL_UINT64(user, zone->user_id);
+    TEST_ASSERT_EQUAL_UINT32(4, zone->min_x);
+    TEST_ASSERT_EQUAL_UINT32(0, zone->min_y);
+    TEST_ASSERT_EQUAL_UINT32(7, zone->max_x);
+    TEST_ASSERT_EQUAL_UINT32(7, zone->max_y);
+
+    net_server_message__free_unpacked(message, NULL);
+
+    // Zu klein: nichts geschrieben.
+    uint8_t klein[4];
+    size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL,
+        RAD_SerializeDeployZoneEventToMessage(user, 4, 0, 7, 7, klein, sizeof(klein), &size));
+    TEST_ASSERT_EQUAL_UINT16(0, size);
+}
+
+///
+/// Die Runde als Ereignis (NetRoundEvent): die laufende und wie viele es gibt.
+///
+void test_message_packt_die_runde(void)
+{
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK, RAD_SerializeRoundEventToMessage(3, 10, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_ROUND, message->event->game->event_case);
+    TEST_ASSERT_EQUAL_UINT32(3, message->event->game->round->round);
+    TEST_ASSERT_EQUAL_UINT32(10, message->event->game->round->rounds);
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Das Ende als Ereignis (NetGameFinishedEvent): Sieger, Grund und die Punkte
+/// jedes Mitspielers -- und ein Unentschieden ohne Sieger.
+///
+void test_message_packt_das_ende(void)
+{
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    const RAD_UserId_t users[2] = { (RAD_UserId_t)0x1122334455667788ULL, (RAD_UserId_t)0x0815 };
+    const int32_t scores[2] = { 25, 10 };
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeGameFinishedEventToMessage(users[0], RAD_GAME_END_ROUNDS, users, scores, 2,
+                                                buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_FINISHED, message->event->game->event_case);
+    const NetGameFinishedEvent *ende = message->event->game->finished;
+    TEST_ASSERT_EQUAL_UINT64(users[0], ende->winner_id);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_END_REASON__GAME_END_ROUNDS, ende->reason);
+    TEST_ASSERT_EQUAL_size_t(2, ende->n_scores);
+    TEST_ASSERT_EQUAL_UINT64(users[0], ende->scores[0]->user_id);
+    TEST_ASSERT_EQUAL_UINT32(25, ende->scores[0]->score);
+    TEST_ASSERT_EQUAL_UINT64(users[1], ende->scores[1]->user_id);
+    TEST_ASSERT_EQUAL_UINT32(10, ende->scores[1]->score);
+    net_server_message__free_unpacked(message, NULL);
+
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeGameFinishedEventToMessage(RAD_USER_NONE, RAD_GAME_END_ELIMINATED, NULL, NULL, 0,
+                                                buffer, sizeof(buffer), &size));
+    message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_UINT64(0, message->event->game->finished->winner_id);
+    TEST_ASSERT_EQUAL_INT(NET_GAME_END_REASON__GAME_END_ELIMINATED, message->event->game->finished->reason);
+    TEST_ASSERT_EQUAL_size_t(0, message->event->game->finished->n_scores);
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Ein Siegfeld geht als NetTile.victory hinaus, ein gewoehnliches Feld ohne.
+///
+void test_message_packt_das_siegfeld(void)
+{
+    const RAD_Tile_t tiles[2] = {
+        { .x = 3, .y = 1, .z = 0, .type = RAD_TILE_TYPE_GROUND, .unit = RAD_UNIT_NONE, .victory = true },
+        { .x = 4, .y = 1, .z = 0, .type = RAD_TILE_TYPE_GROUND, .unit = RAD_UNIT_NONE, .victory = false }
+    };
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK, RAD_SerializeTilesEventToMessage(tiles, 2, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    TEST_ASSERT_EQUAL_size_t(2, message->event->game->tiles->n_tiles);
+    TEST_ASSERT_TRUE(message->event->game->tiles->tiles[0]->victory);
+    TEST_ASSERT_FALSE(message->event->game->tiles->tiles[1]->victory);
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Das Gelaende eines Feldes geht mit: MV mit Vorzeichen, CV und unbegehbar.
+///
+void test_message_packt_das_gelaende(void)
+{
+    const RAD_Tile_t tiles[2] = {
+        { .x = 0, .y = 0, .type = RAD_TILE_TYPE_FOREST, .unit = RAD_UNIT_NONE,
+          .terrain = { .movement_modifier = -1, .cover = 2, .impassable = false } },
+        { .x = 1, .y = 0, .type = RAD_TILE_TYPE_WATER_DEEP, .unit = RAD_UNIT_NONE,
+          .terrain = { .movement_modifier = 0, .cover = 0, .impassable = true } }
+    };
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK, RAD_SerializeTilesEventToMessage(tiles, 2, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetTile *wald = message->event->game->tiles->tiles[0];
+    TEST_ASSERT_EQUAL_INT(-1, wald->movement_modifier);
+    TEST_ASSERT_EQUAL_UINT32(2, wald->cover);
+    TEST_ASSERT_FALSE(wald->impassable);
+    TEST_ASSERT_TRUE(message->event->game->tiles->tiles[1]->impassable);
     net_server_message__free_unpacked(message, NULL);
 }

@@ -21,14 +21,19 @@ static void RAD_DefaultOnNetEndTurnResponse(void *user_argument, const RAD_NetEn
 static void RAD_DefaultOnNetAttackResponse(void *user_argument, const RAD_NetAttackResponse_t *response);
 
 static void RAD_DefaultOnNetGameCreated(void *user_argument);
-static void RAD_DefaultOnNetGameFinished(void *user_argument);
+static void RAD_DefaultOnNetGameFinished(void *user_argument, const RAD_NetGameFinished_t *finished);
+static void RAD_DefaultOnNetRound(void *user_argument, uint32_t round, uint32_t rounds);
 static void RAD_DefaultOnNetCurrentPlayer(void *user_argument, uint64_t user_id);
 static void RAD_DefaultOnNetPlayers(void *user_argument, const uint64_t *user_ids, size_t number_of_users);
 static void RAD_DefaultOnNetWorldSize(void *user_argument, uint32_t width, uint32_t height);
+static void RAD_DefaultOnNetDeployZone(void *user_argument, const RAD_NetDeployZone_t *zone);
 static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles);
 static void RAD_DefaultOnNetReserveUnit(void *user_argument, const RAD_NetReserveUnit_t *unit);
 static void RAD_DefaultOnNetUnitDeployed(void *user_argument, const RAD_NetUnitDeployed_t *deployed);
 static void RAD_DefaultOnNetUnit(void *user_argument, const RAD_NetUnit_t *unit);
+static void RAD_DefaultOnNetUnitMoved(void *user_argument, const RAD_NetUnitMoved_t *moved);
+static void RAD_DefaultOnNetUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked);
+static void RAD_DefaultOnNetUnitDestroyed(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
 
 static void RAD_DefaultOnNetTileCreated(void *user_argument, const RAD_NetTile_t *tile);
 static void RAD_DefaultOnNetTileRemoved(void *user_argument, uint32_t x, uint32_t y);
@@ -55,12 +60,17 @@ RAD_NetEventManager_t* RAD_CreateNetEventManager(void)
             .user_argument = NULL,
             .created = RAD_DefaultOnNetGameCreated,
             .finished = RAD_DefaultOnNetGameFinished,
+            .round = RAD_DefaultOnNetRound,
             .current_player = RAD_DefaultOnNetCurrentPlayer,
             .players = RAD_DefaultOnNetPlayers,
             .world_size = RAD_DefaultOnNetWorldSize,
+            .deploy_zone = RAD_DefaultOnNetDeployZone,
             .tiles = RAD_DefaultOnNetTiles,
             .reserve_unit = RAD_DefaultOnNetReserveUnit,
             .unit_deployed = RAD_DefaultOnNetUnitDeployed,
+            .unit_moved = RAD_DefaultOnNetUnitMoved,
+            .unit_attacked = RAD_DefaultOnNetUnitAttacked,
+            .unit_destroyed = RAD_DefaultOnNetUnitDestroyed,
             .unit = RAD_DefaultOnNetUnit
         },
         .tile_events = {
@@ -141,9 +151,14 @@ void RAD_NetEventManagerPublishGameCreated(RAD_NetEventManager_t *manager)
     manager->game_events.created(manager->game_events.user_argument);
 }
 
-void RAD_NetEventManagerPublishGameFinished(RAD_NetEventManager_t *manager)
+void RAD_NetEventManagerPublishGameFinished(RAD_NetEventManager_t *manager, const RAD_NetGameFinished_t *finished)
 {
-    manager->game_events.finished(manager->game_events.user_argument);
+    manager->game_events.finished(manager->game_events.user_argument, finished);
+}
+
+void RAD_NetEventManagerPublishRound(RAD_NetEventManager_t *manager, uint32_t round, uint32_t rounds)
+{
+    manager->game_events.round(manager->game_events.user_argument, round, rounds);
 }
 
 void RAD_NetEventManagerPublishCurrentPlayer(RAD_NetEventManager_t *manager, uint64_t user_id)
@@ -159,6 +174,11 @@ void RAD_NetEventManagerPublishPlayers(RAD_NetEventManager_t *manager, const uin
 void RAD_NetEventManagerPublishWorldSize(RAD_NetEventManager_t *manager, uint32_t width, uint32_t height)
 {
     manager->game_events.world_size(manager->game_events.user_argument, width, height);
+}
+
+void RAD_NetEventManagerPublishDeployZone(RAD_NetEventManager_t *manager, const RAD_NetDeployZone_t *zone)
+{
+    manager->game_events.deploy_zone(manager->game_events.user_argument, zone);
 }
 
 void RAD_NetEventManagerPublishTiles(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tiles, size_t number_of_tiles)
@@ -181,14 +201,37 @@ void RAD_NetEventManagerPublishUnit(RAD_NetEventManager_t *manager, const RAD_Ne
     manager->game_events.unit(manager->game_events.user_argument, unit);
 }
 
+void RAD_NetEventManagerPublishUnitMoved(RAD_NetEventManager_t *manager, const RAD_NetUnitMoved_t *moved)
+{
+    manager->game_events.unit_moved(manager->game_events.user_argument, moved);
+}
+
+void RAD_NetEventManagerPublishUnitAttacked(RAD_NetEventManager_t *manager, const RAD_NetUnitAttacked_t *attacked)
+{
+    manager->game_events.unit_attacked(manager->game_events.user_argument, attacked);
+}
+
+void RAD_NetEventManagerPublishUnitDestroyed(RAD_NetEventManager_t *manager, const RAD_NetUnitDestroyed_t *destroyed)
+{
+    manager->game_events.unit_destroyed(manager->game_events.user_argument, destroyed);
+}
+
 static void RAD_DefaultOnNetGameCreated(void *user_argument)
 {
     (void)user_argument;
 }
 
-static void RAD_DefaultOnNetGameFinished(void *user_argument)
+static void RAD_DefaultOnNetGameFinished(void *user_argument, const RAD_NetGameFinished_t *finished)
 {
     (void)user_argument;
+    (void)finished;
+}
+
+static void RAD_DefaultOnNetRound(void *user_argument, uint32_t round, uint32_t rounds)
+{
+    (void)user_argument;
+    (void)round;
+    (void)rounds;
 }
 
 static void RAD_DefaultOnNetCurrentPlayer(void *user_argument, uint64_t user_id)
@@ -209,6 +252,12 @@ static void RAD_DefaultOnNetWorldSize(void *user_argument, uint32_t width, uint3
     (void)user_argument;
     (void)width;
     (void)height;
+}
+
+static void RAD_DefaultOnNetDeployZone(void *user_argument, const RAD_NetDeployZone_t *zone)
+{
+    (void)user_argument;
+    (void)zone;
 }
 
 static void RAD_DefaultOnNetTiles(void *user_argument, const RAD_NetTile_t *tiles, size_t number_of_tiles)
@@ -236,14 +285,39 @@ static void RAD_DefaultOnNetUnit(void *user_argument, const RAD_NetUnit_t *unit)
     (void)unit;
 }
 
+static void RAD_DefaultOnNetUnitMoved(void *user_argument, const RAD_NetUnitMoved_t *moved)
+{
+    (void)user_argument;
+    (void)moved;
+}
+
+static void RAD_DefaultOnNetUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked)
+{
+    (void)user_argument;
+    (void)attacked;
+}
+
+static void RAD_DefaultOnNetUnitDestroyed(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed)
+{
+    (void)user_argument;
+    (void)destroyed;
+}
+
 const char* RAD_NetTileTypeText(RAD_NetTileType_t type)
 {
     switch(type)
     {
-        case RAD_NET_TILE_TYPE_GROUND:  return "ground";
-        case RAD_NET_TILE_TYPE_WATER:   return "water";
-        case RAD_NET_TILE_TYPE_VOID:    return "void";
-        case RAD_NET_TILE_TYPE_UNKNOWN: return "unbekannt";
+        case RAD_NET_TILE_TYPE_GROUND:        return "ground";
+        case RAD_NET_TILE_TYPE_WATER:         return "water";
+        case RAD_NET_TILE_TYPE_VOID:          return "void";
+        case RAD_NET_TILE_TYPE_MUD:           return "mud";
+        case RAD_NET_TILE_TYPE_MEADOW:        return "meadow";
+        case RAD_NET_TILE_TYPE_FOREST:        return "forest";
+        case RAD_NET_TILE_TYPE_WATER_DEEP:    return "water_deep";
+        case RAD_NET_TILE_TYPE_CITY:          return "city";
+        case RAD_NET_TILE_TYPE_ROAD:          return "road";
+        case RAD_NET_TILE_TYPE_FORTIFICATION: return "fortification";
+        case RAD_NET_TILE_TYPE_UNKNOWN:       return "unbekannt";
     }
     return "unbekannt";
 }

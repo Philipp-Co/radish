@@ -118,9 +118,9 @@ import {
                 @if (profile(entity); as p) {
                   <div
                     class="muted stats"
-                    title="Lebenspunkte · Rüstungspunkte · Stärke · Treffsicherheit"
+                    title="Lebenspunkte · Rüstungspunkte · Widerstand · Stärke · Treffsicherheit"
                   >
-                    LP {{ p.health }} · RP {{ p.armor }} · ST {{ p.strength }} · TS {{ p.accuracy }}
+                    LP {{ p.health }} · RP {{ p.armor }} · WI {{ p.toughness }} · ST {{ p.strength }} · TS {{ p.accuracy }}
                   </div>
                 }
               </td>

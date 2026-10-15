@@ -97,11 +97,12 @@ void test_zugwechsel_austritt_meldet_nur_eine_aenderung(void)
     aufbauen();
     RAD_GameAddPlayer(game, 0x10);
     RAD_GameAddPlayer(game, 0x20);
-    RAD_GameAddPlayer(game, 0x30);
     mitschrift.gemeldet = 0;
 
-    // Wer nicht dran ist, geht still.
-    RAD_GameRemovePlayer(game, 0x30);
+    // Wer nicht dran ist, geht still -- und kommt still wieder, hinten in die Reihe.
+    RAD_GameRemovePlayer(game, 0x20);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.gemeldet);
+    RAD_GameAddPlayer(game, 0x20);
     TEST_ASSERT_EQUAL_INT(0, mitschrift.gemeldet);
 
     // Geht der, der dran ist, ist sein Nachfolger dran.

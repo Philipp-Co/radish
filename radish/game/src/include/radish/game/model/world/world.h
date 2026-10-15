@@ -39,6 +39,17 @@ struct RAD_World
     ///
     RAD_UnitPool_t *units;
 
+    ///
+    /// Die Werte des Gelaendes je Tile-Typ, Index RAD_TileType_t. Jedes Feld traegt
+    /// die seines Typs (RAD_Tile_t.terrain); die Tabelle ist die Quelle, aus der
+    /// sie kommen, wann immer ein Typ geschrieben wird. Bis zum Spielstart
+    /// (RAD_WorldSetTerrain) ist alles 0.
+    ///
+    /// Sie gehoert zur Welt und nicht zu einer Weltdefinition: das Laden einer
+    /// neuen Welt laesst sie stehen und gibt deren Feldern die Werte daraus.
+    ///
+    RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES];
+
     RAD_EventManager_t *event_manager;
 };
 
@@ -101,7 +112,9 @@ RAD_Unit_t* RAD_WorldUnitAt(RAD_World_t *world, int32_t x, int32_t y);
 ///
 ///     VOID -> X                        added
 ///     X -> VOID                        removed
-///     X -> Y, oder X mit anderem z     changed
+///     X -> Y, X mit anderem z,         changed
+///     anderem victory oder anderem
+///     Gelaende (RAD_WorldSetTerrain)
 ///     nichts geaendert                 keines
 ///
 /// Ein Abonnent erfaehrt damit, was geschehen ist, und nicht, wie es hiess: ein
@@ -111,7 +124,7 @@ RAD_Unit_t* RAD_WorldUnitAt(RAD_World_t *world, int32_t x, int32_t y);
 /// selben Zustand, und heraus geht der Zustand.
 ///
 /// **Entfernen laesst die Stelle stehen:** x, y, z und die Einheit bleiben, nur
-/// der Typ wird VOID. Weggenommen wird das Gelaende und nicht das Feld -- und wer
+/// der Typ wird VOID -- und mit ihm das Gelaende das von VOID. Weggenommen wird das Gelaende und nicht das Feld -- und wer
 /// es wieder hinstellt, bringt seine Hoehe selbst mit.
 ///
 /// **Eine Figur haelt ihr Gelaende.** RAD_WorldRemoveTile liefert false, solange
@@ -129,6 +142,20 @@ RAD_Unit_t* RAD_WorldUnitAt(RAD_World_t *world, int32_t x, int32_t y);
 ///
 bool RAD_WorldAddTile(RAD_World_t *world, int32_t x, int32_t y, int32_t z, RAD_TileType_t type);
 bool RAD_WorldRemoveTile(RAD_World_t *world, int32_t x, int32_t y);
+
+///
+/// Die Werte des Gelaendes, die die Welt fuer "type" fuehrt (RAD_World_t.terrain).
+/// Ein Typ ausserhalb der Aufzaehlung hat die von RAD_TILE_TYPE_VOID.
+///
+RAD_Terrain_t RAD_WorldTerrainOf(const RAD_World_t *world, RAD_TileType_t type);
+
+///
+/// Uebernimmt "terrain" als Tabelle der Welt und gibt jedem Feld die Werte seines
+/// Typs. Ein Feld mit Gelaende, dessen Werte sich dabei aendern, meldet sich als
+/// changed -- nach derselben Tabelle wie oben, in der ein anderes Gelaende eine
+/// Aenderung ist wie ein anderer Typ.
+///
+void RAD_WorldSetTerrain(RAD_World_t *world, const RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES]);
 
 ///
 /// Meldet fuer jedes Feld den Uebergang von "previous" zum jetzigen Stand, nach

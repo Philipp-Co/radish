@@ -37,9 +37,34 @@ typedef enum
 {
     RAD_CLIENT_TILE_TYPE_UNKNOWN = 0,
     RAD_CLIENT_TILE_TYPE_GROUND,
-    RAD_CLIENT_TILE_TYPE_WATER,
-    RAD_CLIENT_TILE_TYPE_VOID
+    RAD_CLIENT_TILE_TYPE_WATER_SHALLOW,
+    RAD_CLIENT_TILE_TYPE_VOID,
+    RAD_CLIENT_TILE_TYPE_MUD,
+    RAD_CLIENT_TILE_TYPE_MEADOW,
+    RAD_CLIENT_TILE_TYPE_FOREST,
+    RAD_CLIENT_TILE_TYPE_WATER_DEEP,
+    RAD_CLIENT_TILE_TYPE_CITY,
+    RAD_CLIENT_TILE_TYPE_ROAD,
+    RAD_CLIENT_TILE_TYPE_FORTIFICATION
 } RAD_ClientTileType_t;
+
+///
+/// Was das Gelaende des Feldes fuer das Spiel bedeutet, so wie der Server es
+/// schickt (NetTile.movement_modifier, cover, impassable). Die Werte pflegt das
+/// Backend; der Client fuehrt keine eigenen -- er liest sie, um Wege so zu
+/// rechnen wie der Server (control/terrain.h) und sie anzuzeigen.
+///
+typedef struct
+{
+    /// MV: um wie viele Felder das Feld die Bewegungsreichweite aendert.
+    int32_t movement_modifier;
+
+    /// CV: die Deckung, die es einer Einheit darauf gibt.
+    int32_t cover;
+
+    /// Ob eine Einheit das Feld betreten darf.
+    bool impassable;
+} RAD_ClientTerrain_t;
 
 typedef struct
 {
@@ -54,6 +79,15 @@ typedef struct
 
     /// Die Einheit auf diesem Feld, NULL, wenn es frei ist.
     RAD_ClientUnit_t *unit;
+
+    ///
+    /// Ein Siegfeld: wer es haelt, bekommt Punkte. So, wie der Server es schickt
+    /// (NetTile.victory) -- gewertet wird dort.
+    ///
+    bool victory;
+
+    /// Das Gelaende (RAD_ClientTerrain_t).
+    RAD_ClientTerrain_t terrain;
 
     /// Wer das Feld beobachtet -- nur ueber RAD_ClientTileSubscribe.
     RAD_ModelObservable_t observable;
@@ -79,15 +113,16 @@ typedef struct
 } RAD_ClientTileObserver_t;
 
 ///
-/// Setzt das ganze Feld -- Position, Typ und Einheit, alles ausser den
-/// Beobachtern -- und meldet "changed". Fuer ein Feld, wie es der Server
+/// Setzt das ganze Feld -- Position, Typ, Einheit, ob es ein Siegfeld ist und
+/// sein Gelaende, alles ausser den Beobachtern -- und meldet "changed". Fuer ein Feld, wie es der Server
 /// schickt.
 ///
 /// **Die Einheit sucht das Feld nicht selbst.** Der Server nennt sie nur mit
 /// ihrer Id; die passende Einheit schlaegt der Aufrufer nach, der die
 /// Einheiten haelt. NULL fuer ein freies Feld.
 ///
-void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit);
+void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit, bool victory,
+                       RAD_ClientTerrain_t terrain);
 
 ///
 /// Setzt die Einheit auf "unit", NULL fuer frei, und meldet "changed" -- nur,

@@ -12,6 +12,7 @@
 
 void test_turn_faengt_leer_an(void);
 void test_world_faengt_leer_und_stimmig_an(void);
+void test_world_gelaende_folgt_dem_typ(void);
 void test_world_tile_hinzufuegen_setzt_typ_und_hoehe(void);
 void test_world_tile_entfernen_macht_void_und_laesst_die_stelle_stehen(void);
 void test_world_tile_entfernen_scheitert_unter_einer_figur(void);
@@ -48,6 +49,7 @@ void test_reserve_lehnt_ab_wenn_sie_voll_ist(void);
 
 void test_player_faengt_leer_an(void);
 void test_player_ohne_benutzer_gibt_es_nicht(void);
+void test_player_behaelt_seine_kante(void);
 void test_player_einheitenliste(void);
 void test_player_entfernen_nimmt_auch_aus_der_reserve(void);
 void test_player_lehnt_ab_wenn_die_liste_voll_ist(void);
@@ -62,6 +64,7 @@ int main(void)
 
     RUN_TEST(test_turn_faengt_leer_an);
     RUN_TEST(test_world_faengt_leer_und_stimmig_an);
+    RUN_TEST(test_world_gelaende_folgt_dem_typ);
     RUN_TEST(test_world_tile_hinzufuegen_setzt_typ_und_hoehe);
     RUN_TEST(test_world_tile_entfernen_macht_void_und_laesst_die_stelle_stehen);
     RUN_TEST(test_world_tile_entfernen_scheitert_unter_einer_figur);
@@ -98,6 +101,7 @@ int main(void)
 
     RUN_TEST(test_player_faengt_leer_an);
     RUN_TEST(test_player_ohne_benutzer_gibt_es_nicht);
+    RUN_TEST(test_player_behaelt_seine_kante);
     RUN_TEST(test_player_einheitenliste);
     RUN_TEST(test_player_entfernen_nimmt_auch_aus_der_reserve);
     RUN_TEST(test_player_lehnt_ab_wenn_die_liste_voll_ist);

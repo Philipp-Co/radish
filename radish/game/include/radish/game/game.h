@@ -103,7 +103,29 @@ typedef enum
     RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED,
 
     /// Keine Waffe der Einheit reicht bis zum Ziel (RAD_GameCheckAttack).
-    RAD_GAME_ERROR_TARGET_OUT_OF_RANGE
+    RAD_GAME_ERROR_TARGET_OUT_OF_RANGE,
+
+    /// Das Feld liegt nicht in der Aufstellzone des Spielers (RAD_GameDeployZone).
+    RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE,
+
+    /// Das Spiel ist vorbei (RAD_GameIsFinished): es nimmt kein Kommando mehr an.
+    RAD_GAME_ERROR_FINISHED,
+
+    ///
+    /// Der Weg ist keiner (RAD_GameCheckMovePath): zu wenige oder zu viele
+    /// Felder, oder ein Schritt fuehrt nicht zu einem waagerechten oder
+    /// senkrechten Nachbarn.
+    ///
+    RAD_GAME_ERROR_INVALID_PATH,
+
+    /// Das Feld ist unbegehbar (RAD_Terrain_t.impassable).
+    RAD_GAME_ERROR_IMPASSABLE,
+
+    ///
+    /// Der Weg kostet mehr, als die Einheit an Bewegung hat (RAD_Unit_t.movement,
+    /// RAD_TileMovementCost).
+    ///
+    RAD_GAME_ERROR_OUT_OF_MOVEMENT
 } RAD_GameResult_t;
 
 ///
@@ -130,6 +152,13 @@ const char* RAD_GameResultText(RAD_GameResult_t result);
 /// der Benutzer mitspielt, und das tut er. Wer wissen will, ob jemand schon
 /// mitspielt, fragt mit RAD_GameIsPlaying -- das ist die Frage, das hier ist die
 /// Aenderung.
+///
+/// **Es spielen genau zwei** (RAD_GAME_NUMBER_OF_PLAYERS), einer je Kante des
+/// Spielfelds. Ein dritter bekommt RAD_GAME_ERROR_FULL. Die Kante wird hier
+/// vergeben, und zwar die erste, die kein anderer Mitspieler hat: der erste
+/// bekommt x = 0, der zweite die gegenueberliegende. Wer geht und wiederkommt,
+/// bekommt die Kante, die frei geworden ist -- seine alte, solange der andere
+/// geblieben ist. So stehen seine Figuren weiter auf seiner Seite.
 ///
 RAD_GameResult_t RAD_GameAddPlayer(RAD_Game_t *game, RAD_UserId_t user);
 
@@ -158,6 +187,29 @@ int32_t RAD_GameNumberOfPlayers(const RAD_Game_t *game);
 /// aussen ablaufen, ohne dass ihre Groesse bekannt sein muss.
 ///
 RAD_UserId_t RAD_GamePlayerAt(const RAD_Game_t *game, int32_t index);
+
+///
+/// Die Aufstellzone von "user": das Rechteck von (min_x, min_y) bis (max_x,
+/// max_y), beide Ecken eingeschlossen, in dem er Einheiten aus seiner Reserve
+/// aufstellen darf (RAD_GameCheckDeployUnit). false, und die Ausgaben bleiben
+/// unberuehrt, wenn er nicht mitspielt oder die Welt leer ist.
+///
+/// Die Zone reicht RAD_DEPLOY_ZONE_DEPTH Spalten von seiner Kante ins Feld, ueber
+/// die ganze Hoehe: an der Kante WEST x = 0 bis DEPTH - 1, an der Kante EAST
+/// x = width - DEPTH bis width - 1. Ist die Welt schmaler als DEPTH, ist es die
+/// ganze Breite; bei weniger als 2 * DEPTH Spalten ueberlappen sich die Zonen.
+///
+/// Gefragt wird sie von der Regel und vom Server, der sie den Clients schickt --
+/// so steht nur hier, was die Zone ist.
+///
+bool RAD_GameDeployZone(const RAD_Game_t *game, RAD_UserId_t user,
+                        int32_t *min_x, int32_t *min_y, int32_t *max_x, int32_t *max_y);
+
+///
+/// Liegt (x, y) in der Aufstellzone von "user" (RAD_GameDeployZone)? false, wenn
+/// er keine hat.
+///
+bool RAD_GameInDeployZone(const RAD_Game_t *game, RAD_UserId_t user, int32_t x, int32_t y);
 
 ///
 /// Wer dran ist; RAD_USER_NONE, solange niemand mitspielt.
@@ -191,6 +243,47 @@ RAD_GameResult_t RAD_GameEndTurn(RAD_Game_t *game, RAD_UserId_t user);
 /// fuer ein NULL-Spiel.
 ///
 bool RAD_GameHasStarted(const RAD_Game_t *game);
+
+///
+/// Die Siegbedingungen (control/victory.c).
+///
+/// **Gewertet wird nach RAD_GAME_NUMBER_OF_ROUNDS Runden**, gezaehlt ab dem
+/// ersten Zug: ist die letzte um -- der letzte in der Reihe gibt ab --, gewinnt,
+/// wer mehr Punkte hat (RAD_GameScore). Bei Gleichstand gewinnt niemand.
+///
+/// **Wer keine Einheit mehr hat, verliert sofort** -- weder in der Reserve noch
+/// auf dem Feld. Geprueft wird, wenn eine Einheit zerstoert wird, denn nur dann
+/// kann der Bestand auf null fallen; wer noch keine Armee bekommen hat, verliert
+/// also nicht.
+///
+/// Ist das Spiel vorbei, meldet es das einmal (RAD_EventManagerPublishGameFinished)
+/// und lehnt danach jedes Kommando ab: die Regeln liefern RAD_GAME_ERROR_FINISHED,
+/// ein Kommando aendert nichts mehr.
+///
+/// RAD_GameRound: die laufende Runde, ab 1, hoechstens RAD_GameNumberOfRounds --
+/// auch nach dem Ende, wenn die letzte um ist. RAD_GameWinner ist RAD_USER_NONE,
+/// solange das Spiel laeuft, und bei einem Unentschieden. Alle sind fuer ein
+/// NULL-Spiel 0, false, RAD_USER_NONE bzw. RAD_GAME_END_NONE.
+///
+int32_t RAD_GameRound(const RAD_Game_t *game);
+int32_t RAD_GameNumberOfRounds(const RAD_Game_t *game);
+bool RAD_GameIsFinished(const RAD_Game_t *game);
+RAD_UserId_t RAD_GameWinner(const RAD_Game_t *game);
+RAD_GameEndReason_t RAD_GameEndReason(const RAD_Game_t *game);
+
+///
+/// Die Punkte von "user" auf den Siegfeldern (RAD_Tile_t.victory), so wie sie
+/// jetzt stehen. Je Siegfeld:
+///
+///   - RAD_VICTORY_TILE_POINTS, wenn darauf eine Einheit von "user" steht, die
+///     punkten kann (RAD_Unit_t.can_capture);
+///   - RAD_VICTORY_NEIGHBOUR_POINTS fuer jede solche Einheit auf einem der vier
+///     Nachbarfelder, waagerecht und senkrecht -- jede zaehlt einzeln.
+///
+/// Es zaehlen nur Einheiten auf dem Feld, keine aus der Reserve. 0 fuer
+/// RAD_USER_NONE oder ein NULL-Spiel.
+///
+int32_t RAD_GameScore(const RAD_Game_t *game, RAD_UserId_t user);
 
 ///
 /// Wem die Figur gehoert; RAD_USER_NONE, wenn niemandem -- und das ist kein
@@ -267,7 +360,11 @@ RAD_GameResult_t RAD_GameAddUnit(RAD_Game_t *game, RAD_UserId_t owner, const RAD
 ///     RAD_GAME_ERROR_NOT_OWNED       sie gehoert nicht genau "user"
 ///     RAD_GAME_ERROR_NOT_IN_RESERVE  sie steht schon oder ist zerstoert
 ///     RAD_GAME_ERROR_OUT_OF_BOUNDS   (x, y) liegt ausserhalb der Welt
+///     RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE
+///                                    (x, y) liegt nicht in seiner Aufstellzone
+///                                    (RAD_GameDeployZone)
 ///     RAD_GAME_ERROR_NO_GROUND       das Feld hat kein Gelaende
+///     RAD_GAME_ERROR_IMPASSABLE      das Feld ist unbegehbar
 ///     RAD_GAME_ERROR_OCCUPIED        auf dem Feld steht schon eine Einheit
 ///
 /// **Strenger als RAD_GameMayControlUnit.** Dort darf jeder eine herrenlose Figur
@@ -292,9 +389,36 @@ RAD_GameResult_t RAD_GameCheckDeployUnit(const RAD_Game_t *game, RAD_UserId_t us
 ///
 /// Besitz und Zug prueft sie nicht -- das sind eigene Fragen
 /// (RAD_GameMayControlUnit, RAD_GameIsUsersTurn), und der Server stellt sie vorher.
-/// Ob der Weg begehbar ist, entscheidet sich beim Ausfuehren.
+/// Ob der Weg taugt, fragt RAD_GameCheckMovePath.
 ///
 RAD_GameResult_t RAD_GameCheckMoveUnit(const RAD_Game_t *game, RAD_UnitId_t unit);
+
+///
+/// Darf die Einheit "unit" in diesem Zug den Weg "path" ziehen? Die ganze Regel
+/// hinter RAD_COMMAND_TYPE_MOVE_UNIT: zuerst RAD_GameCheckMoveUnit, dann der
+/// Weg. Ein Zug, der hier scheitert, wird als Ganzes abgelehnt.
+///
+///     RAD_GAME_ERROR_INVALID_PATH       kein Weg aus 2..RAD_PATH_MAX_STEPS
+///                                       Feldern, oder ein Schritt fuehrt
+///                                       nicht zum waagerechten oder
+///                                       senkrechten Nachbarn des Feldes davor
+///     RAD_GAME_ERROR_OUT_OF_BOUNDS      ein Feld liegt ausserhalb der Welt
+///     RAD_GAME_ERROR_NO_GROUND          ein Feld hat kein Gelaende
+///     RAD_GAME_ERROR_IMPASSABLE         ein Feld ist unbegehbar
+///                                       (RAD_Terrain_t.impassable)
+///     RAD_GAME_ERROR_OUT_OF_MOVEMENT    die Felder kosten zusammen mehr als
+///                                       RAD_Unit_t.movement (RAD_TileMovementCost)
+///
+/// **Gerechnet wird vom Standort der Einheit**, nicht vom ersten Feld des Weges:
+/// das ist der Standort und kein Schritt (path.h), und was dort steht, wird
+/// nicht verglichen (control/move_unit.c). Der erste Schritt muss also an die
+/// Einheit grenzen.
+///
+/// Ein besetztes Feld lehnt sie nicht ab: dort endet der Zug beim Ausfuehren,
+/// wie bisher. Bezahlt ist trotzdem der ganze Weg -- er muss als Ganzes in die
+/// Bewegung passen.
+///
+RAD_GameResult_t RAD_GameCheckMovePath(const RAD_Game_t *game, RAD_UnitId_t unit, const RAD_Path_t *path);
 
 ///
 /// Darf die Einheit "unit" in diesem Zug noch das Feld (x, y) angreifen? Die Regel
@@ -311,8 +435,8 @@ RAD_GameResult_t RAD_GameCheckMoveUnit(const RAD_Game_t *game, RAD_UnitId_t unit
 /// senkrecht, wie ein Weg ueber die vier Nachbarn. Wenigstens eine Waffe
 /// eines ihrer Mitglieder muss sie abdecken, von min_range (0: ohne
 /// Mindestweite) bis max_range (RAD_Weapon_t). Das Feld der Einheit selbst ist
-/// nie ein Ziel. Ein leeres Feld ist ein gueltiges Ziel; einen Kampf gibt es
-/// noch nicht.
+/// nie ein Ziel. Ein leeres Feld ist ein gueltiges Ziel, eine eigene Einheit
+/// ebenso. Was der Angriff bewirkt, steht in control/attack_unit.c.
 ///
 RAD_GameResult_t RAD_GameCheckAttack(const RAD_Game_t *game, RAD_UnitId_t unit, int32_t x, int32_t y);
 
@@ -362,7 +486,6 @@ bool RAD_GameUnitCanAttack(const RAD_Game_t *game, RAD_UnitId_t unit);
 /// Ausfuehren (RAD_GameCheckAttack).
 ///
 bool RAD_GameDeployUnit(RAD_Game_t *game, RAD_UnitId_t unit, int16_t x, int16_t y, RAD_Command_t *output);
-bool RAD_GameDestroyUnit(RAD_Game_t *game, RAD_UnitId_t id, RAD_Command_t *output);
 bool RAD_GameMoveUnit(RAD_Game_t *game, RAD_UnitId_t id, const RAD_Path_t *path, RAD_Command_t *output);
 bool RAD_GameAttack(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output);
 
@@ -432,7 +555,15 @@ typedef enum
     /// Im Spiel stehen schon Figuren. Eine Welt wird nur ersetzt, solange keine
     /// darauf steht (unten).
     ///
-    RAD_GAME_LOAD_ERROR_WORLD_OCCUPIED
+    RAD_GAME_LOAD_ERROR_WORLD_OCCUPIED,
+
+    ///
+    /// Ein Siegfeld ("victory_tiles") liegt ausserhalb der Welt, steht nicht auf
+    /// Land (kein Wasser, nicht VOID) oder kommt doppelt vor.
+    ///
+    RAD_GAME_LOAD_ERROR_VICTORY_OUT_OF_BOUNDS,
+    RAD_GAME_LOAD_ERROR_VICTORY_NO_GROUND,
+    RAD_GAME_LOAD_ERROR_VICTORY_DUPLICATE
 } RAD_GameLoadResult_t;
 
 ///

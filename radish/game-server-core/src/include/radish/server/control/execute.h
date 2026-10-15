@@ -132,7 +132,30 @@ typedef enum
     RAD_CONTROL_ERROR_UNIT_NOT_DEPLOYED,
 
     /// Keine Waffe der Einheit reicht bis zum Ziel des Angriffs.
-    RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE
+    RAD_CONTROL_ERROR_TARGET_OUT_OF_RANGE,
+
+    ///
+    /// Wieder aus dem Aufstellen, hinten angehaengt wie die davor: das Zielfeld
+    /// liegt nicht in der Aufstellzone des Absenders (RAD_GameDeployZone).
+    ///
+    RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE,
+
+    ///
+    /// Das Spiel ist vorbei (RAD_GameIsFinished): kein Kommando wird mehr
+    /// angenommen, gleich welcher Art und von wem.
+    ///
+    RAD_CONTROL_ERROR_GAME_FINISHED,
+
+    ///
+    /// Aus dem Ziehen (RAD_GameCheckMovePath), hinten angehaengt: der Weg fuehrt
+    /// nicht von Nachbar zu Nachbar, ueber ein unbegehbares Feld
+    /// (RAD_Terrain_t.impassable -- auch beim Aufstellen) oder weiter, als die
+    /// Bewegung der Einheit reicht. Ein Weg ueber ein Feld ohne Gelaende ist
+    /// RAD_CONTROL_ERROR_NO_GROUND.
+    ///
+    RAD_CONTROL_ERROR_INVALID_PATH,
+    RAD_CONTROL_ERROR_IMPASSABLE,
+    RAD_CONTROL_ERROR_OUT_OF_MOVEMENT
 } RAD_ControlResult_t;
 
 ///
@@ -258,6 +281,27 @@ RAD_UserId_t RAD_ControlCurrentUser(RAD_Control_t control);
 RAD_UserId_t RAD_ControlPlayerAt(RAD_Control_t control, int32_t index);
 int32_t RAD_ControlWorldWidth(RAD_Control_t control);
 int32_t RAD_ControlWorldHeight(RAD_Control_t control);
+
+///
+/// Die Aufstellzone von "user", wie sie an die Clients geht (NetDeployZoneEvent)
+/// -- RAD_GameDeployZone. false, wenn er nicht mitspielt.
+///
+bool RAD_ControlDeployZone(RAD_Control_t control, RAD_UserId_t user,
+                           int32_t *min_x, int32_t *min_y, int32_t *max_x, int32_t *max_y);
+
+///
+/// Runde und Wertung, wie sie an die Clients gehen (NetRoundEvent,
+/// NetGameFinishedEvent) -- RAD_GameRound, RAD_GameNumberOfRounds,
+/// RAD_GameScore, RAD_GameEndReason, RAD_GameIsFinished und RAD_GameWinner.
+/// Ob und wie das Spiel geendet hat, fragt der Server ab, wenn ein Client die
+/// Welt erfragt -- wer nach dem Ende verbindet, hat das Ereignis verpasst.
+///
+int32_t RAD_ControlRound(RAD_Control_t control);
+int32_t RAD_ControlNumberOfRounds(RAD_Control_t control);
+int32_t RAD_ControlScore(RAD_Control_t control, RAD_UserId_t user);
+RAD_GameEndReason_t RAD_ControlEndReason(RAD_Control_t control);
+bool RAD_ControlIsFinished(RAD_Control_t control);
+RAD_UserId_t RAD_ControlWinner(RAD_Control_t control);
 
 ///
 /// Ein Feld der Welt mit seinen Attributen, als Kopie nach "output" --

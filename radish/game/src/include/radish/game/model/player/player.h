@@ -35,20 +35,37 @@
 typedef struct RAD_Player RAD_Player_t;
 
 ///
-/// Legt einen Spieler mit der Id "id", leerer Einheitenliste und leerer Reserve
-/// an. NULL fuer RAD_USER_NONE oder wenn kein Speicher da ist.
+/// Die Kante des Spielfelds, an der ein Spieler aufstellt (RAD_GameDeployZone):
+/// WEST ist die Spalte x = 0, EAST die gegenueberliegende. Vergeben wird sie
+/// beim Beitritt (RAD_GameAddPlayer), danach bleibt sie.
+///
+typedef enum
+{
+    RAD_PLAYER_EDGE_WEST = 0,
+    RAD_PLAYER_EDGE_EAST
+} RAD_PlayerEdge_t;
+
+///
+/// Legt einen Spieler mit der Id "id" an seiner Kante "edge", leerer
+/// Einheitenliste und leerer Reserve an. NULL fuer RAD_USER_NONE oder wenn kein
+/// Speicher da ist.
 ///
 /// RAD_DestroyPlayer gibt ihn samt seiner Reserve wieder her und nullt den
 /// Zeiger des Aufrufers. Die Einheiten bleiben im Pool. Ein NULL-Zeiger ist kein
 /// Fehler.
 ///
-RAD_Player_t* RAD_CreatePlayer(RAD_UserId_t id);
+RAD_Player_t* RAD_CreatePlayer(RAD_UserId_t id, RAD_PlayerEdge_t edge);
 void RAD_DestroyPlayer(RAD_Player_t **player);
 
 ///
 /// Die Id des Spielers; RAD_USER_NONE fuer NULL.
 ///
 RAD_UserId_t RAD_PlayerId(const RAD_Player_t *player);
+
+///
+/// Die Kante des Spielers; RAD_PLAYER_EDGE_WEST fuer NULL.
+///
+RAD_PlayerEdge_t RAD_PlayerEdge(const RAD_Player_t *player);
 
 ///
 /// Die Reserve des Spielers, gefuehrt ueber reserve/reserve.h. Sie gehoert dem

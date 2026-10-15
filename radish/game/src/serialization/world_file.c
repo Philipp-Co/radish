@@ -54,6 +54,9 @@ const char* RAD_GameLoadResultText(RAD_GameLoadResult_t result)
 
         case RAD_GAME_LOAD_ERROR_INCONSISTENT:        return "Weltdefinition widerspricht sich selbst";
         case RAD_GAME_LOAD_ERROR_WORLD_OCCUPIED:      return "auf der Welt stehen schon Figuren";
+        case RAD_GAME_LOAD_ERROR_VICTORY_OUT_OF_BOUNDS: return "Siegfeld ausserhalb der Welt";
+        case RAD_GAME_LOAD_ERROR_VICTORY_NO_GROUND:   return "Siegfeld nicht auf Land";
+        case RAD_GAME_LOAD_ERROR_VICTORY_DUPLICATE:   return "Siegfeld doppelt";
 
         default:                                      return "unbekanntes Ergebnis";
     }
@@ -168,6 +171,10 @@ static RAD_GameLoadResult_t RAD_GameLoadResultFromSerialize(RAD_SerializeResult_
 
         case RAD_SERIALIZE_ERROR_INCONSISTENT:        return RAD_GAME_LOAD_ERROR_INCONSISTENT;
         case RAD_SERIALIZE_ERROR_WORLD_OCCUPIED:      return RAD_GAME_LOAD_ERROR_WORLD_OCCUPIED;
+
+        case RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS: return RAD_GAME_LOAD_ERROR_VICTORY_OUT_OF_BOUNDS;
+        case RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND:   return RAD_GAME_LOAD_ERROR_VICTORY_NO_GROUND;
+        case RAD_SERIALIZE_ERROR_VICTORY_DUPLICATE:   return RAD_GAME_LOAD_ERROR_VICTORY_DUPLICATE;
     }
 
     // Ein Wert ausserhalb der Aufzaehlung. Erreichbar nur ueber eine Zahl, die

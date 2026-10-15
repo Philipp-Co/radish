@@ -16,6 +16,21 @@ add_executable(client
     src/main.c
     src/rendering/iso_object.c
     src/rendering/iso_map.c
+    src/rendering/entity.c
+    src/rendering/iso_tile_images.c
+    src/rendering/iso_tile/iso_tile.c
+    src/rendering/iso_tile/decorations.c
+    src/rendering/iso_tile/void.c
+    src/rendering/iso_tile/ground.c
+    src/rendering/iso_tile/water_shallow.c
+    src/rendering/iso_tile/mud.c
+    src/rendering/iso_tile/meadow.c
+    src/rendering/iso_tile/forest.c
+    src/rendering/iso_tile/water_deep.c
+    src/rendering/iso_tile/city.c
+    src/rendering/iso_tile/road.c
+    src/rendering/iso_tile/fortification.c
+    src/rendering/iso_tile/unknown.c
     
     src/io/net_codec.c
     src/io/camera_control.c
@@ -26,12 +41,17 @@ add_executable(client
     src/io/net_event_handler/deploy_response.c
     src/io/net_event_handler/game_created.c
     src/io/net_event_handler/game_finished.c
+    src/io/net_event_handler/round.c
     src/io/net_event_handler/current_player.c
     src/io/net_event_handler/players.c
     src/io/net_event_handler/world_size.c
+    src/io/net_event_handler/deploy_zone.c
     src/io/net_event_handler/tiles.c
     src/io/net_event_handler/reserve_unit.c
     src/io/net_event_handler/unit_deployed.c
+    src/io/net_event_handler/unit_moved.c
+    src/io/net_event_handler/unit_attacked.c
+    src/io/net_event_handler/unit_destroyed.c
     src/io/net_event_handler/unit.c
     src/io/net_event_handler/end_turn_response.c
     src/io/net_event_handler/attack_response.c
@@ -66,17 +86,16 @@ add_executable(client
     src/view/terrain_info_view.c
     src/view/unit_info_view.c
     src/view/iso_map_view.c
-    src/view/bar_view.c
     src/view/text_view.c
-    src/view/labeled_bar_view.c
-    src/view/weapon_view.c
-    src/view/entity_view.c
+    src/view/typewriter_view.c
     src/view/context_menu/context_menu_view.c
     src/view/context_menu/context_menu_item.c
     src/view/context_menu/context_menu_state_machine.c
     src/view/unit_deployment_view.c
     src/view/debug/debug_view.c
     src/view/end_turn_view.c
+    src/view/animations/interpolation.c
+    src/view/animations/move_animation.c
 )
 
 target_include_directories(client PRIVATE
@@ -112,19 +131,30 @@ target_link_libraries(client PRIVATE
 # explizites -std, aeltere clangd-Versionen (z.B. das in YouCompleteMe
 # gebuendelte clangd 14) aber nicht -- dort kommt sonst "expected expression"
 # in promise.h.
+#
+# -sUSE_SDL_IMAGE=2 auch hier: emcc legt die Header eines Ports erst in den
+# Sysroot, wenn er ihn zum ersten Mal zieht -- sonst erst beim Linken, und
+# rendering/iso_tile_images.c faende SDL2/SDL_image.h davor nicht.
 target_compile_options(client PRIVATE
     "-I${EMSCRIPTEN_SYSROOT}/include"
     "--target=wasm32-unknown-emscripten"
     "-std=gnu2x"
+    "-sUSE_SDL_IMAGE=2"
 )
 
 # assets/ und web/ liegen weiterhin neben den Unterprojekten, nicht in client/.
 set(ZUC_FONT_PATH "${PROJECT_SOURCE_DIR}/assets/LiberationSansBold.ttf")
+set(ZUC_TILES_PATH "${PROJECT_SOURCE_DIR}/assets/tiles")
 
 target_link_options(client PRIVATE
     "-sUSE_SDL=2"
     "-sUSE_SDL_TTF=2"
-    "--embed-file" "${ZUC_FONT_PATH}@/assets/LiberationSansBold.ttf"
+    "-sUSE_SDL_IMAGE=2"
+    "-sSDL2_IMAGE_FORMATS=[\"png\"]"
+    # SHELL: haelt Schalter und Pfad zusammen -- CMake entfernt doppelte Optionen,
+    # ein zweites, loses "--embed-file" fiele sonst weg.
+    "SHELL:--embed-file ${ZUC_FONT_PATH}@/assets/LiberationSansBold.ttf"
+    "SHELL:--embed-file ${ZUC_TILES_PATH}@/assets/tiles"
     "-sEXPORTED_FUNCTIONS=['_main','_RAD_OnMessageReceived','_zuc_on_connection_state','_RAD_ClientSetPlayerId','_malloc','_free']"
     "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']"
     "-sMODULARIZE=1"

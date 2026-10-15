@@ -74,6 +74,35 @@ RAD_ControlGame_t RAD_ControlCreateGame(const char *world_path, RAD_EventCallbac
     return created;
 }
 
+bool RAD_ControlResetGame(RAD_ControlGame_t *game,
+                          RAD_Control_t *control,
+                          const char *world_path,
+                          RAD_EventCallbacks_t *callbacks)
+{
+    // Erst die Steuerung, die sich das Spiel nur leiht, dann das Spiel samt
+    // Manager -- dieselbe Reihenfolge wie beim Beenden des Servers.
+    RAD_DestroyControl(control);
+    RAD_ControlDestroyGame(game);
+
+    *game = RAD_ControlCreateGame(world_path, callbacks);
+    if(game->game == NULL)
+    {
+        printf("Spiel nicht zurueckgesetzt -- kein neues angelegt.\n");
+        return false;
+    }
+
+    *control = RAD_CreateControl(game->game);
+    if(*control == NULL)
+    {
+        printf("Spiel nicht zurueckgesetzt -- Steuerung nicht angelegt, kein Speicher.\n");
+        RAD_ControlDestroyGame(game);
+        return false;
+    }
+
+    printf("Spiel zurueckgesetzt.\n");
+    return true;
+}
+
 void RAD_ControlDestroyGame(RAD_ControlGame_t *game)
 {
     // Ohne Pruefung auf NULL, und das ist keine Nachlaessigkeit: beide Funktionen
@@ -114,6 +143,7 @@ static RAD_ControlGame_t RAD_ControlCreateEmptyGame(RAD_EventCallbacks_t *callba
     RAD_EventManagerSubscribeToTileEvents(created.event_manager, callbacks->tile_changed);
     RAD_EventManagerSubscribeToUnitEvents(created.event_manager, callbacks->unit_changed);
     RAD_EventManagerSubscribeToTurnEvents(created.event_manager, callbacks->turn_changed);
+    RAD_EventManagerSubscribeToGameEvents(created.event_manager, callbacks->game_changed);
 
     // RAD_USER_NONE: der Server sitzt an keinem Client. Kommandos, die er selbst
     // erzeugt, haetten keinen Absender -- wer mitspielt, fuehrt die Steuerung,

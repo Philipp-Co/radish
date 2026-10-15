@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.utils.crypto import get_random_string
 
@@ -43,6 +43,20 @@ class GameServer(models.Model):
     # auf den UDP-Port des Spielservers zeigen. Leer bei Instanzen, die sich
     # ohne sie gemeldet haben; auf denen laesst sich kein Spiel starten.
     control_url = models.CharField(max_length=255, blank=True, default="")
+    # Name der Instanz in ihrem Container: Zucchini-Name und Pfadteil der
+    # Instanz-API ({control_url}/api/instances/{instance_name}/...). Nur im
+    # Container eindeutig, nicht global wie "name" -- zwei Container duerfen
+    # beide eine "game-instance-1" haben (siehe docker/game-server/
+    # game-instance-entrypoint.sh). Landet in einer URL, deshalb nur
+    # Buchstaben, Ziffern, "_" und "-", wie die Instanz-API selbst es
+    # verlangt. Leer wie control_url bei Instanzen, die sich ohne ihn
+    # gemeldet haben; auf denen laesst sich kein Spiel starten.
+    instance_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        validators=[RegexValidator(r"^[A-Za-z0-9_-]+$")],
+    )
 
     def __str__(self):
         return f"{self.name} ({self.address}:{self.port})"
@@ -283,6 +297,9 @@ class EntityProfile(models.Model):
     name = models.CharField(max_length=255)
     health = models.PositiveSmallIntegerField()
     armor = models.PositiveSmallIntegerField()
+    # Widerstand gegen einen Schuss, der die Ruestung durchschlagen hat: der
+    # Schuss wirkt, wenn Wurf + Staerke der Waffe ihn erreicht.
+    toughness = models.PositiveSmallIntegerField()
     strength = models.PositiveSmallIntegerField()
     accuracy = models.PositiveSmallIntegerField()
     equipment_slots = models.PositiveSmallIntegerField()
@@ -384,6 +401,70 @@ class Equipment(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.species})"
+
+
+class TerrainCode(models.TextChoices):
+    """
+    Die Tile-Typen des Spiels (RAD_TileType_t in radish/game/include/radish/
+    game/model/model.h), unter dem Namen, unter dem sie im Spielstart stehen
+    (radish/game/schema/spielstart.schema.json, "gelaende"). Ein neuer Typ
+    kommt im Spiel, im Schema und hier dazu -- mit einer Migration, die
+    seine Zeile anlegt.
+
+    Die Bezeichnungen sind fuer den Adminbereich; der Spiel-Client fuehrt
+    seine eigenen Anzeigenamen.
+    """
+
+    VOID = "void", "Leere"
+    GROUND = "ground", "Boden"
+    WATER_SHALLOW = "water_shallow", "Seichtes Wasser"
+    MUD = "mud", "Matsch"
+    MEADOW = "meadow", "Wiese"
+    FOREST = "forest", "Wald"
+    WATER_DEEP = "water_deep", "Tiefes Wasser"
+    CITY = "city", "Stadt"
+    ROAD = "road", "Strasse"
+    FORTIFICATION = "fortification", "Befestigte Stellung"
+
+
+# Wie weit MV und CV reichen duerfen. Deckung wirkt gegen einen W10 (Treffer:
+# W10 >= Genauigkeit + Deckung), mehr als 10 waere nie zu treffen; dieselbe
+# Grenze in beide Richtungen fuer die Bewegung.
+MAX_TERRAIN_MODIFIER = 10
+
+
+class TerrainType(models.Model):
+    """
+    Was ein Tile-Typ fuer das Spiel bedeutet: MV, um wie viele Felder er die
+    Bewegungsreichweite aendert (Betreten kostet 1 - MV, mindestens 1), CV,
+    die Deckung, die er einer Einheit darauf gibt, und ob er unbegehbar ist.
+    Geht mit jedem Spielstart an die Instanz (instance_client.
+    game_start_document).
+
+    Genau eine Zeile je TerrainCode, angelegt von der Migration. Der Admin
+    aendert nur die Werte -- anlegen und loeschen gibt es nicht, weil das
+    Spiel jeden Typ braucht.
+    """
+
+    code = models.CharField(max_length=20, choices=TerrainCode.choices, unique=True)
+    movement_modifier = models.SmallIntegerField(
+        default=0,
+        validators=[
+            MinValueValidator(-MAX_TERRAIN_MODIFIER),
+            MaxValueValidator(MAX_TERRAIN_MODIFIER),
+        ],
+    )
+    cover = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(MAX_TERRAIN_MODIFIER)]
+    )
+    impassable = models.BooleanField(default=False)
+
+    class Meta:
+        # In der Reihenfolge der Typen im Spiel -- so legt die Migration sie an.
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.get_code_display()
 
 
 class Army(models.Model):

@@ -101,11 +101,11 @@ void test_tile_hinzufuegen_geht_durch_bis_in_die_welt(void)
 {
     aufbauen();
 
-    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 4, 2, 1, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 4, 2, 1, RAD_TILE_TYPE_WATER_SHALLOW));
 
     RAD_Tile_t tile;
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 2, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, tile.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, tile.type);
     TEST_ASSERT_EQUAL_INT(1, tile.z);
     TEST_ASSERT_EQUAL_INT(4, tile.x);
     TEST_ASSERT_EQUAL_INT(2, tile.y);
@@ -163,7 +163,7 @@ void test_tile_ereignisse_kommen_beim_abonnenten_an(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, mitschrift.letztes.type);
 
     // Auf das leere Feld Gelaende stellen: ein Zuwachs, kein Wechsel.
-    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 2, 3, 5, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_GameAddTile(game, 2, 3, 5, RAD_TILE_TYPE_WATER_SHALLOW));
 
     TEST_ASSERT_EQUAL_INT(1, mitschrift.added);
     TEST_ASSERT_EQUAL_INT(1, mitschrift.removed);
@@ -171,7 +171,7 @@ void test_tile_ereignisse_kommen_beim_abonnenten_an(void)
 
     TEST_ASSERT_EQUAL_INT(2, mitschrift.letztes.x);
     TEST_ASSERT_EQUAL_INT(3, mitschrift.letztes.y);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, mitschrift.letztes.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, mitschrift.letztes.type);
     TEST_ASSERT_EQUAL_INT(5, mitschrift.letztes.z);
 
     abbauen();
@@ -200,7 +200,7 @@ void test_tile_ohne_aenderung_kommt_kein_ereignis_an(void)
 
     // Ausserhalb der Welt gibt es kein Feld, ueber das sich etwas melden liesse.
     TEST_ASSERT_FALSE(RAD_GameRemoveTile(game, RAD_WORLD_WIDTH, 0));
-    TEST_ASSERT_FALSE(RAD_GameAddTile(game, -1, 0, 0, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_FALSE(RAD_GameAddTile(game, -1, 0, 0, RAD_TILE_TYPE_WATER_SHALLOW));
 
     TEST_ASSERT_EQUAL_INT(1, mitschrift.removed);
     TEST_ASSERT_EQUAL_INT(0, mitschrift.added);

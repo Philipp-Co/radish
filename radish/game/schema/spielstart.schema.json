@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://radish.local/schema/spielstart.schema.json",
   "title": "radish Spielstart",
-  "description": "Was das Backend der Spielinstanz beim Start eines Spiels uebergibt (POST /api/instances/<name>/game/start/, siehe radish/backend/api/instance_client.py): die beiden Spieler mit ihren Armeen. Die Armeen sind vollstaendig aufgeloest -- jede Einheit, Entitaet, Waffe und Ausruestung traegt ihre Werte aus dem Katalog selbst, die Instanz braucht keinen Zugriff auf das Backend. Kosten und Slotgrenzen fehlen bewusst: die hat das Backend beim Zusammenstellen der Armee schon geprueft, im Spiel spielen sie keine Rolle.",
+  "description": "Was das Backend der Spielinstanz beim Start eines Spiels uebergibt (POST /api/instances/<name>/game/start/, siehe radish/backend/api/instance_client.py): die beiden Spieler mit ihren Armeen und das Gelaende. Die Armeen sind vollstaendig aufgeloest -- jede Einheit, Entitaet, Waffe und Ausruestung traegt ihre Werte aus dem Katalog selbst, die Instanz braucht keinen Zugriff auf das Backend. Kosten und Slotgrenzen fehlen bewusst: die hat das Backend beim Zusammenstellen der Armee schon geprueft, im Spiel spielen sie keine Rolle.",
   "type": "object",
-  "required": ["spieldaten"],
+  "required": ["spieldaten", "gelaende"],
   "additionalProperties": false,
   "properties": {
     "spieldaten": {
@@ -13,6 +13,25 @@
       "minItems": 2,
       "maxItems": 2,
       "items": { "$ref": "#/$defs/spieler" }
+    },
+    "gelaende": {
+      "description": "Was jeder Tile-Typ fuer das Spiel bedeutet, aus dem Katalog des Backends (TerrainType): jeder Typ genau einmal -- zehn Eintraege, und jeder Typ kommt vor.",
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/terrain" },
+      "allOf": [
+        { "contains": { "properties": { "typ": { "const": "void" } } } },
+        { "contains": { "properties": { "typ": { "const": "ground" } } } },
+        { "contains": { "properties": { "typ": { "const": "water_shallow" } } } },
+        { "contains": { "properties": { "typ": { "const": "mud" } } } },
+        { "contains": { "properties": { "typ": { "const": "meadow" } } } },
+        { "contains": { "properties": { "typ": { "const": "forest" } } } },
+        { "contains": { "properties": { "typ": { "const": "water_deep" } } } },
+        { "contains": { "properties": { "typ": { "const": "city" } } } },
+        { "contains": { "properties": { "typ": { "const": "road" } } } },
+        { "contains": { "properties": { "typ": { "const": "fortification" } } } }
+      ]
     }
   },
   "$defs": {
@@ -81,7 +100,7 @@
     "entitaet": {
       "description": "Eine Entitaet mit den Werten ihres Profils und allem, was sie traegt.",
       "type": "object",
-      "required": ["profil", "leben", "ruestung", "staerke", "genauigkeit", "waffen", "ausruestung"],
+      "required": ["profil", "leben", "ruestung", "widerstand", "staerke", "genauigkeit", "waffen", "ausruestung"],
       "additionalProperties": false,
       "properties": {
         "profil": {
@@ -91,6 +110,7 @@
         },
         "leben": { "$ref": "#/$defs/wert" },
         "ruestung": { "$ref": "#/$defs/wert" },
+        "widerstand": { "description": "Widerstand gegen einen Schuss, der die Ruestung durchschlagen hat.", "$ref": "#/$defs/wert" },
         "staerke": { "$ref": "#/$defs/wert" },
         "genauigkeit": { "$ref": "#/$defs/wert" },
         "waffen": {
@@ -134,6 +154,32 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "terrain": {
+      "description": "Ein Tile-Typ und seine Werte (RAD_Terrain_t im Spiel).",
+      "type": "object",
+      "required": ["typ", "bewegung", "deckung", "unbegehbar"],
+      "additionalProperties": false,
+      "properties": {
+        "typ": {
+          "description": "Der Tile-Typ (TerrainType.code im Backend, RAD_TileType_t im Spiel).",
+          "enum": ["void", "ground", "water_shallow", "mud", "meadow", "forest", "water_deep", "city", "road", "fortification"]
+        },
+        "bewegung": {
+          "description": "MV: um wie viele Felder das Feld die Bewegungsreichweite aendert. Betreten kostet 1 - MV, mindestens 1.",
+          "type": "integer",
+          "minimum": -32768,
+          "maximum": 32767
+        },
+        "deckung": {
+          "description": "CV: um wie viel das Feld einen Treffer auf eine Einheit darauf erschwert.",
+          "$ref": "#/$defs/wert"
+        },
+        "unbegehbar": {
+          "description": "Ob eine Einheit das Feld betreten oder darauf aufgestellt werden darf.",
+          "type": "boolean"
+        }
       }
     },
     "wert": {

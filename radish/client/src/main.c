@@ -7,6 +7,7 @@
 
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_object.h>
+#include <radish/rendering/iso_tile_images.h>
 #include <radish/io/net_codec.h>
 #include <radish/io/net_event_handler.h>
 #include <radish/io/net_request.h>
@@ -21,6 +22,12 @@
 #define MAX_INPUT_LENGTH 64
 #define FONT_PATH "/assets/LiberationSansBold.ttf"
 #define FONT_SIZE 16
+
+///
+/// Breite und Hoehe einer Discover-Anfrage, die die ganze Welt meint: groesser
+/// als jede Welt, den Rest schneidet der Server ab.
+///
+#define RAD_DISCOVER_WHOLE_WORLD UINT32_MAX
 
 typedef enum
 {
@@ -126,9 +133,8 @@ void zuc_on_connection_state(int state)
     printf("%s\n", state == ZUC_STATE_OPEN ? "[Verbindung offen]" :
                     state == ZUC_STATE_CLOSED ? "[Verbindung getrennt]" : "[Verbinde...]");
 
-    // Sobald die Verbindung offen ist, den Ausschnitt anfragen, den die Kamera
-    // zeigt -- auch nach einem Neuaufbau, dann braucht der Client den aktuellen
-    // Stand. Erst hier und nicht in main(): main() laeuft, bevor die einbettende
+    // Sobald die Verbindung offen ist, die Welt anfragen -- auch nach einem
+    // Neuaufbau, dann braucht der Client den aktuellen Stand. Erst hier und nicht in main(): main() laeuft, bevor die einbettende
     // Seite Module.sendToChannel setzt (frontend/.../game-canvas.component.ts),
     // eine Anfrage von dort wuerde verworfen.
     if(connection_state != ZUC_STATE_OPEN || map == NULL)
@@ -142,18 +148,13 @@ void zuc_on_connection_state(int state)
     // in der Reihenfolge beantwortet, in der sie hinausgehen.
     RAD_IoNetRequestDiscoverUnits();
 
-    int32_t x = 0, y = 0, w = 0, h = 0;
-    RAD_IsoMapVisibleArea(map, WINDOW_WIDTH, WINDOW_HEIGHT, &x, &y, &w, &h);
-    if(w <= 0 || h <= 0)
-    {
-        printf("Kein Discover: die Kamera zeigt nichts vom Raster.\n");
-    }
-    else
-    {
-        RAD_IoNetRequestDiscover(&net_session, (uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h);
-    }
+    // Die ganze Welt auf einmal, unabhaengig von der Kamera: der Server beschneidet
+    // den Ausschnitt auf die Weltgroesse (game-server-core, send_discover_tiles).
+    // Was ueber das Raster des Clients hinausgeht (RAD_ISO_MAP_SIZE), verwirft
+    // RAD_IsoMapApplyTile.
+    RAD_IoNetRequestDiscover(&net_session, 0, 0, RAD_DISCOVER_WHOLE_WORLD, RAD_DISCOVER_WHOLE_WORLD);
 
-    // Danach die Reserven -- unabhaengig von der Kamera, also auch ohne Discover.
+    // Danach die Reserven.
     RAD_IoNetRequestDiscoverReserve();
 }
 
@@ -204,13 +205,18 @@ int main(void)
         .user_argument = &net_event_context,
         .created = RAD_IoNetOnGameCreated,
         .finished = RAD_IoNetOnGameFinished,
+        .round = RAD_IoNetOnRound,
         .current_player = RAD_IoNetOnCurrentPlayer,
         .players = RAD_IoNetOnPlayers,
         .world_size = RAD_IoNetOnWorldSize,
+        .deploy_zone = RAD_IoNetOnDeployZone,
         .tiles = RAD_IoNetOnTiles,
         .reserve_unit = RAD_IoNetOnReserveUnit,
         .unit_deployed = RAD_IoNetOnUnitDeployed,
-        .unit = RAD_IoNetOnUnit
+        .unit = RAD_IoNetOnUnit,
+        .unit_moved = RAD_IoNetOnUnitMoved,
+        .unit_attacked = RAD_IoNetOnUnitAttacked,
+        .unit_destroyed = RAD_IoNetOnUnitDestroyed
     });
     RAD_NetEventManagerSubscribeToTileEvents(net_event_manager, (RAD_NetEventsTileCallback_t){
         .user_argument = &net_event_context,
@@ -226,11 +232,20 @@ int main(void)
         return 1;
     }
 
+    // Nach der View: die Texturen brauchen ihren Renderer. Vor dem ersten Feld:
+    // die kommen erst, wenn die Verbindung offen ist (zuc_on_connection_state).
+    // Fehlt ein Bild, zeichnen die Felder ihren Wuerfel -- kein Abbruch.
+    RAD_IsoTileImagesLoad(RAD_ViewRenderer(view));
+
     printf("Zucchini-Client gestartet.\n");
 
     emscripten_set_main_loop(RAD_EMCC_OnNewFrame, 0, 1);
 
+    // Vor der View: die Texturen haengen an ihrem Renderer.
+    RAD_IsoTileImagesFree();
     RAD_DestroyView(&view);
+    // Nach der RootView: ihre IsoMapView legt laufende Zuege noch auf die Map zurueck.
+    RAD_DestroyIsoMap(&map);
     RAD_DestroyNetEventManager(&net_event_manager);
 
     printf("Bye Bye!\n");

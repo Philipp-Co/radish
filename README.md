@@ -145,8 +145,8 @@ Zucchini-Api. Er hält den Spielzustand und wartet in einer Schleife auf
 Nachrichten (`ZUC_ApiReceive`, dann `ZUC_ApiWait` auf der Wakeup-FIFO). Ein
 Wakeup heißt „es liegt etwas an", nicht „genau eine Nachricht" — deshalb wird
 der Ringpuffer erst leergeräumt und dann gewartet. Der Name der Zucchini-Instanz
-ist standardmäßig `zucchini`, wie in `zucchini_server` selbst; ein anderer geht
-als erstes Argument.
+ist Pflicht und das einzige Argument (`server <name>`), passend zu
+`zucchini_server -n <name> -p <port>`.
 
 Darunter liegt `src/interface/` — die Außengrenze des Servers, in der aus einer
 Nachricht ein Kommando wird und aus einer Antwort wieder eine Nachricht
@@ -203,6 +203,11 @@ sich per `SIGUSR1`. Der Server liest sie vollständig ein
 ([game_start.h](radish/game-server-core/src/include/radish/server/control/game_start.h))
 und richtet das Spiel mit `RAD_ControlStartGame` ein — genau einmal: beide
 Spieler spielen mit, der Host zuerst, und ihre Einheiten stehen in der Reserve.
+Mit der Datei kommt auch das Gelände (`"gelaende"`): je Tile-Typ MV, CV und ob er
+unbegehbar ist, gepflegt im Backend (`TerrainType`, Adminseite „Gelände“). Jedes
+Feld trägt danach die Werte seines Typs (`RAD_Tile_t.terrain`); das Spiel prüft
+damit Wege (`RAD_GameCheckMovePath`) und Treffer, und der Client bekommt sie mit
+jedem `NetTile`.
 Die Id eines Spielers im Spiel ist seine Kennung, Zeichen für Zeichen in die acht
 Bytes einer `uint64_t` gepackt (`RAD_ControlUserIdFromIdentifier`).
 
@@ -321,8 +326,8 @@ Dieser Build kopiert die `compile_commands.json` bewusst *nicht* nach `radish/` 
 sonst stünden dort Einträge ohne die SDL2- und Emscripten-Suchpfade, und clangd
 fände die Header des Clients nicht mehr.
 
-SDL2 und SDL_ttf werden nicht separat installiert — Emscripten zieht beide über
-`-sUSE_SDL=2` / `-sUSE_SDL_TTF=2` als Ports.
+SDL2, SDL_ttf und SDL_image werden nicht separat installiert — Emscripten zieht
+sie über `-sUSE_SDL=2` / `-sUSE_SDL_TTF=2` / `-sUSE_SDL_IMAGE=2` als Ports.
 
 ## Testen
 
@@ -410,13 +415,16 @@ eigener nginx-Container mehr davor.
 | Dienst | Port | Aufgabe |
 |---|---|---|
 | `backend` | 8000 → 8000 | Django: liefert `radish/frontend/` unter `/`, `radish/web/` unter `/wasm/` und die Matchmaking-/Login-API unter `/api/` |
-| `game-server` | 9999/udp | Zucchini an der UDP-Strecke und der Spielserver daran |
+| `game-server` | 9999–10002/udp | vier Instanzen aus Zucchini an der UDP-Strecke und dem Spielserver daran, je ein Port |
 
-Der Wasm-Client muss vor `docker compose up --build backend` gebaut sein —
-das `backend`-Image kopiert `radish/web/` beim Bauen hinein.
-`radish/frontend/` baut das Image dagegen in einem eigenen Node-Stage
-selbst mit (siehe [radish/frontend/README.md](radish/frontend/README.md)),
-dafür ist kein vorheriges `npm install` auf dem Host nötig.
+Das `backend`-Image baut beides selbst: den Wasm-Client in einem eigenen
+Emscripten-Stage (`emscripten/emsdk`, dieselbe Version wie `emsdk/`) und
+`radish/frontend/` in einem Node-Stage (siehe
+[radish/frontend/README.md](radish/frontend/README.md)). Ein lokaler
+Emscripten-Build oder ein `npm install` auf dem Host ist dafür nicht nötig; ein
+lokal gebautes `radish/web/client.*` geht nicht ins Image. Der erste Bau lädt das
+Emscripten-Image (rund 750 MB) und übersetzt die SDL-Ports, danach liegen sie im
+Layer-Cache.
 
 ### Das Backend-Image
 

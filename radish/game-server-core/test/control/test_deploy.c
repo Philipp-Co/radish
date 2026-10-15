@@ -55,6 +55,16 @@ static void feld_ohne_belang(void *user_argument, const RAD_Tile_t *tile)
     (void)user_argument; (void)tile;
 }
 
+static void ende_ohne_belang(void *user_argument, RAD_UserId_t winner, RAD_GameEndReason_t reason)
+{
+    (void)user_argument; (void)winner; (void)reason;
+}
+
+static void angriff_ohne_belang(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument; (void)result;
+}
+
 static RAD_UserId_t host;
 static RAD_UserId_t gast;
 
@@ -75,11 +85,16 @@ static void aufbauen(void)
             .user_argument = NULL,
             .spawned = aufgestellt,
             .destroyed = einheit_ohne_belang,
-            .moved = zug_ohne_belang
+            .moved = zug_ohne_belang,
+            .attacked = angriff_ohne_belang
         },
         .turn_changed = {
             .user_argument = NULL,
             .changed = zugwechsel_ohne_belang
+        },
+        .game_changed = {
+            .user_argument = NULL,
+            .finished = ende_ohne_belang
         }
     };
     loaded = RAD_ControlCreateGame(NULL, &callbacks);
@@ -101,6 +116,8 @@ static void aufbauen(void)
         // Eine Waffe, die 4 Felder weit reicht -- fuer die Angriffe unten.
         unit->members[0].number_of_weapons = 1;
         unit->members[0].weapons[0].max_range = 4;
+        // Ein Feld weit: Boden kostet eins (das Gelaende bleibt 0, wie es kommt).
+        unit->movement = 1;
         start->players[p].number_of_units = 1;
     }
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_ControlStartGame(control, start));
@@ -204,11 +221,29 @@ void test_deploy_ueber_die_steuerung_nennt_den_grund(void)
     command = aufstellen(host, eigene, 4, 4);
     TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_NOT_IN_RESERVE, RAD_ControlExecuteCommand(control, &command).value);
 
-    // Nach dem Zugwechsel darf der Gast -- aber nicht auf ein besetztes Feld.
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, host));
-    command = aufstellen(gast, fremde, 2, 3);
+    // Nicht auf ein besetztes Feld: eine zweite Einheit des Hosts, solange der
+    // erste Zug noch laeuft und Einheiten noch dazukommen duerfen.
+    RAD_Unit_t werte;
+    memset(&werte, 0, sizeof(werte));
+    strcpy(werte.name, "Reserve");
+    werte.number_of_members = 1;
+    strcpy(werte.members[0].profile, "Soldat");
+    RAD_UnitId_t zweite = RAD_UNIT_NONE;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, host, &werte, &zweite));
+    command = aufstellen(host, zweite, 2, 3);
     TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_TARGET_OCCUPIED, RAD_ControlExecuteCommand(control, &command).value);
-    command = aufstellen(gast, fremde, 5, 5);
+
+    // Nur in der eigenen Zone: der Host von x = 0 aus, RAD_DEPLOY_ZONE_DEPTH Spalten.
+    command = aufstellen(host, zweite, 4, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, einheit(zweite).state);
+
+    // Nach dem Zugwechsel darf der Gast -- aber nur an seiner Kante: die Welt ist
+    // ohne Weltdefinition 16 breit, seine Zone die letzten vier Spalten (12..15).
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, host));
+    command = aufstellen(gast, fremde, 11, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE, RAD_ControlExecuteCommand(control, &command).value);
+    command = aufstellen(gast, fremde, 12, 5);
     TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, einheit(fremde).state);
 
@@ -263,6 +298,10 @@ void test_deploy_meldet_die_aufgestellte_einheit(void)
     TEST_ASSERT_EQUAL_INT(0, gemeldet);
 
     command = aufstellen(host, eigene, 4, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(0, gemeldet);
+
+    command = aufstellen(host, eigene, 3, 5);
     TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
 
     TEST_ASSERT_EQUAL_INT(1, gemeldet);
@@ -270,7 +309,7 @@ void test_deploy_meldet_die_aufgestellte_einheit(void)
     TEST_ASSERT_EQUAL_UINT64(host, gemeldete_einheit.owner);
     TEST_ASSERT_EQUAL_STRING("Trupp", gemeldete_einheit.name);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, gemeldete_einheit.state);
-    TEST_ASSERT_EQUAL_INT(4, gemeldet_x);
+    TEST_ASSERT_EQUAL_INT(3, gemeldet_x);
     TEST_ASSERT_EQUAL_INT(5, gemeldet_y);
 
     // Ein zweites Mal geht nicht -- und meldet nichts.
@@ -338,6 +377,11 @@ void test_ziehen_und_angreifen_ueber_die_steuerung_nennt_den_grund(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, host));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, gast));
 
+    // Ein Sprung ueber ein Feld ist kein Weg (RAD_GameCheckMovePath).
+    command = ziehen(host, eigene, 2, 3, 4, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_INVALID_PATH, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(2, einheit(eigene).x);
+
     command = ziehen(host, eigene, 2, 3, 3, 3);
     TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
     TEST_ASSERT_EQUAL_INT(3, einheit(eigene).x);
@@ -359,6 +403,42 @@ void test_ziehen_und_angreifen_ueber_die_steuerung_nennt_den_grund(void)
     // Der Text, der ueber die Strecke geht.
     TEST_ASSERT_EQUAL_STRING("Einheit hat in diesem Zug schon angegriffen",
                              RAD_ControlResultText(RAD_CONTROL_ERROR_UNIT_ALREADY_ATTACKED));
+    TEST_ASSERT_EQUAL_STRING("Zielfeld liegt ausserhalb der Aufstellzone",
+                             RAD_ControlResultText(RAD_CONTROL_ERROR_OUTSIDE_DEPLOY_ZONE));
+
+    abbauen();
+}
+
+///
+/// Ist das Spiel vorbei, nimmt die Steuerung kein Kommando mehr an -- gleich
+/// welcher Art und von wem, auch nicht von dem, der zuletzt dran war.
+///
+void test_nach_dem_ende_nimmt_die_steuerung_nichts_mehr_an(void)
+{
+    aufbauen();
+
+    TEST_ASSERT_EQUAL_INT32(1, RAD_ControlRound(control));
+    TEST_ASSERT_FALSE(RAD_ControlIsFinished(control));
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlWinner(control));
+    for(int32_t r = 0; r < RAD_ControlNumberOfRounds(control); ++r)
+    {
+        TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, host));
+        TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameEndTurn(game, gast));
+    }
+    TEST_ASSERT_TRUE(RAD_GameIsFinished(game));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_END_ROUNDS, RAD_ControlEndReason(control));
+    TEST_ASSERT_EQUAL_INT32(0, RAD_ControlScore(control, host));
+    TEST_ASSERT_TRUE(RAD_ControlIsFinished(control));
+    // Beide ohne Punkte: unentschieden, also kein Sieger.
+    TEST_ASSERT_EQUAL_UINT64(RAD_USER_NONE, RAD_ControlWinner(control));
+
+    RAD_Command_t command = aufstellen(host, eigene, 2, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_GAME_FINISHED, RAD_ControlExecuteCommand(control, &command).value);
+    command = aufstellen(gast, fremde, 5, 5);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_ERROR_GAME_FINISHED, RAD_ControlExecuteCommand(control, &command).value);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, einheit(eigene).state);
+
+    TEST_ASSERT_EQUAL_STRING("das Spiel ist vorbei", RAD_ControlResultText(RAD_CONTROL_ERROR_GAME_FINISHED));
 
     abbauen();
 }

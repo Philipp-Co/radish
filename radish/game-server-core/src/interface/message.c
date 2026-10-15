@@ -378,7 +378,9 @@ static void RAD_NetUnitFromUnit(const RAD_Unit_t *unit, RAD_NetUnitStorage_t *st
         net_unit_member__init(net_member);
         net_member->profile = (char *)member->profile;
         net_member->health = RAD_NetUnsigned(member->health);
+        net_member->health_max = RAD_NetUnsigned(member->health_max);
         net_member->armor = RAD_NetUnsigned(member->armor);
+        net_member->toughness = RAD_NetUnsigned(member->toughness);
         net_member->strength = RAD_NetUnsigned(member->strength);
         net_member->accuracy = RAD_NetUnsigned(member->accuracy);
 
@@ -446,6 +448,89 @@ RAD_NetCodecResult_t RAD_SerializeUnitDeployedEventToMessage(const RAD_Unit_t *u
     return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
 }
 
+RAD_NetCodecResult_t RAD_SerializeUnitMovedEventToMessage(RAD_UnitId_t unit,
+                                                           const RAD_Path_t *path,
+                                                           uint8_t *out_message,
+                                                           uint16_t capacity,
+                                                           uint16_t *out_size)
+{
+    // Dieselbe Grenze wie beim Kommando: unter zwei Feldern ist kein Zug.
+    if((path->number_of_steps < 2) || (path->number_of_steps > RAD_PATH_MAX_STEPS))
+    {
+        return RAD_NET_CODEC_ERROR_INVALID_STEP_COUNT;
+    }
+
+    // Wie in der Antwort auf einen Zug: die Felder auf dem Stapel, protobuf-c
+    // packt ueber Zeiger auf sie.
+    NetPathStep steps[RAD_PATH_MAX_STEPS];
+    NetPathStep *step_pointers[RAD_PATH_MAX_STEPS];
+    for(int8_t i = 0; i < path->number_of_steps; ++i)
+    {
+        net_path_step__init(&steps[i]);
+        steps[i].x = (uint32_t)path->steps_to[i].x;
+        steps[i].y = (uint32_t)path->steps_to[i].y;
+        step_pointers[i] = &steps[i];
+    }
+
+    NetUnitMovedEvent unit_moved = NET_UNIT_MOVED_EVENT__INIT;
+    unit_moved.unit_id = (uint32_t)unit;
+    unit_moved.n_steps = (size_t)path->number_of_steps;
+    unit_moved.steps = step_pointers;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_MOVED;
+    game_event.unit_moved = &unit_moved;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitAttackedEventToMessage(const RAD_AttackResult_t *result,
+                                                              uint8_t *out_message,
+                                                              uint16_t capacity,
+                                                              uint16_t *out_size)
+{
+    NetUnitAttackedEvent unit_attacked = NET_UNIT_ATTACKED_EVENT__INIT;
+    unit_attacked.unit_id = (uint32_t)result->attacker;
+    unit_attacked.x = (uint32_t)result->x;
+    unit_attacked.y = (uint32_t)result->y;
+
+    // RAD_UNIT_NONE ist -1 und hat als uint32 keinen Sinn: ohne Ziel bleibt die
+    // Id 0, und has_target sagt, dass sie nichts bedeutet.
+    unit_attacked.has_target = (result->target != RAD_UNIT_NONE);
+    unit_attacked.target_id = unit_attacked.has_target ? (uint32_t)result->target : 0;
+    unit_attacked.shots = (uint32_t)result->shots;
+    unit_attacked.hits = (uint32_t)result->hits;
+    unit_attacked.penetrations = (uint32_t)result->penetrations;
+    unit_attacked.wounds = (uint32_t)result->wounds;
+    unit_attacked.members_killed = (uint32_t)result->members_killed;
+    unit_attacked.target_destroyed = result->target_destroyed;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_ATTACKED;
+    game_event.unit_attacked = &unit_attacked;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitDestroyedEventToMessage(RAD_UnitId_t unit,
+                                                               int32_t x,
+                                                               int32_t y,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size)
+{
+    NetUnitDestroyedEvent unit_destroyed = NET_UNIT_DESTROYED_EVENT__INIT;
+    unit_destroyed.unit_id = (uint32_t)unit;
+    unit_destroyed.x = (uint32_t)x;
+    unit_destroyed.y = (uint32_t)y;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_DESTROYED;
+    game_event.unit_destroyed = &unit_destroyed;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
 RAD_NetCodecResult_t RAD_SerializeReserveUnitEventToMessage(const RAD_Unit_t *unit,
                                                               uint8_t *out_message,
                                                               uint16_t capacity,
@@ -481,6 +566,81 @@ RAD_NetCodecResult_t RAD_SerializeWorldSizeEventToMessage(uint32_t width,
     return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
 }
 
+RAD_NetCodecResult_t RAD_SerializeRoundEventToMessage(uint32_t round,
+                                                        uint32_t rounds,
+                                                        uint8_t *out_message,
+                                                        uint16_t capacity,
+                                                        uint16_t *out_size)
+{
+    NetRoundEvent round_event = NET_ROUND_EVENT__INIT;
+    round_event.round = round;
+    round_event.rounds = rounds;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_ROUND;
+    game_event.round = &round_event;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeGameFinishedEventToMessage(RAD_UserId_t winner,
+                                                               RAD_GameEndReason_t reason,
+                                                               const RAD_UserId_t *users,
+                                                               const int32_t *scores,
+                                                               size_t number_of_players,
+                                                               uint8_t *out_message,
+                                                               uint16_t capacity,
+                                                               uint16_t *out_size)
+{
+    // Wie bei den Feldern: repeated ist ein Array von Zeigern, und mindestens ein
+    // Platz, weil ein Array der Laenge null kein gueltiges C ist.
+    NetPlayerScore net_scores[(number_of_players > 0) ? number_of_players : 1];
+    NetPlayerScore *score_pointers[(number_of_players > 0) ? number_of_players : 1];
+    for(size_t i = 0; i < number_of_players; ++i)
+    {
+        net_player_score__init(&net_scores[i]);
+        net_scores[i].user_id = users[i];
+        net_scores[i].score = (scores[i] > 0) ? (uint32_t)scores[i] : 0;
+        score_pointers[i] = &net_scores[i];
+    }
+
+    NetGameFinishedEvent finished = NET_GAME_FINISHED_EVENT__INIT;
+    finished.winner_id = winner;
+    // Die Nummern des Spiels sind die der Nachricht (game.proto).
+    finished.reason = (NetGameEndReason)reason;
+    finished.n_scores = number_of_players;
+    finished.scores = score_pointers;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_FINISHED;
+    game_event.finished = &finished;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeDeployZoneEventToMessage(RAD_UserId_t user,
+                                                             uint32_t min_x,
+                                                             uint32_t min_y,
+                                                             uint32_t max_x,
+                                                             uint32_t max_y,
+                                                             uint8_t *out_message,
+                                                             uint16_t capacity,
+                                                             uint16_t *out_size)
+{
+    NetDeployZoneEvent deploy_zone = NET_DEPLOY_ZONE_EVENT__INIT;
+    deploy_zone.user_id = user;
+    deploy_zone.min_x = min_x;
+    deploy_zone.min_y = min_y;
+    deploy_zone.max_x = max_x;
+    deploy_zone.max_y = max_y;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_DEPLOY_ZONE;
+    game_event.deploy_zone = &deploy_zone;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
 RAD_NetCodecResult_t RAD_SerializeTilesEventToMessage(const RAD_Tile_t *tiles,
                                                         size_t number_of_tiles,
                                                         uint8_t *out_message,
@@ -504,6 +664,10 @@ RAD_NetCodecResult_t RAD_SerializeTilesEventToMessage(const RAD_Tile_t *tiles,
         net_tiles[i].z = (uint32_t)tile->z;
         net_tiles[i].type = RAD_NetTileTypeFromTileType(tile->type);
         net_tiles[i].unit_id = tile->unit;
+        net_tiles[i].victory = tile->victory;
+        net_tiles[i].movement_modifier = tile->terrain.movement_modifier;
+        net_tiles[i].cover = (uint32_t)tile->terrain.cover;
+        net_tiles[i].impassable = tile->terrain.impassable;
 
         tile_pointers[i] = &net_tiles[i];
     }
@@ -528,9 +692,16 @@ static NetTileType RAD_NetTileTypeFromTileType(RAD_TileType_t type)
 {
     switch(type)
     {
-        case RAD_TILE_TYPE_VOID:   return NET_TILE_TYPE__TILE_TYPE_VOID;
-        case RAD_TILE_TYPE_GROUND: return NET_TILE_TYPE__TILE_TYPE_GROUND;
-        case RAD_TILE_TYPE_WATER:  return NET_TILE_TYPE__TILE_TYPE_WATER;
+        case RAD_TILE_TYPE_VOID:          return NET_TILE_TYPE__TILE_TYPE_VOID;
+        case RAD_TILE_TYPE_GROUND:        return NET_TILE_TYPE__TILE_TYPE_GROUND;
+        case RAD_TILE_TYPE_WATER_SHALLOW: return NET_TILE_TYPE__TILE_TYPE_WATER;
+        case RAD_TILE_TYPE_MUD:           return NET_TILE_TYPE__TILE_TYPE_MUD;
+        case RAD_TILE_TYPE_MEADOW:        return NET_TILE_TYPE__TILE_TYPE_MEADOW;
+        case RAD_TILE_TYPE_FOREST:        return NET_TILE_TYPE__TILE_TYPE_FOREST;
+        case RAD_TILE_TYPE_WATER_DEEP:    return NET_TILE_TYPE__TILE_TYPE_WATER_DEEP;
+        case RAD_TILE_TYPE_CITY:          return NET_TILE_TYPE__TILE_TYPE_CITY;
+        case RAD_TILE_TYPE_ROAD:          return NET_TILE_TYPE__TILE_TYPE_ROAD;
+        case RAD_TILE_TYPE_FORTIFICATION: return NET_TILE_TYPE__TILE_TYPE_FORTIFICATION;
     }
 
     // Ein Wert ausserhalb der Aufzaehlung -- auf der Strecke ist das "unbekannt".

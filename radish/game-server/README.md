@@ -55,29 +55,33 @@ beide Spieler (Keycloak-Name, Spieler-Kennung) mit ihren Armeen samt allen
 Katalogwerten -- die Instanz braucht keinen Zugriff aufs Backend.
 
 Django REST Framework, klassenbasierte Views in
-[`instances/views.py`](instances/views.py). `<name>` ist der Name, unter dem
-sich die Instanz beim Backend meldet (`RADISH_GAME_SERVER_NAME`, z.B.
-`game-instance-1`).
+[`instances/views.py`](instances/views.py). `<name>` ist der Name der Instanz in
+diesem Container, wie `docker/game-server/supervisord.conf` ihn vergibt (z.B.
+`game-instance-1`) -- zugleich ihr Zucchini-Name. Das Backend kennt ihn als
+`GameServer.instance_name`; sein `GameServer.name` ist
+`<RADISH_GAME_SERVER_ID>-<name>`, damit er ueber alle Container eindeutig ist.
 
 | Methode | Pfad                                  | View             | Antwort |
 |---------|---------------------------------------|------------------|---------|
-| POST    | `/api/instances/<name>/game/start/`   | `GameStartView`  | 200 + `{"instance": ..., "status": "ready"}`, 400 ohne zwei Spieler unter `spieldaten`, 500 wenn die Datei nicht zu schreiben ist oder kein `radish_server` laeuft |
+| POST    | `/api/instances/<name>/game/start/`   | `GameStartView`  | 200 + `{"instance": ..., "status": "ready"}`, 400 ohne zwei Spieler unter `spieldaten` oder ohne Liste unter `gelaende`, 500 wenn die Datei nicht zu schreiben ist oder kein `radish_server` laeuft |
 | POST    | `/api/instances/<name>/game/cancel/`  | `GameCancelView` | 204, loescht die Spielstart-Datei und benachrichtigt `radish_server` |
 
 Ohne Authentifizierung und ohne CSRF-Pruefung -- nur fuer Dev, die Auth
 kommt in `InstanceAPIView` hinzu.
 
-Der Container selbst faehrt aber schon Django und eine Game-Instanz
-nebeneinander und haelt beide am Leben: [`supervisord`](../../docker/game-server/supervisord.conf)
-uebernimmt die Rolle von "etwas wie systemd" -- stuerzt Django oder das Paar
+Der Container selbst faehrt aber schon Django und die Game-Instanzen
+nebeneinander und haelt alle am Leben: [`supervisord`](../../docker/game-server/supervisord.conf)
+uebernimmt die Rolle von "etwas wie systemd" -- stuerzt Django oder eines der Paare
 `zucchini_server`/`radish_server` ab, startet supervisord neu, was abgestuerzt
 ist (siehe [`game-instance-entrypoint.sh`](../../docker/game-server/game-instance-entrypoint.sh)
 fuer die Prozesspaarung der beiden C-Programme).
 
-Vorlaeufig nur eine Instanz, nicht vier: `zucchini_server` hat Instanzname
-und UDP-Port fest einkompiliert (siehe Kommentar in `supervisord.conf`) und
-kann deshalb noch nicht mehrfach im selben Container laufen. Sobald das
-behoben ist, kommen weitere `[program:game-instance-N]`-Sektionen dazu.
+Vier Instanzen, `game-instance-1` bis `-4` auf den UDP-Ports 9999 bis 10002.
+Name und Port je Instanz stehen als Paar in `supervisord.conf`
+(`game-instance-entrypoint.sh <name> <port>`); jede meldet sich einzeln beim
+Backend an. Eine weitere Instanz ist eine weitere
+`[program:game-instance-N]`-Sektion mit dem naechsten Port, dazu die Spanne
+in `EXPOSE` (Dockerfile) und `ports:` (`docker-compose.yaml`).
 
 ## Lokal starten
 

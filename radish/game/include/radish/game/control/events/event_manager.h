@@ -67,6 +67,38 @@ typedef void (*RAD_OnUnitDestroyed_t)(void *user_argument, const RAD_Unit_t *uni
 
 typedef void (*RAD_OnUnitMoved_t)(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
 
+///
+/// Was ein Angriff bewirkt hat (control/attack_unit.c). Die Zaehler sind die
+/// Stufen eines Schusses, jede eine Teilmenge der vorigen: abgegeben, getroffen,
+/// durch die Ruestung, gewirkt. Jeder wirkende Schuss kostet das getroffene
+/// Mitglied einen Lebenspunkt, "wounds" sind also die abgezogenen Lebenspunkte.
+///
+/// "target" ist die Einheit, die auf (x, y) stand, als der Angriff begann --
+/// RAD_UNIT_NONE fuer ein leeres Feld; dann wurde nicht geschossen und alle
+/// Zaehler sind 0. "target_destroyed": sie hat dabei ihr letztes Mitglied
+/// verloren und ist vom Feld (RAD_OnUnitDestroyed_t ist dann schon gemeldet).
+///
+typedef struct
+{
+    RAD_UnitId_t attacker;
+    RAD_UnitId_t target;
+    int16_t x;
+    int16_t y;
+    int32_t shots;
+    int32_t hits;
+    int32_t penetrations;
+    int32_t wounds;
+    int32_t members_killed;
+    bool target_destroyed;
+} RAD_AttackResult_t;
+
+///
+/// Eine Einheit hat ein Feld angegriffen -- gemeldet nur fuer einen Angriff,
+/// den das Spiel angenommen hat (RAD_GameCheckAttack), nachdem es ihn gezaehlt
+/// (RAD_Unit_t.turn.attacked) und ausgewuerfelt hat.
+///
+typedef void (*RAD_OnUnitAttacked_t)(void *user_argument, const RAD_AttackResult_t *result);
+
 typedef struct
 {
     int16_t x;
@@ -79,6 +111,7 @@ typedef struct
     RAD_OnUnitSpawned_t spawned;
     RAD_OnUnitDestroyed_t destroyed;
     RAD_OnUnitMoved_t moved;
+    RAD_OnUnitAttacked_t attacked;
 } RAD_EventsUnitChangedCallback_t;
 
 ///
@@ -97,6 +130,35 @@ typedef struct
     void *user_argument;
     RAD_OnTurnChanged_t changed;
 } RAD_EventsTurnCallback_t;
+
+///
+/// Warum ein Spiel vorbei ist (RAD_GameEndReason).
+///
+///   NONE        es laeuft noch
+///   ROUNDS      die letzte Runde ist um, gewertet wurde nach Punkten
+///               (RAD_GameScore) -- bei Gleichstand ohne Sieger
+///   ELIMINATED  ein Spieler hat weder in der Reserve noch auf dem Feld eine
+///               Einheit mehr; er verliert
+///
+typedef enum
+{
+    RAD_GAME_END_NONE = 0,
+    RAD_GAME_END_ROUNDS,
+    RAD_GAME_END_ELIMINATED
+} RAD_GameEndReason_t;
+
+///
+/// Das Spiel ist vorbei: "winner" hat gewonnen, RAD_USER_NONE bei einem
+/// Unentschieden. Gemeldet genau einmal, vom Spiel (control/victory.c); danach
+/// nimmt es kein Kommando mehr an.
+///
+typedef void (*RAD_OnGameFinished_t)(void *user_argument, RAD_UserId_t winner, RAD_GameEndReason_t reason);
+
+typedef struct
+{
+    void *user_argument;
+    RAD_OnGameFinished_t finished;
+} RAD_EventsGameCallback_t;
 
 ///
 /// Die Zeigereignisse: was der Benutzer mit der Maus tut, nicht was im Spiel
@@ -149,9 +211,13 @@ void RAD_EventManagerSubscribeToUnitEvents(RAD_EventManager_t *manager, RAD_Even
 void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
 void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
 void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
+void RAD_EventManagerPublishUnitAttacked(RAD_EventManager_t *manager, const RAD_AttackResult_t *result);
 
 void RAD_EventManagerSubscribeToTurnEvents(RAD_EventManager_t *manager, RAD_EventsTurnCallback_t callbacks);
 void RAD_EventManagerPublishTurnChanged(RAD_EventManager_t *manager, RAD_UserId_t current_user);
+
+void RAD_EventManagerSubscribeToGameEvents(RAD_EventManager_t *manager, RAD_EventsGameCallback_t callbacks);
+void RAD_EventManagerPublishGameFinished(RAD_EventManager_t *manager, RAD_UserId_t winner, RAD_GameEndReason_t reason);
 
 void RAD_EventManagerSubscribeToMouseEvents(RAD_EventManager_t *manager, RAD_EventsMouseCallbacks_t callbacks);
 void RAD_EventManagerPublishMouseMoved(RAD_EventManager_t *manager, int32_t new_x, int32_t new_y, int32_t old_x, int32_t old_y);

@@ -7,8 +7,9 @@
 #       view.c            ->    game/
 #       model/            ->    model/             test_model
 #       control/events/   ->    control/events/    test_control_events
-#       control/execute/  ->    control/execute/   test_control_execute
+#       control/move_unit.c ->   control/move_unit/ test_control_move_unit
 #       control/start_game.c ->  control/start_game/ test_control_start_game
+#       control/dice.c      ->   control/dice/      test_control_dice
 
 ###
 # Die Tests sehen den privaten Teil des Moduls.
@@ -29,7 +30,7 @@ set(RAD_GAME_PRIVATE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../src/include")
 #
 # Der Name ist zugleich der des Tests in ctest und, mit test_ davor, der des
 # Programms. Bei geschachtelten Modulen wird er zusammengezogen
-# (control_events, control_execute), damit er eindeutig bleibt.
+# (control_events, control_move_unit), damit er eindeutig bleibt.
 ###
 function(rad_add_game_test name)
     add_executable(test_${name} ${ARGN})
@@ -47,8 +48,9 @@ endfunction()
 add_subdirectory(game)
 add_subdirectory(model)
 add_subdirectory(control/events)
-add_subdirectory(control/execute)
+add_subdirectory(control/move_unit)
 add_subdirectory(control/start_game)
+add_subdirectory(control/dice)
 
 ###
 # Das Schema der Weltdefinition und die Welten, die danach geschrieben sind.

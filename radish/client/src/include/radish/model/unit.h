@@ -89,6 +89,7 @@ typedef struct
     int16_t health_max;
 
     int16_t armor;
+    int16_t toughness;
     int16_t strength;
     int16_t accuracy;
 

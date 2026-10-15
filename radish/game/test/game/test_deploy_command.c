@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <string.h>
 #include <radish/game/game.h>
+#include <radish/game/game_definitions.h>
 
 // Der Test gehoert zum Modul und sieht deshalb den Spielzustand: er prueft in der
 // Welt nach, wo die Einheit danach steht. Die Begruendung fuer diesen Suchpfad
@@ -48,6 +49,12 @@ static void notiere_nichts(void *user_argument, const RAD_Unit_t *unit, int32_t 
     (void)y;
 }
 
+static void notiere_keinen_angriff(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
+    (void)result;
+}
+
 static void notiere_keinen_zug(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
     (void)user_argument;
@@ -57,7 +64,8 @@ static void notiere_keinen_zug(void *user_argument, const RAD_Unit_t *unit, cons
 }
 
 ///
-/// Zwei Spieler mit je einer Einheit in der Reserve; der Host ist dran. Abonniert
+/// Zwei Spieler mit je einer Einheit in der Reserve; der Host ist dran und stellt
+/// an der Kante x = 0 auf, der Gast an der gegenueberliegenden. Abonniert
 /// wird zuletzt, damit nur zaehlt, was der Test ausloest.
 ///
 static void aufbauen(void)
@@ -85,7 +93,8 @@ static void aufbauen(void)
         .user_argument = &mitschrift,
         .spawned = notiere_spawned,
         .destroyed = notiere_nichts,
-        .moved = notiere_keinen_zug
+        .moved = notiere_keinen_zug,
+        .attacked = notiere_keinen_angriff
     });
 }
 
@@ -128,8 +137,9 @@ void test_deploy_regel_nennt_jeden_grund(void)
 {
     aufbauen();
 
-    TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&game->world, 5, 5));
-    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 6, 6);
+    // Beides in der Zone des Hosts, damit die Regel bis zu diesen Fragen kommt.
+    TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&game->world, 2, 5));
+    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 3, 6);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, im_weg);
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK,                   RAD_GameCheckDeployUnit(game, host, eigene, 1, 1));
@@ -142,8 +152,9 @@ void test_deploy_regel_nennt_jeden_grund(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NOT_OWNED,      RAD_GameCheckDeployUnit(game, host, im_weg, 1, 1));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUT_OF_BOUNDS,  RAD_GameCheckDeployUnit(game, host, eigene, -1, 0));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUT_OF_BOUNDS,  RAD_GameCheckDeployUnit(game, host, eigene, 0, game->world.height));
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_GROUND,      RAD_GameCheckDeployUnit(game, host, eigene, 5, 5));
-    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OCCUPIED,       RAD_GameCheckDeployUnit(game, host, eigene, 6, 6));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE, RAD_GameCheckDeployUnit(game, host, eigene, RAD_DEPLOY_ZONE_DEPTH, 1));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_GROUND,      RAD_GameCheckDeployUnit(game, host, eigene, 2, 5));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OCCUPIED,       RAD_GameCheckDeployUnit(game, host, eigene, 3, 6));
 
     // Steht sie, steht sie nicht mehr in der Reserve; zerstoert genauso wenig.
     TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 1, 1));
@@ -200,6 +211,53 @@ void test_deploy_kommando_fuer_fremde_einheit_aendert_nichts(void)
 
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, RAD_WorldUnitById(&game->world, fremde)->state);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&game->world, 2, 2)->unit);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.spawned);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
+
+    abbauen();
+}
+
+///
+/// Jeder stellt nur in seiner Zone auf: RAD_DEPLOY_ZONE_DEPTH Spalten von seiner
+/// Kante, der Host von x = 0, der Gast von der gegenueberliegenden.
+///
+void test_deploy_nur_in_der_eigenen_zone(void)
+{
+    aufbauen();
+    const int32_t width = game->world.width;
+    const int32_t letzte_zeile = game->world.height - 1;
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, host, eigene, 0, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, host, eigene, RAD_DEPLOY_ZONE_DEPTH - 1, letzte_zeile));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE,
+                          RAD_GameCheckDeployUnit(game, host, eigene, RAD_DEPLOY_ZONE_DEPTH, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE,
+                          RAD_GameCheckDeployUnit(game, host, eigene, width - 1, 0));
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, gast, fremde, width - 1, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, gast, fremde, width - RAD_DEPLOY_ZONE_DEPTH, letzte_zeile));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE,
+                          RAD_GameCheckDeployUnit(game, gast, fremde, width - RAD_DEPLOY_ZONE_DEPTH - 1, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE,
+                          RAD_GameCheckDeployUnit(game, gast, fremde, 0, 0));
+
+    abbauen();
+}
+
+///
+/// Auch hier prueft das Spiel selbst: ein Kommando ausserhalb der Zone stellt
+/// nichts auf, und die Einheit bleibt in der Reserve.
+///
+void test_deploy_kommando_ausserhalb_der_zone_aendert_nichts(void)
+{
+    aufbauen();
+
+    RAD_Command_t command = {0};
+    TEST_ASSERT_TRUE(RAD_GameDeployUnit(game, eigene, (int16_t)RAD_DEPLOY_ZONE_DEPTH, 0, &command));
+    RAD_GameExecuteCommand(game, &command);
+
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, RAD_WorldUnitById(&game->world, eigene)->state);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&game->world, RAD_DEPLOY_ZONE_DEPTH, 0)->unit);
     TEST_ASSERT_EQUAL_INT(0, mitschrift.spawned);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
 

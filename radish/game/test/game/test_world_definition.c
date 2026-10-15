@@ -57,7 +57,7 @@ static RAD_SerializeResult_t lade(RAD_Game_t *game, const char *json)
 }
 
 ///
-/// Eine Welt aus 3 x 2 Feldern, mit allen drei Gelaendearten und Hoehen. Die
+/// Eine Welt aus 3 x 2 Feldern, mit Boden, Wasser und Leere und Hoehen. Die
 /// Groesse steht nirgends in der Datei und kommt trotzdem an.
 ///
 void test_weltdefinition_baut_gelaende_und_hoehen_auf(void)
@@ -84,7 +84,7 @@ void test_weltdefinition_baut_gelaende_und_hoehen_auf(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, tile.type);
 
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 2, 0, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, tile.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, tile.type);
 
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 2, 1, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, tile.type);
@@ -135,7 +135,7 @@ void test_weltdefinition_reihenfolge_der_schluessel_ist_egal(void)
     TEST_ASSERT_EQUAL_INT(2, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(1, RAD_GameWorldHeight(game));
     TEST_ASSERT_EQUAL_INT(3, game->world.tiles[0][0].z);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, game->world.tiles[0][1].type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, game->world.tiles[0][1].type);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -165,7 +165,7 @@ void test_weltdefinition_in_voller_groesse(void)
     TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, json));
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_HEIGHT, RAD_GameWorldHeight(game));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, game->world.tiles[RAD_WORLD_HEIGHT - 1][RAD_WORLD_WIDTH - 1].type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, game->world.tiles[RAD_WORLD_HEIGHT - 1][RAD_WORLD_WIDTH - 1].type);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);
@@ -186,9 +186,10 @@ void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void)
         { "{\"version\":1,\"rows\":[]}",                                  RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
         { "{\"version\":1,\"rows\":[\"\"]}",                              RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
         { "{\"version\":1,\"rows\":[\"...\",\"..\"]}",                    RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
-        { "{\"version\":1,\"rows\":[\".........\"]}",                     RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
-        { "{\"version\":1,\"rows\":[\".\",\".\",\".\",\".\",\".\",\".\",\".\",\".\",\".\"]}",
-                                                                          RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
+        // Eine Zeile laenger als RAD_WORLD_WIDTH, eine Zeile mehr als RAD_WORLD_HEIGHT.
+        { "{\"version\":1,\"rows\":[\".................\"]}",             RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
+        { "{\"version\":1,\"rows\":[\".\",\".\",\".\",\".\",\".\",\".\",\".\",\".\",\".\","
+          "\".\",\".\",\".\",\".\",\".\",\".\",\".\",\".\"]}",            RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
         { "{\"version\":1,\"rows\":[\"..\"],\"heights\":[\"0\"]}",        RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
         { "{\"version\":1,\"rows\":[\"..\"],\"heights\":[\"00\",\"00\"]}", RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
 
@@ -196,6 +197,20 @@ void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void)
         { "{\"version\":1,\"rows\":[\".#\"]}",                            RAD_SERIALIZE_ERROR_TILE_TYPE },
         { "{\"version\":1,\"rows\":[\"..\"],\"heights\":[\"0a\"]}",       RAD_SERIALIZE_ERROR_SCHEMA },
         { "{\"version\":1,\"rows\":[\"._\"],\"heights\":[\"01\"]}",       RAD_SERIALIZE_ERROR_INCONSISTENT },
+
+        // Die Siegfelder.
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":2,\"y\":0}]}",    RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":0,\"y\":-1}]}",   RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS },
+        { "{\"version\":1,\"rows\":[\"._\"],\"victory_tiles\":[{\"x\":1,\"y\":0}]}",    RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND },
+        { "{\"version\":1,\"rows\":[\".~\"],\"victory_tiles\":[{\"x\":1,\"y\":0}]}",    RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":0,\"y\":0},{\"y\":0,\"x\":0}]}",
+                                                                          RAD_SERIALIZE_ERROR_VICTORY_DUPLICATE },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":0}]}",              RAD_SERIALIZE_ERROR_SCHEMA },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":0,\"y\":0,\"z\":0}]}", RAD_SERIALIZE_ERROR_SCHEMA },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":0,\"x\":1}]}",    RAD_SERIALIZE_ERROR_SCHEMA },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[[0,0]]}",                    RAD_SERIALIZE_ERROR_SCHEMA },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":{\"x\":0,\"y\":0}}",      RAD_SERIALIZE_ERROR_SCHEMA },
+        { "{\"version\":1,\"rows\":[\"..\"],\"victory_tiles\":[{\"x\":\"0\",\"y\":0}]}", RAD_SERIALIZE_ERROR_SCHEMA },
 
         // Der Rahmen.
         { "{\"rows\":[\"..\"]}",                                          RAD_SERIALIZE_ERROR_SCHEMA },
@@ -213,7 +228,7 @@ void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void)
 
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&game->world, 3, 3, 2, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&game->world, 3, 3, 2, RAD_TILE_TYPE_WATER_SHALLOW));
 
     RAD_WeltMitschrift_t mitschrift;
     abonniere(events, &mitschrift);
@@ -224,7 +239,7 @@ void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void)
 
         TEST_ASSERT_EQUAL_INT_MESSAGE(RAD_WORLD_WIDTH, RAD_GameWorldWidth(game), faelle[i].json);
         TEST_ASSERT_EQUAL_INT_MESSAGE(RAD_WORLD_HEIGHT, RAD_GameWorldHeight(game), faelle[i].json);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(RAD_TILE_TYPE_WATER, game->world.tiles[3][3].type, faelle[i].json);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(RAD_TILE_TYPE_WATER_SHALLOW, game->world.tiles[3][3].type, faelle[i].json);
         TEST_ASSERT_EQUAL_INT_MESSAGE(2, game->world.tiles[3][3].z, faelle[i].json);
     }
 
@@ -257,7 +272,7 @@ void test_weltdefinition_mit_figur_im_spiel_wird_abgelehnt(void)
 }
 
 ///
-/// Ein Abonnent kennt die Welt aus RAD_CreateGame: 8 x 8 Boden. Eine kleinere Welt
+/// Ein Abonnent kennt die Welt aus RAD_CreateGame: RAD_WORLD_WIDTH x RAD_WORLD_HEIGHT Boden. Eine kleinere Welt
 /// meldet ihm die Felder, die anders sind, und die, die wegfallen. Eine wieder
 /// groessere meldet die neuen als added.
 ///
@@ -314,20 +329,130 @@ void test_weltdefinition_aus_datei(void)
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_OK, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/default.json"));
 
-    TEST_ASSERT_EQUAL_INT(8, RAD_GameWorldWidth(game));
-    TEST_ASSERT_EQUAL_INT(8, RAD_GameWorldHeight(game));
+    TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldWidth(game));
+    TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldHeight(game));
 
     RAD_Tile_t tile;
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 3, 2, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 5, 5, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 7, 7, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_DEEP, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 2, 1, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FORTIFICATION, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 4, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_ROAD, tile.type);
+
+    // Ohne "heights": alles auf 0.
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 0, &tile));
-    TEST_ASSERT_EQUAL_INT(1, tile.z);
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 7, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FOREST, tile.type);
+    TEST_ASSERT_EQUAL_INT(0, tile.z);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 15, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, tile.type);
+
+    // Die beiden Siegfelder, punktsymmetrisch, je eine Stadt.
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 7, 1, &tile));
+    TEST_ASSERT_TRUE(tile.victory);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_CITY, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 8, 14, &tile));
+    TEST_ASSERT_TRUE(tile.victory);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_CITY, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 8, 1, &tile));
+    TEST_ASSERT_FALSE(tile.victory);
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, RAD_ASSETS_DIR "/worlds/gibt-es-nicht.json"));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(game, NULL));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_LOAD_ERROR_NOT_FOUND, RAD_LoadWorldFromFile(NULL, RAD_ASSETS_DIR "/worlds/default.json"));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Die Siegfelder (RAD_Tile_t.victory): gesetzt, wo die Datei sie nennt, sonst
+/// nicht -- auch nicht von einer Welt davor. Ein Feld, das nur zum Siegfeld wird,
+/// meldet "changed".
+///
+void test_weltdefinition_setzt_die_siegfelder(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
+
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK,
+        lade(game, "{\"version\":1,\"rows\":[\"...\",\"...\"],"
+                   "\"victory_tiles\":[{\"x\":2,\"y\":0},{\"y\":1,\"x\":0}]}"));
+    TEST_ASSERT_TRUE(game->world.tiles[0][2].victory);
+    TEST_ASSERT_TRUE(game->world.tiles[1][0].victory);
+    TEST_ASSERT_FALSE(game->world.tiles[0][0].victory);
+    TEST_ASSERT_FALSE(game->world.tiles[1][2].victory);
+
+    // Dieselbe Welt, ein Siegfeld weniger und eins mehr: zwei Felder aendern sich.
+    RAD_WeltMitschrift_t mitschrift;
+    abonniere(events, &mitschrift);
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK,
+        lade(game, "{\"version\":1,\"rows\":[\"...\",\"...\"],\"victory_tiles\":[{\"x\":2,\"y\":0},{\"x\":1,\"y\":1}]}"));
+    TEST_ASSERT_FALSE(game->world.tiles[1][0].victory);
+    TEST_ASSERT_TRUE(game->world.tiles[1][1].victory);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.added);
+    TEST_ASSERT_EQUAL_INT(0, mitschrift.removed);
+    TEST_ASSERT_EQUAL_INT(2, mitschrift.changed);
+
+    // Ohne "victory_tiles": keine, und auch eine leere Liste ist gueltig.
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, "{\"version\":1,\"rows\":[\"...\",\"...\"]}"));
+    TEST_ASSERT_FALSE(game->world.tiles[0][2].victory);
+    TEST_ASSERT_FALSE(game->world.tiles[1][1].victory);
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, "{\"version\":1,\"rows\":[\".\"],\"victory_tiles\":[]}"));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Jedes Zeichen aus world.schema.json wird zu seinem Tile-Typ.
+///
+void test_weltdefinition_kennt_alle_gelaendearten(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
+
+    // Zwei Zeilen zu fuenf: alle zehn passen nicht in RAD_WORLD_WIDTH.
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, "{\"version\":1,\"rows\":[\"_.~,:\",\"^=H+*\"]}"));
+
+    const RAD_TileType_t erwartet[2][5] = {
+        { RAD_TILE_TYPE_VOID, RAD_TILE_TYPE_GROUND, RAD_TILE_TYPE_WATER_SHALLOW, RAD_TILE_TYPE_MUD, RAD_TILE_TYPE_MEADOW },
+        { RAD_TILE_TYPE_FOREST, RAD_TILE_TYPE_WATER_DEEP, RAD_TILE_TYPE_CITY, RAD_TILE_TYPE_ROAD, RAD_TILE_TYPE_FORTIFICATION }
+    };
+    for(int32_t y=0;y < 2; ++y)
+    {
+        for(int32_t x=0;x < 5; ++x)
+        {
+            TEST_ASSERT_EQUAL_INT(erwartet[y][x], game->world.tiles[y][x].type);
+        }
+    }
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Ein Siegfeld darf auf jedem Land liegen, aber nicht im Wasser -- seicht oder
+/// tief -- und nicht auf einem Feld ohne Gelaende.
+///
+void test_weltdefinition_siegfelder_nur_auf_land(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
+
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK,
+        lade(game, "{\"version\":1,\"rows\":[\".,:^H+*\"],"
+                   "\"victory_tiles\":[{\"x\":0,\"y\":0},{\"x\":1,\"y\":0},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0},"
+                   "{\"x\":4,\"y\":0},{\"x\":5,\"y\":0},{\"x\":6,\"y\":0}]}"));
+    for(int32_t x=0;x < 7; ++x)
+    {
+        TEST_ASSERT_TRUE(game->world.tiles[0][x].victory);
+    }
+
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND,
+        lade(game, "{\"version\":1,\"rows\":[\".=\"],\"victory_tiles\":[{\"x\":1,\"y\":0}]}"));
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

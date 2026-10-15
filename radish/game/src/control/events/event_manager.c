@@ -15,6 +15,7 @@ struct RAD_EventManager
     RAD_EventsTileChangedCallback_t tile_changed_events;
     RAD_EventsMouseCallbacks_t mouse_events;
     RAD_EventsTurnCallback_t turn_events;
+    RAD_EventsGameCallback_t game_events;
 };
 
 
@@ -28,8 +29,11 @@ static void RAD_DefaultOnMouseReleased(void *user_argument, int32_t x, int32_t y
 
 static void RAD_DefaultUnit(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y);
 static void RAD_DefaultUnitMove(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
+static void RAD_DefaultUnitAttack(void *user_argument, const RAD_AttackResult_t *result);
 
 static void RAD_DefaultOnTurnChanged(void *user_argument, RAD_UserId_t current_user);
+
+static void RAD_DefaultOnGameFinished(void *user_argument, RAD_UserId_t winner, RAD_GameEndReason_t reason);
 
 
 RAD_EventManager_t* RAD_CreateEventManager(void)
@@ -57,11 +61,16 @@ RAD_EventManager_t* RAD_CreateEventManager(void)
             .user_argument = NULL,
             .spawned = RAD_DefaultUnit,
             .destroyed = RAD_DefaultUnit,
-            .moved = RAD_DefaultUnitMove
+            .moved = RAD_DefaultUnitMove,
+            .attacked = RAD_DefaultUnitAttack
         },
         .turn_events = {
             .user_argument = NULL,
             .changed = RAD_DefaultOnTurnChanged
+        },
+        .game_events = {
+            .user_argument = NULL,
+            .finished = RAD_DefaultOnGameFinished
         }
     };
 
@@ -177,6 +186,11 @@ void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Uni
     manager->unit_changed_events.moved(manager->unit_changed_events.user_argument, unit, path, result);
 }
 
+void RAD_EventManagerPublishUnitAttacked(RAD_EventManager_t *manager, const RAD_AttackResult_t *result)
+{
+    manager->unit_changed_events.attacked(manager->unit_changed_events.user_argument, result);
+}
+
 static void RAD_DefaultUnit(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
     (void)user_argument;
@@ -190,6 +204,12 @@ static void RAD_DefaultUnitMove(void *user_argument, const RAD_Unit_t *unit, con
     (void)user_argument;
     (void)unit;
     (void)path;
+    (void)result;
+}
+
+static void RAD_DefaultUnitAttack(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
     (void)result;
 }
 
@@ -207,4 +227,21 @@ static void RAD_DefaultOnTurnChanged(void *user_argument, RAD_UserId_t current_u
 {
     (void)user_argument;
     (void)current_user;
+}
+
+void RAD_EventManagerSubscribeToGameEvents(RAD_EventManager_t *manager, RAD_EventsGameCallback_t callbacks)
+{
+    manager->game_events = callbacks;
+}
+
+void RAD_EventManagerPublishGameFinished(RAD_EventManager_t *manager, RAD_UserId_t winner, RAD_GameEndReason_t reason)
+{
+    manager->game_events.finished(manager->game_events.user_argument, winner, reason);
+}
+
+static void RAD_DefaultOnGameFinished(void *user_argument, RAD_UserId_t winner, RAD_GameEndReason_t reason)
+{
+    (void)user_argument;
+    (void)winner;
+    (void)reason;
 }

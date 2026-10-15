@@ -4,12 +4,22 @@ syntax = "proto3";
 // werden nicht umgedeutet. Ein Feld ohne Gelaende ist ein Feld und kein
 // fehlendes -- es gehoert zur Welt (RAD_TILE_TYPE_VOID) und wird genauso
 // uebertragen wie eines mit.
+//
+// WATER ist das seichte Wasser (RAD_TILE_TYPE_WATER_SHALLOW); der Name blieb,
+// damit sich die Nummer nicht umdeutet. Alles ab 4 kam spaeter dazu.
 enum NetTileType
 {
     TILE_TYPE_UNKNOWN = 0;
     TILE_TYPE_GROUND = 1;
     TILE_TYPE_WATER = 2;
     TILE_TYPE_VOID = 3;
+    TILE_TYPE_MUD = 4;
+    TILE_TYPE_MEADOW = 5;
+    TILE_TYPE_FOREST = 6;
+    TILE_TYPE_WATER_DEEP = 7;
+    TILE_TYPE_CITY = 8;
+    TILE_TYPE_ROAD = 9;
+    TILE_TYPE_FORTIFICATION = 10;
 }
 
 message NetTile
@@ -30,6 +40,18 @@ message NetTile
 
     // Hoehe des Feldes (RAD_Tile_t.z). Auf einem Feld ohne Gelaende 0.
     uint32 z = 6;
+
+    // Ein Siegfeld (RAD_Tile_t.victory): wer es haelt, bekommt Punkte.
+    bool victory = 7;
+
+    // Was das Gelaende fuer das Spiel bedeutet (RAD_Tile_t.terrain), mit dem
+    // Spielstart aus dem Katalog des Backends: MV, um wie viele Felder es die
+    // Bewegungsreichweite aendert (sint32, weil es oft negativ ist), CV, die
+    // Deckung, und ob eine Einheit das Feld betreten darf. Der Client rechnet
+    // damit dieselben Wege wie der Server, statt eigene Werte zu fuehren.
+    sint32 movement_modifier = 8;
+    uint32 cover = 9;
+    bool impassable = 10;
 }
 
 message NetTileCreatedEvent 

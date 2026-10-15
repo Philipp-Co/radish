@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
 Meldet diese Game-Instanz beim Backend an- bzw. wieder ab (siehe
-radish/backend/api/server_views.py: POST/DELETE api/servers/).
+radish/backend/api/server_views.py: POST/DELETE api/servers/) und meldet
+das Ende eines Spiels (POST api/servers/<name>/game-finished/).
 
-Aufgerufen von game-instance-entrypoint.sh, einmal beim Start ("register")
-und einmal beim Beenden ("deregister") -- nicht von Django selbst, das
+    register_instance.py register
+    register_instance.py deregister
+    register_instance.py game-finished <winner> <loser>
+    register_instance.py game-finished draw
+
+Anmelden und Abmelden ruft game-instance-entrypoint.sh, einmal beim Start
+("register") und einmal beim Beenden ("deregister"). Das Spielende ruft
+radish_server, sobald ein Spiel vorbei ist (RADISH_GAME_FINISHED_COMMAND,
+siehe radish/game-server-core/src/interface/game_report.h). Nicht von Django selbst, das
 bleibt weiterhin eine leere Huelle (siehe config/settings.py). Kein Modul
 unter instances/, weil dieses Skript nichts mit der Django-Anwendung
 dieses Containers zu tun hat: es meldet sich beim *anderen* Backend
@@ -86,6 +94,11 @@ def register():
     # instances/views.py), ueber die das Backend Spiele startet/abbricht --
     # siehe GameServer.control_url in radish/backend/api/models.py.
     control_url = _env("RADISH_GAME_SERVER_CONTROL_URL")
+    # Name der Instanz in diesem Container (Zucchini-Name, Pfadteil der
+    # Instanz-API) -- anders als "name" nur hier eindeutig, siehe
+    # GameServer.instance_name. Name, Port und dieser Name kommen je Instanz
+    # aus game-instance-entrypoint.sh, nicht aus docker-compose.yaml.
+    instance_name = _env("RADISH_GAME_INSTANCE_NAME")
 
     token = _fetch_access_token()
     response = requests.post(
@@ -95,6 +108,7 @@ def register():
             "address": address,
             "port": int(port),
             "control_url": control_url,
+            "instance_name": instance_name,
         },
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
@@ -134,15 +148,65 @@ def deregister():
     print(f"Instanz '{name}' deregistriert.")
 
 
-def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in ("register", "deregister"):
-        print(f"Aufruf: {sys.argv[0]} register|deregister", file=sys.stderr)
-        sys.exit(2)
+def game_finished(winner, loser):
+    """
+    Meldet, dass das Spiel auf dieser Instanz vorbei ist: "winner" hat
+    gewonnen, "loser" verloren, je ueber die Spieler-Id (die Kennung aus der
+    Spielstart-Datei, im Backend Player.identifier). Bei einem Unentschieden
+    beide None.
 
-    if sys.argv[1] == "register":
-        register()
+    Danach raeumt das Backend auf wie beim Verlassen: das Spiel verschwindet,
+    der Server ist wieder frei, und es bricht das Spiel auf dieser Instanz ab
+    (game/cancel/ an die Instanz-API).
+
+    409 heisst, auf dieser Instanz laeuft im Backend kein gestartetes Spiel
+    (mehr) -- etwa weil das Ende schon gemeldet oder das Spiel verlassen
+    wurde. Das ist kein Fehler: das Spiel ist so oder so vorbei. Jeder andere
+    Fehlschlag endet mit einem Exit-Code ungleich 0, damit der Aufrufer es
+    erneut versuchen kann.
+    """
+    name = _env("RADISH_GAME_SERVER_NAME")
+    backend_url = _env("RADISH_BACKEND_URL")
+
+    token = _fetch_access_token()
+    response = requests.post(
+        f"{backend_url}/api/servers/{name}/game-finished/",
+        json={"winner": winner, "loser": loser, "game-instance": name},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if response.status_code == 409:
+        print(f"Kein laufendes Spiel auf '{name}' (409): {response.text}", file=sys.stderr)
+        return
+    _raise_for_status_with_body(response)
+    if winner is None:
+        print(f"Spielende auf '{name}' gemeldet: unentschieden.")
     else:
+        print(f"Spielende auf '{name}' gemeldet: {winner} gewinnt gegen {loser}.")
+
+
+def _usage():
+    print(
+        f"Aufruf: {sys.argv[0]} register | deregister | "
+        "game-finished <winner> <loser> | game-finished draw",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main():
+    arguments = sys.argv[1:]
+
+    if arguments == ["register"]:
+        register()
+    elif arguments == ["deregister"]:
         deregister()
+    elif arguments == ["game-finished", "draw"]:
+        game_finished(None, None)
+    elif len(arguments) == 3 and arguments[0] == "game-finished":
+        game_finished(arguments[1], arguments[2])
+    else:
+        _usage()
 
 
 if __name__ == "__main__":

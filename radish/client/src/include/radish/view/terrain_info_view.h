@@ -15,19 +15,19 @@
 ///   CV 2        Deckung
 ///
 /// Beschriftet mit den Abkuerzungen aus view/abbreviations.h. Der Hintergrund
-/// ist rot.
+/// ist schwarz, mit einem weissen Rahmen.
 ///
 /// **Alles gehoert zum Feld im Fokus** (model/focus.h): die TerrainInfoView
 /// liest den Fokus bei jedem Update und fragt control/terrain.h nach Name und
 /// Werten des Feldes. Steht nichts im Fokus, zeigt sie "-", "MV -" und "CV -".
-/// Neu gesetzt werden die Texte nur, wenn sich etwas geaendert hat. Den Fokus
+/// Neu gesetzt werden die Texte nur, wenn sich etwas geaendert hat; jede Zeile
+/// tippt sich dann neu (view/typewriter_view.h). Den Fokus
 /// schreibt die IsoMapView; er gehoert dem Aufrufer.
 ///
-/// **Ihre Groesse passt sich dem Inhalt an**: sie belegt die linke untere Ecke
-/// der Flaeche aus RAD_CreateTerrainInfoView, so hoch wie die drei Zeilen und so
-/// breit wie der breiteste Text, je samt Rand -- hoechstens so gross wie diese
-/// Flaeche; was dann nicht hineinpasst, wird abgeschnitten. Die Breite folgt
-/// jedem neuen Text, die Hoehe steht mit dem Anlegen fest.
+/// **Ihre Breite steht fest, ihre Hoehe folgt dem Inhalt**: sie belegt die
+/// linke untere Ecke der Flaeche aus RAD_CreateTerrainInfoView, so breit wie
+/// diese und so hoch wie die drei Zeilen samt Rand -- hoechstens so hoch wie
+/// diese Flaeche. Was nicht hineinpasst, wird abgeschnitten.
 ///
 /// **Den Renderer haelt sie nicht selbst**, sie bekommt ihn bei jedem Update
 /// (view/view.h).
@@ -39,9 +39,10 @@
 typedef struct RAD_TerrainInfoView RAD_TerrainInfoView_t;
 
 ///
-/// Legt eine TerrainInfoView an, die hoechstens die Flaeche mit der oberen
-/// linken Ecke bei (x, y) und width x height Pixeln belegt, mit Name, MV und CV
-/// zu "focus"; NULL, wenn kein Speicher da ist. "font" gehoert dem Aufrufer (view/view.h, RAD_ViewFont) und muss die
+/// Legt eine TerrainInfoView an, "width" Pixel breit und hoechstens so hoch wie
+/// die Flaeche mit der oberen linken Ecke bei (x, y) und width x height Pixeln,
+/// mit Name, MV und CV zu "focus"; NULL, wenn kein Speicher da ist. "font"
+/// gehoert dem Aufrufer (view/view.h) und muss die
 /// TerrainInfoView ueberleben, ebenso "focus". RAD_DestroyTerrainInfoView
 /// nullt den Zeiger des Aufrufers.
 ///

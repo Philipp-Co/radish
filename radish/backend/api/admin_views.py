@@ -5,7 +5,8 @@ server_views.py (Registrierung durch den technischen Server-Account): hier
 geht es ausschliesslich um menschliche Admins mit der Keycloak-Realm-Rolle
 "Radish-Admin" (siehe permissions.HasAdminRole) -- die Serverliste nur
 lesend, der Armee-Katalog (Spezies, Einheitentypen mit ihren Profilen,
-Waffen, Ausruestung) unter admin/catalog/ auch schreibend.
+Waffen, Ausruestung) unter admin/catalog/ auch schreibend, ebenso die Werte
+der Tile-Typen unter admin/terrain/.
 """
 
 from django.db.models import Exists, OuterRef, Prefetch
@@ -21,6 +22,7 @@ from .models import (
     Equipment,
     GameServer,
     Species,
+    TerrainType,
     Unit,
     UnitEntityEquipment,
     UnitEntityWeapon,
@@ -32,6 +34,7 @@ from .serializers import (
     AdminEntityProfileSerializer,
     AdminEquipmentSerializer,
     AdminSpeciesSerializer,
+    AdminTerrainTypeSerializer,
     AdminUnitTypeSerializer,
     AdminWeaponSerializer,
     GameServerSerializer,
@@ -229,3 +232,37 @@ class AdminEquipmentDetailView(_CatalogAdminMixin, generics.RetrieveUpdateDestro
     model = Equipment
     related = ("species",)
     serializer_class = AdminEquipmentSerializer
+
+
+# ---------------------------------------------------------------------------
+# Gelaende
+# ---------------------------------------------------------------------------
+
+
+class AdminTerrainTypeListView(generics.ListAPIView):
+    """
+    Alle Tile-Typen mit ihren Werten, in der Reihenfolge des Spiels, unter
+    {"terrain": [...]}. Angelegt werden sie nur von der Migration -- es gibt
+    genau die, die das Spiel kennt, deshalb kein POST.
+    """
+
+    permission_classes = [IsAuthenticated, HasAdminRole]
+    queryset = TerrainType.objects.all()
+    serializer_class = AdminTerrainTypeSerializer
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return Response({"terrain": serializer.data})
+
+
+class AdminTerrainTypeDetailView(generics.RetrieveUpdateAPIView):
+    """
+    Ein Tile-Typ, angesprochen ueber seinen code (z.B. admin/terrain/forest/).
+    Aendern ja, loeschen nein (siehe AdminTerrainTypeListView). Die Werte
+    gelten ab dem naechsten Spielstart; laufende Spiele behalten ihre.
+    """
+
+    permission_classes = [IsAuthenticated, HasAdminRole]
+    queryset = TerrainType.objects.all()
+    serializer_class = AdminTerrainTypeSerializer
+    lookup_field = "code"

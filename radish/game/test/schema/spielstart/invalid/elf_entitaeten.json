@@ -17,6 +17,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -49,6 +50,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -77,6 +79,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -109,6 +112,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -137,6 +141,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -169,6 +174,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -197,6 +203,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -229,6 +236,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -257,6 +265,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -289,6 +298,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -317,6 +327,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -349,6 +360,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -385,6 +397,7 @@
                 "profil": "Lastwagen",
                 "leben": 8,
                 "ruestung": 5,
+                "widerstand": 3,
                 "staerke": 5,
                 "genauigkeit": 5,
                 "waffen": [],
@@ -412,6 +425,7 @@
                 "profil": "Anfuehrer",
                 "leben": 2,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 4,
                 "genauigkeit": 3,
                 "waffen": [
@@ -444,6 +458,7 @@
                 "profil": "Soldat",
                 "leben": 1,
                 "ruestung": 3,
+                "widerstand": 3,
                 "staerke": 3,
                 "genauigkeit": 4,
                 "waffen": [
@@ -480,6 +495,7 @@
                 "profil": "Lastwagen",
                 "leben": 8,
                 "ruestung": 5,
+                "widerstand": 3,
                 "staerke": 5,
                 "genauigkeit": 5,
                 "waffen": [],
@@ -489,6 +505,68 @@
           }
         ]
       }
+    }
+  ],
+  "gelaende": [
+    {
+      "typ": "void",
+      "bewegung": 0,
+      "deckung": 0,
+      "unbegehbar": true
+    },
+    {
+      "typ": "ground",
+      "bewegung": 0,
+      "deckung": 1,
+      "unbegehbar": false
+    },
+    {
+      "typ": "water_shallow",
+      "bewegung": -1,
+      "deckung": 0,
+      "unbegehbar": false
+    },
+    {
+      "typ": "mud",
+      "bewegung": -1,
+      "deckung": 0,
+      "unbegehbar": false
+    },
+    {
+      "typ": "meadow",
+      "bewegung": 0,
+      "deckung": 0,
+      "unbegehbar": false
+    },
+    {
+      "typ": "forest",
+      "bewegung": -1,
+      "deckung": 2,
+      "unbegehbar": false
+    },
+    {
+      "typ": "water_deep",
+      "bewegung": 0,
+      "deckung": 0,
+      "unbegehbar": true
+    },
+    {
+      "typ": "city",
+      "bewegung": 0,
+      "deckung": 2,
+      "unbegehbar": false
+    },
+    {
+      "typ": "road",
+      "bewegung": 1,
+      "deckung": 0,
+      "unbegehbar": false
+    },
+    {
+      "typ": "fortification",
+      "bewegung": -1,
+      "deckung": 3,
+      "unbegehbar": false
     }
   ]
 }

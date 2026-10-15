@@ -2,6 +2,7 @@
 #define __RAD_MODEL_WORLD_H__
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <radish/model/events/observable.h>
 #include <radish/model/reserve.h>
@@ -64,6 +65,39 @@ typedef struct
 ///
 #define RAD_CLIENT_WORLD_PLAYERS 2
 
+///
+/// Wo "owner" Einheiten aus seiner Reserve aufstellen darf: das Rechteck von
+/// (min_x, min_y) bis (max_x, max_y), beide Ecken eingeschlossen, in
+/// Weltkoordinaten. So, wie der Server es schickt (game.proto
+/// NetDeployZoneEvent) -- der Client kennt die Regel dahinter nicht.
+/// RAD_CLIENT_PLAYER_NONE als Besitzer: ein freier Platz.
+///
+typedef struct
+{
+    RAD_ClientPlayerId_t owner;
+    int32_t min_x;
+    int32_t min_y;
+    int32_t max_x;
+    int32_t max_y;
+} RAD_ClientDeployZone_t;
+
+///
+/// Wie ein Spiel ausgegangen ist, so wie der Server es meldet
+/// (NetGameFinishedEvent): ob es vorbei ist, wer gewonnen hat --
+/// RAD_CLIENT_PLAYER_NONE bei einem Unentschieden --, ob nach Punkten oder weil
+/// einer keine Einheit mehr hatte, und die Punkte je Mitspieler, "number_of_players"
+/// belegt.
+///
+typedef struct
+{
+    bool finished;
+    RAD_ClientPlayerId_t winner;
+    bool eliminated;
+    RAD_ClientPlayerId_t players[RAD_CLIENT_WORLD_PLAYERS];
+    int32_t scores[RAD_CLIENT_WORLD_PLAYERS];
+    int32_t number_of_players;
+} RAD_ClientGameResult_t;
+
 typedef struct
 {
     RAD_ClientTile_t tiles[RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];
@@ -95,6 +129,23 @@ typedef struct
     ///
     RAD_ClientPlayerId_t current_player;
 
+    ///
+    /// Die Aufstellzonen der beiden Spieler, in der Reihenfolge, in der der
+    /// Server sie zuerst schickt (RAD_ClientWorldSetDeployZone). Wie
+    /// "current_player" ohne Meldung: wer sie zeigt, liest sie beim Zeichnen.
+    ///
+    RAD_ClientDeployZone_t deploy_zones[RAD_CLIENT_WORLD_PLAYERS];
+
+    ///
+    /// Die laufende Runde und wie viele es gibt, wie der Server sie zuletzt
+    /// geschickt hat; beide 0, solange er es nicht getan hat. Und wie das Spiel
+    /// ausgegangen ist. Beides wie "current_player" ohne Meldung: wer es zeigt,
+    /// liest es beim Zeichnen (view/end_turn_view.h).
+    ///
+    int32_t round;
+    int32_t rounds;
+    RAD_ClientGameResult_t result;
+
     /// Wer die Welt beobachtet -- nur ueber RAD_ClientWorldSubscribe.
     RAD_ModelObservable_t observable;
 } RAD_ClientWorld_t;
@@ -103,7 +154,8 @@ typedef enum
 {
     RAD_CLIENT_WORLD_EVENT_TILE_CREATED = 0,
     RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED,
-    RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED
+    RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED,
+    RAD_CLIENT_WORLD_EVENT_UNIT_MOVED
 } RAD_ClientWorldEvent_t;
 
 ///
@@ -114,12 +166,18 @@ typedef enum
 /// In "tile_created" und "reserve_created" kann sich der Beobachter gleich am
 /// neuen Objekt anmelden -- es hat bis dahin noch nichts gemeldet.
 ///
+/// "unit_moved" meldet einen Zug samt Weg (RAD_ClientWorldMoveEntity), **bevor**
+/// die Welt ihn ausfuehrt: die Einheit steht dabei noch auf steps[0]. "steps"
+/// gehoert dem Aufrufer und gilt nur waehrend des Callbacks.
+///
 typedef struct
 {
     void *user_argument;
     void (*tile_created)(void *user_argument, const RAD_ClientWorld_t *world, const RAD_ClientTile_t *tile);
     void (*reserve_created)(void *user_argument, const RAD_ClientWorld_t *world, const RAD_ClientReserve_t *reserve);
     void (*size_changed)(void *user_argument, const RAD_ClientWorld_t *world);
+    void (*unit_moved)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                       const RAD_ClientPosition_t *steps, size_t count);
 } RAD_ClientWorldObserver_t;
 
 ///
@@ -141,12 +199,15 @@ void RAD_ClientWorldSetSize(RAD_ClientWorld_t *world, uint32_t width, uint32_t h
 ///
 /// "unit" ist die Einheit, die der Server auf dem Feld nennt,
 /// RAD_CLIENT_UNIT_ID_NONE fuer keine. Ist sie auf dem Feld bekannt, steht sie
-/// darauf; sonst bleibt es ohne (siehe oben).
+/// darauf; sonst bleibt es ohne (siehe oben). "victory": ob es ein Siegfeld ist,
+/// "terrain": sein Gelaende.
 ///
 void RAD_ClientWorldApplyTile(RAD_ClientWorld_t *world,
                               RAD_ClientPosition_t position,
                               RAD_ClientTileType_t type,
-                              RAD_ClientUnitId_t unit);
+                              RAD_ClientUnitId_t unit,
+                              bool victory,
+                              RAD_ClientTerrain_t terrain);
 
 ///
 /// Verwirft das Feld (x, y): es meldet "removed", seine Beobachter sind danach
@@ -162,15 +223,22 @@ void RAD_ClientWorldRemoveTile(RAD_ClientWorld_t *world, uint32_t x, uint32_t y)
 const RAD_ClientTile_t* RAD_ClientWorldTileAt(const RAD_ClientWorld_t *world, int32_t x, int32_t y);
 
 ///
-/// Setzt die Einheit "unit" von "from" auf "to" -- Start und Ende eines Weges.
-/// Fuer einen Zug, den der Server bestaetigt hat -- er schickt die Aenderung der
-/// Felder bislang nicht als Tile-Ereignis mit, also traegt der Client sie selbst
-/// nach.
+/// Setzt die Einheit "unit" den Weg "steps" entlang: von steps[0], ihrem
+/// Standort, auf steps[count - 1], das Ziel. Fuer einen Zug, den der Server
+/// bestaetigt hat -- er schickt die Aenderung der Felder bislang nicht als
+/// Tile-Ereignis mit, also traegt der Client sie selbst nach.
 ///
-/// Beide Felder melden "changed" (RAD_ClientTileSetUnit). Steht die Einheit
-/// nicht auf "from", geschieht nichts.
+/// **Gemeldet wird zuerst "unit_moved"** mit dem ganzen Weg, die Einheit steht
+/// da noch auf steps[0]. Danach melden Start- und Zielfeld "changed"
+/// (RAD_ClientTileSetUnit). Die Felder dazwischen prueft die Welt nicht, sie
+/// reicht sie nur weiter.
 ///
-void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit, RAD_ClientPosition_t from, RAD_ClientPosition_t to);
+/// Unter zwei Feldern, mit Start oder Ziel ausserhalb der Welt oder wenn die
+/// Einheit nicht auf steps[0] steht, geschieht nichts, und es wird nichts
+/// gemeldet.
+///
+void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                               const RAD_ClientPosition_t *steps, size_t count);
 
 ///
 /// Uebernimmt "unit" in das Repository und ihre Id in die Reserve ihres
@@ -213,6 +281,17 @@ bool RAD_ClientWorldAddUnit(RAD_ClientWorld_t *world, const RAD_ClientUnit_t *un
 bool RAD_ClientWorldRemoveReserveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id);
 
 ///
+/// Nimmt die Einheit "id" ganz aus der Welt -- fuer eine, die der Server als
+/// zerstoert gemeldet hat (io/net_event_handler/unit_destroyed.c). Steht sie auf
+/// "position", wird das Feld frei und meldet "changed" (RAD_ClientTileSetUnit);
+/// steht sie in einer Reserve, meldet die "unit_removed". Danach meldet die
+/// Einheit "removed" (RAD_ClientUnitRepositoryRemove).
+///
+/// false, wenn die Welt die Einheit nicht kennt -- dann bleibt alles, wie es war.
+///
+bool RAD_ClientWorldRemoveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position);
+
+///
 /// Stellt die Einheit "id" aus der Reserve, in der sie steht -- gesucht wird in
 /// beiden --, auf das Feld "position". Fuer ein Deployment, das der Server
 /// gemeldet hat (io/net_event_handler/unit_deployed.c).
@@ -238,6 +317,38 @@ const RAD_ClientReserve_t* RAD_ClientWorldReserve(const RAD_ClientWorld_t *world
 ///
 void RAD_ClientWorldSetCurrentPlayer(RAD_ClientWorld_t *world, RAD_ClientPlayerId_t player);
 RAD_ClientPlayerId_t RAD_ClientWorldCurrentPlayer(const RAD_ClientWorld_t *world);
+
+///
+/// Runde und Ausgang des Spiels (siehe oben). Gesetzt aus den Ereignissen des
+/// Servers (io/net_event_handler/round.c, game_finished.c), **ohne Meldung**.
+/// Ein Ausgang gilt, bis die Welt neu initialisiert wird; der Zeiger ebenso.
+///
+void RAD_ClientWorldSetRound(RAD_ClientWorld_t *world, int32_t round, int32_t rounds);
+int32_t RAD_ClientWorldRound(const RAD_ClientWorld_t *world);
+int32_t RAD_ClientWorldNumberOfRounds(const RAD_ClientWorld_t *world);
+void RAD_ClientWorldSetResult(RAD_ClientWorld_t *world, const RAD_ClientGameResult_t *result);
+const RAD_ClientGameResult_t* RAD_ClientWorldResult(const RAD_ClientWorld_t *world);
+bool RAD_ClientWorldIsFinished(const RAD_ClientWorld_t *world);
+
+///
+/// Uebernimmt die Aufstellzone "zone" fuer zone->owner, wie der Server sie
+/// schickt (io/net_event_handler/deploy_zone.c): eine schon bekannte wird
+/// ersetzt, sonst nimmt sie einen freien Platz. false fuer
+/// RAD_CLIENT_PLAYER_NONE, ein leeres Rechteck oder wenn beide Plaetze schon
+/// anderen gehoeren. **Gemeldet wird es nicht**, wie beim Zug.
+///
+bool RAD_ClientWorldSetDeployZone(RAD_ClientWorld_t *world, const RAD_ClientDeployZone_t *zone);
+
+///
+/// Die Aufstellzone von "owner", oder NULL, solange der Server keine geschickt
+/// hat. Der Zeiger gilt, solange die Welt nicht neu initialisiert wird.
+///
+const RAD_ClientDeployZone_t* RAD_ClientWorldDeployZone(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner);
+
+///
+/// Liegt (x, y) in der Aufstellzone von "owner"? false, wenn er keine hat.
+///
+bool RAD_ClientWorldInDeployZone(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner, int32_t x, int32_t y);
 
 ///
 /// Alle Einheiten der Welt, zum Nachschlagen einer Id aus einer Reserve

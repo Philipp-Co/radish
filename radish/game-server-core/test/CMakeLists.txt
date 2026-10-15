@@ -18,8 +18,11 @@ add_executable(test_server_control
     control/main.c
     control/test_start_game.c
     control/test_deploy.c
+    control/test_reset.c
+    control/test_message_timing.c
     ${RAD_SERVER_SOURCE_DIR}/control/execute.c
     ${RAD_SERVER_SOURCE_DIR}/control/loader.c
+    ${RAD_SERVER_SOURCE_DIR}/control/message_timing.c
 )
 target_include_directories(test_server_control PRIVATE ${RAD_SERVER_SOURCE_DIR}/include)
 target_link_libraries(test_server_control PRIVATE radish_game unity::framework)
@@ -37,7 +40,9 @@ add_test(NAME server_control COMMAND test_server_control)
 add_executable(test_server_interface
     interface/main.c
     interface/test_message.c
+    interface/test_game_report.c
     ${RAD_SERVER_SOURCE_DIR}/interface/message.c
+    ${RAD_SERVER_SOURCE_DIR}/interface/game_report.c
 )
 target_include_directories(test_server_interface PRIVATE ${RAD_SERVER_SOURCE_DIR}/include)
 target_link_libraries(test_server_interface PRIVATE radish_game radish_protobuf unity::framework)

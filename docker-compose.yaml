@@ -62,17 +62,20 @@ services:
   # nicht zu verwechseln mit "backend" oben, das ist die Matchmaking-API
   # (Game/GameServer/Player). Baut denselben C-Quellcode wie frueher der
   # einzelne Container "game-server" mit ein (siehe radish/game-server-core/,
-  # docker/game-server/Dockerfile). Faehrt Django und eine Game-Instanz
+  # docker/game-server/Dockerfile). Faehrt Django und vier Game-Instanzen
   # nebeneinander unter supervisord (siehe docker/game-server/supervisord.conf),
-  # das beide bei Absturz neu startet -- der alte Einzel-Instanz-Container
+  # das jede bei Absturz neu startet -- der alte Einzel-Instanz-Container
   # ist deshalb entfallen.
   #
   # Django nimmt die Start-/Abbruch-Auftraege des Backends entgegen und setzt
   # Spiele synchron auf (siehe radish/game-server/instances/views.py), hat
-  # aber noch kein Modell und keine Instanzverwaltung *durch* Django. Und noch eine einzelne statt vier Instanzen: der
-  # UDP-Port unten ist deshalb schon auf 9999 gemappt, aber
-  # zucchini_server hat Instanzname/Port fest einkompiliert und kann noch
-  # nicht mehrfach im selben Container laufen (siehe supervisord.conf).
+  # aber noch kein Modell und keine Instanzverwaltung *durch* Django.
+  #
+  # Name und UDP-Port je Instanz stehen nicht hier, sondern in
+  # docker/game-server/supervisord.conf. Hier nur, was alle Instanzen des
+  # Containers teilen, und je Instanz das Mapping ihres Ports unter
+  # "ports:" -- game-instance-1 bis -4 auf 9999 bis 10002. Jede meldet
+  # sich einzeln beim Backend an (gs1-game-instance-1 bis -4).
   game-server:
     build:
       context: .
@@ -97,11 +100,12 @@ services:
       # reiner Dev-Wert.
       RADISH_KEYCLOAK_CLIENT_ID: "radish-game-server"
       RADISH_KEYCLOAK_CLIENT_SECRET: "radish-game-server-dev-secret"
-      # Eindeutiger Name, unter dem sich diese Instanz beim Backend meldet
-      # (GameServer.name ist unique, siehe radish/backend/api/models.py) --
-      # unabhaengig vom Zucchini-Instanznamen (siehe
-      # game-instance-entrypoint.sh).
-      RADISH_GAME_SERVER_NAME: "game-instance-1"
+      # Kennung dieses Containers, ueber alle Game-Server-Container
+      # eindeutig. Die Namen der Instanzen sind es nur im Container; beim
+      # Backend meldet sich jede deshalb als "<Kennung>-<Instanzname>", z.B.
+      # "gs1-game-instance-1" (GameServer.name ist unique, siehe
+      # radish/backend/api/models.py und game-instance-entrypoint.sh).
+      RADISH_GAME_SERVER_ID: "gs1"
       # War hier lange 127.0.0.1, in der Annahme, das reiche fuer "rein
       # lokales docker compose up". Das stimmt aber nicht: backend und
       # game-server sind getrennte Container, 127.0.0.1 ist aus Sicht von
@@ -123,19 +127,19 @@ services:
       # diese Adresse weiterhin auf die von aussen erreichbare Adresse
       # dieser Instanz angepasst werden.
       RADISH_GAME_SERVER_ADDRESS: "game-server"
-      RADISH_GAME_SERVER_PORT: "9999"
       # Instanz-API dieses Containers (Django unter supervisord, Port 8000
       # im Container), ueber die das Backend ein Spiel aus der Lobby heraus
       # startet bzw. abbricht (siehe radish/backend/api/instance_client.py).
       RADISH_GAME_SERVER_CONTROL_URL: "http://game-server:8000"
       # Verzeichnis, ueber das Django (instances/views.py) und radish_server
       # die Spielstart-Datei austauschen -- je Instanz ein Unterverzeichnis
-      # <RADISH_GAME_DATA_DIR>/<RADISH_GAME_SERVER_NAME>/ (siehe
+      # <RADISH_GAME_DATA_DIR>/<Instanzname>/ (siehe
       # docker/game-server/game-instance-entrypoint.sh).
       RADISH_GAME_DATA_DIR: "/run/radish"
     ports:
       - "8090:8000"
-      - "9999:9999/udp"
+      # Je Instanz ihr UDP-Port aus supervisord.conf.
+      - "9999-10002:9999-10002/udp"
     depends_on:
       - keycloak
       - backend

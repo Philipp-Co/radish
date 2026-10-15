@@ -6,9 +6,11 @@
 #include <stdint.h>
 
 ///
-/// Ein Eintrag der ContextMenuView (view/context_menu/context_menu_view.h): ein gefuellter
-/// Kreis mit Mittelpunkt, Radius und Farbe. Was er bedeutet, weiss nur der
-/// Aufrufer.
+/// Ein Eintrag der ContextMenuView (view/context_menu/context_menu_view.h): ein
+/// schwarzer Kreis mit Mittelpunkt und Radius, darin das Symbol seiner Aktion
+/// in Weiss -- ein Kreuz fuer CLOSE, ein Pfeil auf eine Linie fuer
+/// DEPLOY, ein Doppel-Chevron fuer MOVE, ein Fadenkreuz fuer ATTACK, ohne
+/// Aktion keines.
 ///
 /// **Wo er steht, bestimmt die ContextMenuView**: sie liest seinen Winkel
 /// (RAD_ContextMenuItemAngle) und setzt daraus seinen Mittelpunkt
@@ -55,12 +57,11 @@ typedef enum
 
 ///
 /// Legt einen Eintrag am Winkel "angle" in Grad (view/context_menu/context_menu_view.h)
-/// mit dem Radius "radius" in Pixeln und der Farbe "color" an, mit dem
-/// Mittelpunkt bei (0, 0), die Maus nicht ueber ihm, ohne Aktion; NULL, wenn
-/// kein Speicher da ist. RAD_DestroyContextMenuItem nullt den Zeiger des
-/// Aufrufers.
+/// mit dem Radius "radius" in Pixeln an, mit dem Mittelpunkt bei (0, 0), die
+/// Maus nicht ueber ihm, ohne Aktion -- also noch ohne Symbol; NULL, wenn kein
+/// Speicher da ist. RAD_DestroyContextMenuItem nullt den Zeiger des Aufrufers.
 ///
-RAD_ContextMenuItem_t* RAD_CreateContextMenuItem(float angle, int32_t radius, SDL_Color color);
+RAD_ContextMenuItem_t* RAD_CreateContextMenuItem(float angle, int32_t radius);
 void RAD_DestroyContextMenuItem(RAD_ContextMenuItem_t **item);
 
 ///
@@ -79,10 +80,6 @@ void RAD_ContextMenuItemSetCenter(RAD_ContextMenuItem_t *item, float center_x, f
 void RAD_ContextMenuItemSetAction(RAD_ContextMenuItem_t *item, RAD_ContextMenuItemAction_t action);
 RAD_ContextMenuItemAction_t RAD_ContextMenuItemAction(const RAD_ContextMenuItem_t *item);
 
-///
-/// Farbe des Eintrags.
-///
-void RAD_ContextMenuItemSetColor(RAD_ContextMenuItem_t *item, SDL_Color color);
 
 ///
 /// Ob der Punkt (x, y) in seinem Kreis liegt, Rand eingeschlossen.
@@ -90,8 +87,8 @@ void RAD_ContextMenuItemSetColor(RAD_ContextMenuItem_t *item, SDL_Color color);
 bool RAD_ContextMenuItemContains(const RAD_ContextMenuItem_t *item, int32_t x, int32_t y);
 
 ///
-/// Setzt (true) oder ruecksetzt (false), ob er hervorgehoben ist: dann wird
-/// er blau gezeichnet statt in seiner Farbe, die dabei erhalten bleibt.
+/// Setzt (true) oder ruecksetzt (false), ob er hervorgehoben ist: dann ist
+/// sein Kreis blau statt schwarz.
 /// Anfangs ist er es nicht.
 ///
 void RAD_ContextMenuItemSetHighlighted(RAD_ContextMenuItem_t *item, bool highlighted);

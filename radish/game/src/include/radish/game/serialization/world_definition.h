@@ -15,16 +15,21 @@
 ///       "version": 1,
 ///       "name": "Teich",
 ///       "rows":    [ "....", ".~~.", "_.._" ],
-///       "heights": [ "1000", "0000", "0000" ]
+///       "heights": [ "1000", "0000", "0000" ],
+///       "victory_tiles": [ { "x": 1, "y": 1 } ]
 ///     }
 ///
 ///   version  Muss RAD_WORLD_DEFINITION_VERSION sein, sonst
 ///            RAD_SERIALIZE_ERROR_VERSION. Geprueft, bevor irgendetwas anderes
 ///            gelesen wird.
 ///   rows     Das Gelaende, eine Zeile je String, Zeile 0 zuerst; das Zeichen an
-///            Stelle x ist das Feld (x, y). '_' VOID, '.' GROUND, '~' WATER.
+///            Stelle x ist das Feld (x, y). '_' VOID, '.' GROUND,
+///            '~' WATER_SHALLOW, ',' MUD, ':' MEADOW, '^' FOREST,
+///            '=' WATER_DEEP, 'H' CITY, '+' ROAD, '*' FORTIFICATION.
 ///   heights  Optional: z je Feld als Ziffer 0-9, in derselben Form wie "rows".
 ///            Fehlt es, steht alles auf 0.
+///   victory_tiles  Optional: die Siegfelder, je ein Objekt mit "x" und "y"
+///            (RAD_Tile_t.victory). Fehlt es, gibt es keine.
 ///   name     Optional, wird geprueft (ein String, der in RAD_JSON_NAME_MAX
 ///            passt) und nicht behalten -- die Welt hat keinen Namen.
 ///   $schema  Optional, fuer Editoren; uebergangen.
@@ -41,6 +46,10 @@
 ///       Ziffer ist; ein Schluessel, den es nicht gibt; ein Wert vom falschen Typ.
 ///   RAD_SERIALIZE_ERROR_INCONSISTENT   eine Hoehe ungleich 0 auf einem Feld ohne
 ///       Gelaende -- was nicht da ist, hat keine Hoehe (world.h).
+///   RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS  ein Siegfeld ausserhalb der Welt.
+///   RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND      ein Siegfeld, das kein Land ist --
+///       auf '_', '~' und '=' darf keins liegen.
+///   RAD_SERIALIZE_ERROR_VICTORY_DUPLICATE      ein Siegfeld, das doppelt vorkommt.
 ///
 /// **Streng.** Ein unbekannter Schluessel ist ein Fehler und wird nicht
 /// uebergangen. Eine Weltdefinition wird von Hand geschrieben, und ein

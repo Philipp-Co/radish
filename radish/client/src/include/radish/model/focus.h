@@ -8,7 +8,8 @@
 ///
 /// **Nur Daten**: nicht beobachtbar, ohne eigene Funktionen. Angelegt wird es
 /// von main, geschrieben von der IsoMapView (view/iso_map_view.h), gelesen von
-/// der TerrainInfoView (view/terrain_info_view.h).
+/// der TerrainInfoView (view/terrain_info_view.h) und der RootView fuer die
+/// UnitInfoView (view/view.h).
 ///
 typedef struct
 {

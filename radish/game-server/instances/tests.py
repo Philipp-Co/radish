@@ -16,7 +16,10 @@ SPIELDATEN = {
     "spieldaten": [
         {"name": "test-user", "kennung": "aB3xK9pQ", "armee": {"name": "A"}},
         {"name": "test-user-2", "kennung": "Zz1Yy2Xx", "armee": {"name": "B"}},
-    ]
+    ],
+    "gelaende": [
+        {"typ": "forest", "bewegung": -1, "deckung": 2, "unbegehbar": False},
+    ],
 }
 
 # Was das Backend schickt: die Spieldaten und daneben die geheimen Codes.
@@ -56,9 +59,18 @@ class GameStartViewTests(APITestCase):
         prepare_game.assert_not_called()
 
     def test_post_with_one_player_is_rejected(self, prepare_game):
-        one = {"spieldaten": SPIELDATEN["spieldaten"][:1], "zugangscodes": CODES}
+        one = {**START, "spieldaten": SPIELDATEN["spieldaten"][:1]}
         response = self.client.post(self.url, one, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_post_without_gelaende_is_rejected(self, prepare_game):
+        for gelaende in (None, [], {"forest": 1}):
+            request = {"spieldaten": SPIELDATEN["spieldaten"], "zugangscodes": CODES}
+            if gelaende is not None:
+                request["gelaende"] = gelaende
+            response = self.client.post(self.url, request, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, gelaende)
+        prepare_game.assert_not_called()
 
     def test_get_not_allowed(self, prepare_game):
         response = self.client.get(self.url)
@@ -120,7 +132,12 @@ class GameDataFileTests(APITestCase):
         self.addCleanup(patcher.stop)
 
     def whitelist_calls(self):
-        return [call.args[0][1:] for call in self.run.call_args_list]
+        # Jeder Aufruf richtet sich an die Zucchini-Instanz mit dem Namen aus
+        # der URL; zurueck kommt nur, was danach steht.
+        calls = [call.args[0][1:] for call in self.run.call_args_list]
+        for call in calls:
+            self.assertEqual(call[:2], ["-n", "game-instance-1"])
+        return [call[2:] for call in calls]
 
     def test_start_writes_file_and_signals_server(self):
         response = self.client.post(self.start_url, START, format="json")

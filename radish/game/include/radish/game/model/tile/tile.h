@@ -32,6 +32,31 @@
 ///
 typedef struct RAD_Tile RAD_Tile_t;
 
+///
+/// Was das Gelaende eines Typs fuer das Spiel bedeutet. Die Werte kommen aus dem
+/// Backend, das sie im Katalog pflegt, und gehen mit dem Spielstart herein
+/// (control/start_game.h) -- das Spiel kennt keine eigenen. Bis dahin sind alle
+/// 0 und kein Feld ist unbegehbar.
+///
+typedef struct
+{
+    ///
+    /// MV: um wie viele Felder das Feld die Bewegungsreichweite aendert, negativ
+    /// wie positiv. Was das Betreten kostet, folgt daraus (RAD_TileMovementCost).
+    ///
+    int16_t movement_modifier;
+
+    ///
+    /// CV: die Deckung, die das Feld einer Einheit darauf gibt. Ein Schuss auf sie
+    /// trifft erst mit einem W10 von Genauigkeit plus Deckung
+    /// (control/attack_unit.c) -- ab einer Summe ueber 10 gar nicht.
+    ///
+    int16_t cover;
+
+    /// Ob eine Einheit das Feld betreten darf.
+    bool impassable;
+} RAD_Terrain_t;
+
 struct RAD_Tile
 {
     ///
@@ -50,7 +75,33 @@ struct RAD_Tile
     /// jedem Zeitpunkt hoechstens eine geben.
     ///
     RAD_UnitId_t unit;
+
+    ///
+    /// Ein Siegfeld: wer es haelt, bekommt Punkte (RAD_GameScore, game.h). Kommt
+    /// aus der Weltdefinition ("victory_tiles") und aendert sich im Spiel nicht.
+    ///
+    bool victory;
+
+    ///
+    /// Die Werte des Gelaendes (RAD_Terrain_t), wie die Welt sie fuer "type"
+    /// fuehrt. Sie folgen dem Typ: wer ihn schreibt, schreibt sie mit
+    /// (model/world/world.h), und ein neuer Spielstart setzt sie auf jedem Feld
+    /// neu.
+    ///
+    RAD_Terrain_t terrain;
 };
+
+///
+/// Was es kostet, "tile" zu betreten, in Feldern der Bewegungsreichweite:
+/// 1 - MV (RAD_Terrain_t.movement_modifier), mindestens 1 -- ein Feld, das die
+/// Reichweite um eins senkt, kostet also zwei, und eines, das sie erhoeht, ist
+/// nicht umsonst. Ob das Feld ueberhaupt betreten werden darf, sagt es nicht
+/// (RAD_Terrain_t.impassable). "tile" darf nicht NULL sein.
+///
+/// Eine Regel des Ziehens und deshalb in control/move_unit.c; hier steht sie,
+/// weil sie ein Tile nimmt und ein Client sie ebenso rechnen muss.
+///
+int32_t RAD_TileMovementCost(const RAD_Tile_t *tile);
 
 ///
 /// Die Tiles eines Spiels zum Nachlesen: erst zaehlen, dann einzeln holen. Wer

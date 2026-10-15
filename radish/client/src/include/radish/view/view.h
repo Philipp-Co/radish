@@ -39,7 +39,8 @@
 /// **Ihre Eintraege haengen vom angeklickten Feld ab**: unten links immer
 /// einer zum Schliessen; oben rechts auf einem freien Feld einer zum
 /// Deployen einer Einheit aus der Reserve, auf einem Feld mit einer eigenen
-/// Einheit zwei, Move und Attack, mit einer fremden keiner. Der zum Schliessen blendet sie aus. Der zum Deployen
+/// Einheit zwei, Move und Attack -- soweit sie in diesem Zug noch ziehen bzw.
+/// angreifen darf --, mit einer fremden keiner. Der zum Schliessen blendet sie aus. Der zum Deployen
 /// oeffnet unter der Maus ihre UnitDeploymentView, 200 Pixel breit
 /// (hoechstens so breit wie die Zeichenflaeche) und ein Drittel so hoch, mit
 /// den Einheiten in der Reserve des eigenen Spielers; die holt die RootView
@@ -78,11 +79,16 @@
 /// RAD_ViewSetUnitInfoVisible). An der Stelle einer unsichtbaren ist die
 /// IsoMapView zu sehen.
 ///
-/// **Die UnitInfoView erscheint zudem nur, wenn ein Feld mit Einheit
-/// ausgewaehlt ist**: in der ContextMenuView ist ein Feld ausgewaehlt, auf dem
-/// eine Einheit steht -- auch, waehrend ihr Weg zusammengeklickt wird. Schliesst sie sich, oder steht dort keine (mehr), ist die
-/// UnitInfoView verschwunden -- auch wenn sie eingeschaltet ist. **Sie zeigt
-/// die Einheit auf diesem Feld** und folgt ihr, solange sie dort steht: die
+/// **Die TerrainInfoView erscheint zudem nur, wenn der Mauszeiger ueber einem
+/// Feld steht**: im Fokus (model/focus.h) steht eins. Sonst wird sie nicht
+/// gezeichnet -- auch wenn sie eingeschaltet ist.
+///
+/// **Die UnitInfoView erscheint zudem nur, wenn der Mauszeiger ueber einem
+/// Feld mit Einheit steht**: das Feld im Fokus, wie bei der TerrainInfoView.
+/// Steht nichts im Fokus, oder dort keine Einheit (mehr), ist
+/// die UnitInfoView verschwunden -- auch wenn sie eingeschaltet ist. Was in
+/// der ContextMenuView ausgewaehlt ist, spielt keine Rolle. **Sie zeigt die
+/// Einheit auf diesem Feld** und folgt ihr, solange sie dort steht: die
 /// RootView beobachtet sie (model/unit.h) und fuellt die UnitInfoView neu, wenn
 /// sie sich aendert.
 ///
@@ -100,8 +106,9 @@
 /// Alle uebrigen Ereignisse verwirft sie vorerst.
 ///
 /// **Den Frame zeichnet sie selbst**: leeren, die IsoMapView, darauf die
-/// Markierung des Weges einer ziehenden Einheit, die die ContextMenuView
-/// zeichnet (RAD_UpdateContextMenuViewPathOverlay), die sichtbaren von
+/// Markierungen der ContextMenuView -- Weg und erreichbare Felder einer
+/// ziehenden, die Reichweite einer angreifenden Einheit
+/// (RAD_UpdateContextMenuViewOverlay) --, die sichtbaren von
 /// TerrainInfoView und UnitInfoView, die EndTurnView, die UnitDeploymentView,
 /// die ContextMenuView, die DebugView, anzeigen.
 ///
@@ -124,8 +131,8 @@ typedef struct RAD_RootView RAD_RootView_t;
 /// ContextMenuView die Reserve des eigenen Spielers, die EndTurnView liest
 /// daraus, wer dran ist. Und "focus": die
 /// IsoMapView schreibt ihn, die TerrainInfoView liest ihn, und die RootView
-/// liest ihn bei einem Linksklick, um die ContextMenuView ueber das angeklickte
-/// Feld zu setzen.
+/// liest ihn jeden Frame fuer die UnitInfoView und bei einem Linksklick, um
+/// die ContextMenuView ueber das angeklickte Feld zu setzen.
 ///
 /// NULL, wenn einer der Schritte scheitert -- was bis dahin angelegt war, ist
 /// dann schon wieder abgebaut. RAD_DestroyView nullt den Zeiger des Aufrufers.

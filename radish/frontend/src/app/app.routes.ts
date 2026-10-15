@@ -93,7 +93,8 @@ export const routes: Routes = [
         // erreichbar (siehe core/auth.guard.ts). Der Tab dorthin ist in
         // GamesShellComponent ebenfalls an diese Rolle geknuepft, aber wer
         // die URL direkt aufruft, soll trotzdem nicht durchkommen.
-        // adminGuard sitzt am Rahmen und gilt damit fuer servers/ und catalog/.
+        // adminGuard sitzt am Rahmen und gilt damit fuer servers/, catalog/
+        // und terrain/.
         path: 'admin',
         loadComponent: () =>
           import('./pages/games/admin/admin-shell.component').then((m) => m.AdminShellComponent),
@@ -105,6 +106,14 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/games/admin/admin.component').then((m) => m.AdminComponent),
             title: 'radish -- Admin: Game-Server',
+          },
+          {
+            path: 'terrain',
+            loadComponent: () =>
+              import('./pages/games/admin/terrain/terrain-admin.component').then(
+                (m) => m.TerrainAdminComponent,
+              ),
+            title: 'radish -- Admin: Gelände',
           },
           {
             // Je Katalog-Modell (siehe catalog-config.ts) eine Seite zum

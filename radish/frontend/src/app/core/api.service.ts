@@ -49,6 +49,7 @@ export interface EntityProfile {
   name: string;
   health: number;
   armor: number;
+  toughness: number;
   strength: number;
   accuracy: number;
   equipment_slots: number;
@@ -234,6 +235,26 @@ export interface AdminEquipment extends Equipment {
   in_use: boolean;
 }
 
+/**
+ * Ein Tile-Typ mit seinen Werten (api/admin/terrain/, siehe radish/backend/
+ * api/admin_views.py, AdminTerrainTypeListView). Die Typen stehen fest --
+ * geaendert werden nur die Werte; sie gelten ab dem naechsten Spielstart.
+ */
+export interface AdminTerrainType {
+  /** Der Typ, wie ihn das Spiel kennt, z.B. "forest". Nicht aenderbar. */
+  code: string;
+  /** Bezeichnung fuer den Adminbereich, z.B. "Wald". */
+  label: string;
+  /** MV: um wie viele Felder das Feld die Bewegungsreichweite aendert. */
+  movement_modifier: number;
+  /** CV: um wie viel das Feld einen Treffer auf eine Einheit darauf erschwert. */
+  cover: number;
+  /** Ob eine Einheit das Feld betreten oder darauf aufgestellt werden darf. */
+  impassable: boolean;
+}
+
+export type AdminTerrainValues = Pick<AdminTerrainType, 'movement_modifier' | 'cover' | 'impassable'>;
+
 /** Filter fuer listCatalogEntries; search sucht im Namen (ohne Gross-/Kleinschreibung). */
 export interface CatalogFilter {
   species?: number;
@@ -363,5 +384,16 @@ export class ApiService {
 
   deleteCatalogEntry(resource: CatalogResource, id: number): Observable<void> {
     return this.http.delete<void>(`/api/admin/catalog/${resource}/${id}/`);
+  }
+
+  /** Alle Tile-Typen mit ihren Werten, in der Reihenfolge des Spiels. */
+  listTerrainTypes(): Observable<AdminTerrainType[]> {
+    return this.http
+      .get<{ terrain: AdminTerrainType[] }>('/api/admin/terrain/')
+      .pipe(map((response) => response.terrain));
+  }
+
+  updateTerrainType(code: string, values: AdminTerrainValues): Observable<AdminTerrainType> {
+    return this.http.put<AdminTerrainType>(`/api/admin/terrain/${code}/`, values);
   }
 }

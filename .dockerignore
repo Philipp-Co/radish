@@ -15,6 +15,11 @@ build/
 build-host/
 radish/build/
 
+# Der lokal gebaute Wasm-Client: das Backend-Image baut ihn in der Stage
+# "wasm-builder" selbst (docker/backend/Dockerfile).
+radish/web/client.js
+radish/web/client.wasm
+
 # Editor-Beiwerk.
 radish/.cache/
 radish/compile_commands.json

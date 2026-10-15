@@ -10,6 +10,7 @@
 #include <radish/game/user.h>
 #include <radish/game/control/events/event_manager.h>
 #include <radish/game/control/command/command.h>
+#include <radish/game/control/dice.h>
 
 ///
 /// Der Spielzustand -- was hinter dem Namen aus game.h steht.
@@ -89,6 +90,14 @@ struct RAD_Game
     ///
     bool started;
 
+    ///
+    /// Ob das Spiel vorbei ist, wer gewonnen hat -- RAD_USER_NONE bei einem
+    /// Unentschieden -- und warum. Gesetzt nur von control/victory.c, einmal.
+    ///
+    bool finished;
+    RAD_UserId_t winner;
+    RAD_GameEndReason_t end_reason;
+
     RAD_EventManager_t *event_manager;
     RAD_CommandList_t executed_commands;
 
@@ -109,6 +118,17 @@ struct RAD_Game
     /// Kommandos, einmal als einer von mehreren Mitspielern.
     ///
     RAD_UserId_t local_user;
+
+    ///
+    /// Der Wuerfel dieses Spiels (control/dice.h). Jedes Spiel hat seinen eigenen,
+    /// damit zwei Spiele nicht aus derselben Folge ziehen und Wuerfe im einen nichts
+    /// am anderen verschieben.
+    ///
+    /// Gesetzt wird er in RAD_CreateGame, und zwar vom Spiel selbst: von aussen
+    /// kommt kein Seed herein und geht keiner hinaus. Wer ein Spiel anlegt, weiss
+    /// nicht, dass es wuerfelt.
+    ///
+    RAD_Dice_t dice;
 };
 
 ///
@@ -136,5 +156,21 @@ bool RAD_GameRemoveTile(RAD_Game_t *game, int32_t x, int32_t y);
 /// Benutzers -- nicht selbst zerstoeren.
 ///
 RAD_Player_t* RAD_GameFindPlayer(const RAD_Game_t *game, RAD_UserId_t user);
+
+///
+/// Wertet nach Punkten (RAD_GameScore) und beendet das Spiel, wenn die letzte
+/// Runde um ist. Gerufen nach jedem Abgeben (control/end_turn.c); true, wenn das
+/// Spiel damit vorbei ist.
+///
+bool RAD_GameFinishAfterLastRound(RAD_Game_t *game);
+
+///
+/// Zerstoert die Einheit "unit" (RAD_WorldRemoveUnit) und prueft danach, ob ihr
+/// Besitzer damit keine Einheit mehr hat -- dann verliert er
+/// (RAD_GAME_END_ELIMINATED). **Der Weg, auf dem eine Einheit im Spiel zerstoert
+/// wird**, damit die Pruefung nicht vergessen wird. Eine unbekannte oder schon
+/// zerstoerte Einheit aendert nichts.
+///
+void RAD_GameDestroyUnit(RAD_Game_t *game, RAD_UnitId_t unit);
 
 #endif

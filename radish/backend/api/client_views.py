@@ -367,6 +367,25 @@ class CurrentGameView(APIView):
         return Response({"game": GameDetailSerializer(game, context={"player": player}).data})
 
 
+def end_started_game(game):
+    """
+    Beendet ein gestartetes Spiel fuer beide Spieler: das Game verschwindet
+    (Spieler und Armeen sind damit wieder frei), der Server wird frei, und
+    nach dem Commit entzieht die Instanz die Zugangscodes und verwirft das
+    Spiel (instance_client.cancel_game).
+
+    Der gemeinsame Weg fuer das Verlassen (LeaveGameView) und fuer das Ende,
+    das die Instanz meldet (server_views.GameFinishedView). Erwartet, in
+    einer Transaktion gerufen zu werden, die "game" gesperrt haelt
+    (select_for_update).
+    """
+    server = game.server
+    game.delete()
+    server.is_occupied = False
+    server.save(update_fields=["is_occupied"])
+    transaction.on_commit(lambda: instance_client.cancel_game(server))
+
+
 class LeaveGameView(APIView):
     """
     Laesst den anfragenden Spieler sein aktuelles Spiel verlassen (siehe
@@ -430,11 +449,7 @@ class LeaveGameView(APIView):
 
             if game.status != GameStatus.LOBBY:
                 # Gestartet -- das Spiel endet fuer beide.
-                server = game.server
-                game.delete()
-                server.is_occupied = False
-                server.save(update_fields=["is_occupied"])
-                transaction.on_commit(lambda: instance_client.cancel_game(server))
+                end_started_game(game)
             elif game.second_player_id == player.id:
                 game.second_player = None
                 game.second_player_army = None

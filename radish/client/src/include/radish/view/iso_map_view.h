@@ -18,8 +18,16 @@
 /// **Gefuellt wird die Iso-Map aus dem Model.** Die IsoMapView beobachtet die
 /// Welt (model/world.h, model/events/observable.h) und traegt jedes neue und
 /// jedes geaenderte Feld in die Iso-Map ein (RAD_IsoMapApplyTile), ein
-/// verworfenes nimmt sie heraus. Ein bestaetigter Zug kommt als "changed" der
-/// beiden Felder an. Weltgroesse und Reserven schreibt sie vorerst nur ins Log.
+/// verworfenes nimmt sie heraus. Weltgroesse und Reserven schreibt sie vorerst
+/// nur ins Log.
+///
+/// **Einen bestaetigten Zug stellt sie selbst dar** ("unit_moved", danach
+/// "changed" der beiden Felder): sie loest die Entitaet vom Start-Iso-Objekt,
+/// haelt das Ziel frei und traegt sie als Figur ausserhalb eines Feldes in die
+/// Iso-Map ein (RAD_IsoMapAddEntity). Eine MoveAnimation
+/// (view/animations/move_animation.h) laesst sie den Weg ablaufen; ist sie durch,
+/// kommt die Entitaet aufs Zielfeld. Die Zeit dafuer liest sie selbst
+/// (SDL_GetTicks64).
 ///
 /// An jedem neuen Feld und jeder neuen Reserve meldet sie sich selbst an;
 /// RAD_DestroyIsoMapView meldet sie ueberall wieder ab.

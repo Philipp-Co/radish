@@ -21,17 +21,7 @@ void RAD_IoNetOnCommandResponse(void *user_argument, const RAD_NetCommandRespons
                response->success ? "ausgefuehrt" : "abgelehnt");
     }
 
-    // Der Server schickt die geaenderten Felder nicht als Tile-Ereignis mit --
-    // einen bestaetigten Zug traegt der Client deshalb selbst nach. Unter zwei
-    // Feldern ist kein Weg beschrieben (net_types.h).
-    const RAD_NetPath_t *path = &response->path;
-    if(response->success && (path->number_of_steps >= 2))
-    {
-        const RAD_NetPosition_t from = path->steps_to[0];
-        const RAD_NetPosition_t to = path->steps_to[path->number_of_steps - 1];
-        RAD_ClientWorldMoveEntity(context->world,
-                                  response->entity,
-                                  (RAD_ClientPosition_t){ .x = from.x, .y = from.y },
-                                  (RAD_ClientPosition_t){ .x = to.x, .y = to.y });
-    }
+    // In die Welt traegt die Antwort nichts ein: sie wiederholt den angefragten
+    // Weg, nicht den gegangenen. Einen ausgefuehrten Zug bringt vorher das
+    // Ereignis (unit_moved.c).
 }

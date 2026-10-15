@@ -24,19 +24,58 @@ RAD_IsoObject_t RAD_CreateIsoObject(int32_t x, int32_t y, int32_t layer)
     RAD_IsoObject_t object = {
         .x = x,
         .y = y,
-        .screen_x = x + screen_x,
-        .screen_y = y + screen_y,
+        .screen_x = screen_x,//x + screen_x,
+        .screen_y = screen_y,//y + screen_y,
         .background_color = background_color,
         .front_color = front_color,
         .focus = false,
-        .layer = layer
+        .victory = false,
+        .layer = layer,
+        .image = NULL,
+        .background = RAD_ISO_DECORATION_NONE,
+        .foreground = RAD_ISO_DECORATION_NONE,
+        .entities = { NULL }
     };
     return object;
 }
 
-void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_t offset_x, int32_t offset_y, RAD_Camera_t *camera)
+///
+/// Zeichnet object->image auf den Rahmen des Wuerfels, dessen Raute bei
+/// (screen_x, screen_y) beginnt. Fokus und Siegfeld als Einfaerbung, Fokus
+/// zuerst; die Textur teilen sich alle Felder, deshalb danach zurueckgesetzt.
+///
+static void RAD_RenderIsoObjectImage(SDL_Renderer *renderer, const RAD_IsoObject_t *object,
+                                     int32_t screen_x, int32_t screen_y)
 {
-    SDL_Color color = object->background_color;
+    const SDL_Rect target = {
+        .x = screen_x,
+        .y = screen_y,
+        .w = RAD_ISO_TILE_WIDTH,
+        .h = 2 * RAD_ISO_TILE_HEIGHT
+    };
+
+    if(object->focus)
+    {
+        SDL_SetTextureColorMod(object->image, 255, 80, 80);
+    }
+    else if(object->victory)
+    {
+        const SDL_Color victory = RAD_ISO_OBJECT_VICTORY_COLOR;
+        SDL_SetTextureColorMod(object->image, victory.r, victory.g, victory.b);
+    }
+
+    SDL_RenderCopy(renderer, object->image, NULL, &target);
+    SDL_SetTextureColorMod(object->image, 255, 255, 255);
+}
+
+///
+/// Zeichnet den Wuerfel in background_color/front_color, dessen Raute bei
+/// (screen_x, screen_y) beginnt: obere Flaeche, Seiten, Umriss.
+///
+static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_t *object,
+                                    int32_t screen_x, int32_t screen_y)
+{
+    SDL_Color color = object->victory ? RAD_ISO_OBJECT_VICTORY_COLOR : object->background_color;
     if(object->focus)
     {
         color.r = 255;
@@ -45,8 +84,13 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
         color.a = 255;
     }
 
-    int32_t screen_x = object->screen_x - camera->x + offset_x;
-    int32_t screen_y = object->screen_y - camera->y + object->layer * -RAD_ISO_TILE_HEIGHT + offset_y;
+    // Flaechen um einen halben Pixel versetzt: SDL_RenderGeometry fuellt ein Pixel,
+    // wenn seine Mitte im Dreieck liegt, SDL_RenderDrawLine faerbt die Pixel selbst
+    // und laeuft damit durch die Mitten. Ohne den Versatz liegt der Umriss einen
+    // halben Pixel rechts unterhalb der Flaeche, und an den unteren Kanten bleibt
+    // zwischen beiden ein Streifen der Seitenflaeche stehen.
+    const float fx = screen_x + 0.5f;
+    const float fy = screen_y + 0.5f;
 
     SDL_SetRenderDrawColor(
         renderer, 
@@ -58,48 +102,48 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     SDL_Vertex vertecies[6];
     vertecies[0] = (SDL_Vertex){
         .position={
-            .x=screen_x,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     vertecies[1] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     vertecies[2] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     vertecies[3] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     vertecies[4] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     vertecies[5] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=color,
         .tex_coord={.x=0.0, .y=0.0}
@@ -114,24 +158,24 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     SDL_Vertex front_left_0[3];
     front_left_0[0] = (SDL_Vertex){
         .position={
-            .x=screen_x,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_0[1] = (SDL_Vertex){
         .position={
-            .x=screen_x,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_0[2] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT * 2
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
@@ -143,24 +187,24 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     SDL_Vertex front_left_1[3];
     front_left_1[0] = (SDL_Vertex){
         .position={
-            .x=screen_x,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_1[1] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_1[2] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT * 2
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
@@ -172,24 +216,24 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     SDL_Vertex front_right_0[3];
     front_right_0[0] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_0[1] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT * 2
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_0[2] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
@@ -200,24 +244,24 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     SDL_Vertex front_right_1[3];
     front_right_1[0] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_1[1] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_1[2] = (SDL_Vertex){
         .position={
-            .x=screen_x + RAD_ISO_TILE_WIDTH / 2,
-            .y=screen_y + RAD_ISO_TILE_HEIGHT * 2
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
         .color=object->front_color,
         .tex_coord={.x=0.0, .y=0.0}
@@ -262,11 +306,38 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
         screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
         screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT
     );
+}
 
-    if(NULL != object->entity)
+void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_t offset_x, int32_t offset_y, RAD_Camera_t *camera)
+{
+    int32_t screen_x = object->screen_x - camera->x + offset_x;
+    int32_t screen_y = object->screen_y - camera->y + object->layer * -RAD_ISO_TILE_HEIGHT + offset_y;
+
+    if(NULL != object->image)
     {
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-        SDL_Rect rect = {.x=screen_x,.y=screen_y-RAD_ISO_TILE_HEIGHT/2,.w=RAD_ISO_TILE_WIDTH,.h=RAD_ISO_TILE_HEIGHT};
-        SDL_RenderFillRect(renderer, &rect);
+        RAD_RenderIsoObjectImage(renderer, object, screen_x, screen_y);
+    }
+    else
+    {
+        RAD_RenderIsoObjectCube(renderer, object, screen_x, screen_y);
+    }
+
+    if(NULL != object->background.render)
+    {
+        object->background.render(renderer, object->background.user_argument, screen_x, screen_y);
+    }
+
+    // Hinten zuerst: Hintergrund, Mitte, Vordergrund (RAD_IsoDepth_t).
+    for(int32_t depth = 0; depth < RAD_ISO_DEPTHS; ++depth)
+    {
+        if(NULL != object->entities[depth])
+        {
+            RAD_RenderIsoEntity(renderer, object->entities[depth], screen_x, screen_y);
+        }
+    }
+
+    if(NULL != object->foreground.render)
+    {
+        object->foreground.render(renderer, object->foreground.user_argument, screen_x, screen_y);
     }
 }

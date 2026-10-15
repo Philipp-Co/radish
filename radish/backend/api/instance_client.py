@@ -3,7 +3,8 @@ Aufrufe des Backends an die Instanz-API eines GameServer (siehe
 radish/game-server/instances/views.py): ein Spiel starten und abbrechen.
 
 Was beim Start uebergeben wird, beschreibt radish/game/schema/
-spielstart.schema.json (siehe game_start_document).
+spielstart.schema.json (siehe game_start_document): die Spieler mit ihren
+Armeen und das Gelaende (TerrainType).
 
 Der Start ist synchron: die Instanz setzt das Spiel noch im Aufruf auf
 (eine Datei schreiben, den C-Prozess benachrichtigen) und antwortet erst
@@ -15,7 +16,7 @@ import logging
 
 import requests
 
-from .models import armies_with_costs
+from .models import TerrainCode, TerrainType, armies_with_costs
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,14 @@ class InstanceError(Exception):
 
 
 def _url(server, action):
-    return f"{server.control_url.rstrip('/')}/api/instances/{server.name}/game/{action}/"
+    # instance_name, nicht name: die Instanz-API kennt ihre Instanzen nur unter
+    # dem Namen im Container (siehe models.GameServer.instance_name).
+    return f"{server.control_url.rstrip('/')}/api/instances/{server.instance_name}/game/{action}/"
+
+
+def _reachable(server):
+    """Ob die Instanz gemeldet hat, wie ihre Instanz-API zu erreichen ist."""
+    return bool(server.control_url and server.instance_name)
 
 
 def _army_document(army):
@@ -51,6 +59,7 @@ def _army_document(army):
                         "profil": entity.profile.name,
                         "leben": entity.profile.health,
                         "ruestung": entity.profile.armor,
+                        "widerstand": entity.profile.toughness,
                         "staerke": entity.profile.strength,
                         "genauigkeit": entity.profile.accuracy,
                         "waffen": [
@@ -88,17 +97,41 @@ def _player_document(player, army):
     }
 
 
+def _terrain_document():
+    """
+    Jeder Tile-Typ mit seinen Werten, so wie der Admin sie gepflegt hat. Das
+    Spiel verlangt jeden Typ genau einmal; fehlt einer in der Tabelle (die
+    Migration legt alle an), ist das ein Fehler hier und kein Spiel, das die
+    Instanz still ablehnt.
+    """
+    terrain = list(TerrainType.objects.all())
+    missing = set(TerrainCode.values) - {entry.code for entry in terrain}
+    if missing:
+        raise InstanceError(f"Gelaende ohne Werte: {', '.join(sorted(missing))}")
+    return [
+        {
+            "typ": entry.code,
+            "bewegung": entry.movement_modifier,
+            "deckung": entry.cover,
+            "unbegehbar": entry.impassable,
+        }
+        for entry in terrain
+    ]
+
+
 def game_start_document(game):
     """
     Die Spieldaten fuer den Start nach radish/game/schema/
-    spielstart.schema.json: Host und zweiter Spieler mit ihren Armeen.
+    spielstart.schema.json: Host und zweiter Spieler mit ihren Armeen, dazu
+    das Gelaende.
     """
     armies = armies_with_costs().in_bulk([game.host_army_id, game.second_player_army_id])
     return {
         "spieldaten": [
             _player_document(game.host, armies[game.host_army_id]),
             _player_document(game.second_player, armies[game.second_player_army_id]),
-        ]
+        ],
+        "gelaende": _terrain_document(),
     }
 
 
@@ -124,8 +157,10 @@ def start_game(game):
     Die Zucchini-Codes muessen am Spiel schon gesetzt sein (GameStartView).
     """
     server = game.server
-    if not server.control_url:
-        raise InstanceError(f"Instanz '{server.name}' hat keine Steuer-URL gemeldet.")
+    if not _reachable(server):
+        raise InstanceError(
+            f"Instanz '{server.name}' hat keine Steuer-URL oder keinen Instanznamen gemeldet."
+        )
 
     try:
         response = requests.post(
@@ -145,7 +180,7 @@ def cancel_game(server):
     Spiel ist im Backend dann trotzdem beendet, und eine haengende Instanz
     darf das Verlassen der Spieler nicht verhindern.
     """
-    if not server.control_url:
+    if not _reachable(server):
         return
     try:
         response = requests.post(_url(server, "cancel"), timeout=TIMEOUT_SECONDS)

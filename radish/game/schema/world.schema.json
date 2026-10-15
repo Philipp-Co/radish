@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://radish.local/schema/world.schema.json",
   "title": "radish Weltdefinition",
-  "description": "Beschreibt eine Spielwelt, bevor gespielt wird: Gelaende und Hoehen, sonst nichts. Wo Figuren stehen, gehoert nicht zur Welt und nicht in diese Datei -- das entscheidet sich im Spiel. Die Spielinstanz liest die Datei genau einmal, baut daraus RAD_World_t auf und verwirft sie -- es ist kein Spielstand. Breite und Hoehe stehen nicht in der Datei, sie ergeben sich aus 'rows'. Die Obergrenzen (RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT) stehen bewusst nicht hier: sie sind eine Eigenschaft des Programms und nicht des Formats, und der Loader weist eine zu grosse Welt ab. Was dieses Schema nicht ausdruecken kann, prueft ebenfalls der Loader -- es steht jeweils in der description des Feldes.",
+  "description": "Beschreibt eine Spielwelt, bevor gespielt wird: Gelaende, Hoehen und Siegfelder, sonst nichts. Wo Figuren stehen, gehoert nicht zur Welt und nicht in diese Datei -- das entscheidet sich im Spiel. Die Spielinstanz liest die Datei genau einmal, baut daraus RAD_World_t auf und verwirft sie -- es ist kein Spielstand. Breite und Hoehe stehen nicht in der Datei, sie ergeben sich aus 'rows'. Die Obergrenzen (RAD_WORLD_WIDTH, RAD_WORLD_HEIGHT) stehen bewusst nicht hier: sie sind eine Eigenschaft des Programms und nicht des Formats, und der Loader weist eine zu grosse Welt ab. Was dieses Schema nicht ausdruecken kann, prueft ebenfalls der Loader -- es steht jeweils in der description des Feldes.",
   "type": "object",
   "required": ["version", "rows"],
   "additionalProperties": false,
@@ -27,6 +27,11 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/terrainRow" }
     },
+    "victory_tiles": {
+      "description": "Optional: die Siegfelder -- die Felder, die die Spieler halten muessen, um zu gewinnen (RAD_GameScore). Fehlt das Feld, gibt es keine. Loader: jedes Feld liegt in der Welt, ist Land -- nicht '_', '~' oder '=' -- und kommt nur einmal vor.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/position" }
+    },
     "heights": {
       "description": "Optional: die Hoehe z je Feld, als Ziffer 0 bis 9, im selben Raster wie 'rows'. Fehlt das Feld, steht alles auf z = 0. Loader: gleich viele Zeilen wie 'rows' und jede so lang wie die Zeile dort. Auf einem Feld ohne Gelaende ('_') muss 0 stehen -- was nicht da ist, hat keine Hoehe.",
       "type": "array",
@@ -35,11 +40,21 @@
     }
   },
   "$defs": {
+    "position": {
+      "description": "Ein Feld der Welt, in Weltkoordinaten wie 'rows': x ist die Stelle in der Zeile, y die Zeile.",
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 }
+      }
+    },
     "terrainRow": {
-      "description": "Eine Zeile Gelaende. '_' kein Gelaende (RAD_TILE_TYPE_VOID), '.' Boden (RAD_TILE_TYPE_GROUND), '~' Wasser (RAD_TILE_TYPE_WATER). Ein neuer Tile-Typ braucht hier ein neues Zeichen.",
+      "description": "Eine Zeile Gelaende. '_' kein Gelaende (RAD_TILE_TYPE_VOID), '.' Boden (RAD_TILE_TYPE_GROUND), '~' seichtes Wasser (RAD_TILE_TYPE_WATER_SHALLOW), ',' matschiger Boden (RAD_TILE_TYPE_MUD), ':' Wiese (RAD_TILE_TYPE_MEADOW), '^' Wald (RAD_TILE_TYPE_FOREST), '=' tiefes Wasser (RAD_TILE_TYPE_WATER_DEEP), 'H' Stadt (RAD_TILE_TYPE_CITY), '+' Strasse (RAD_TILE_TYPE_ROAD), '*' befestigte Stellung (RAD_TILE_TYPE_FORTIFICATION). Ein neuer Tile-Typ braucht hier ein neues Zeichen.",
       "type": "string",
       "minLength": 1,
-      "pattern": "^[_.~]+$"
+      "pattern": "^[_.~,:^=H+*]+$"
     },
     "heightRow": {
       "description": "Eine Zeile Hoehen, eine Ziffer je Feld.",

@@ -38,6 +38,7 @@ RAD_Turn_t RAD_CreateTurn(void)
 
     turn.number_of_users = 0;
     turn.number = 0;
+    turn.round = 1;
 
     return turn;
 }
@@ -224,7 +225,18 @@ RAD_TurnResult_t RAD_TurnEnd(RAD_Turn_t *turn, RAD_UserId_t user)
     // Reihe, kommt dieselbe Stelle wieder heraus -- er ist noch einmal dran.
     turn->number = (turn->number + 1) % turn->number_of_users;
 
+    // Wieder vorne angekommen: die Runde ist um.
+    if(turn->number == 0)
+    {
+        turn->round++;
+    }
+
     return RAD_TURN_OK;
+}
+
+int32_t RAD_TurnRound(const RAD_Turn_t *turn)
+{
+    return turn->round;
 }
 
 ///

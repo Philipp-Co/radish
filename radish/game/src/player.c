@@ -1,5 +1,6 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
+#include <radish/game/control/unit_turn.h>
 #include <stddef.h>
 
 ///
@@ -17,16 +18,16 @@
 /// dass jede Aufrufstelle davon erfaehrt -- und die Ergebnisse des Zuges gehoeren
 /// uebersetzt, bevor sie den Server erreichen.
 ///
-/// **Sie meldet den Zugwechsel** (RAD_EventManagerPublishTurnChanged): der Zug
-/// selbst kennt keine Abonnenten, und alles, was aendert, wer dran ist, laeuft
-/// hier durch. Aus demselben Grund vergisst sie hier, was die Einheiten im Zug
-/// getan haben (RAD_GameStartTurn).
+/// **Sie meldet den Zugwechsel bei Beitritt und Austritt**
+/// (RAD_EventManagerPublishTurnChanged): der Zug selbst kennt keine Abonnenten.
+/// Dabei vergisst sie, was die Einheiten im Zug getan haben (RAD_GameStartTurn).
+/// Das Abgeben, der andere Weg zu einem Zugwechsel, ist ein Kommando und steht
+/// in control/end_turn.c.
 ///
 
 static void RAD_GameNotifyIfTurnChanged(RAD_Game_t *game, RAD_UserId_t current_before);
-static void RAD_GameStartTurn(RAD_Game_t *game);
-static RAD_GameResult_t RAD_GameCheckUnitMayAct(const RAD_Unit_t *unit);
-static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y);
+
+static RAD_PlayerEdge_t RAD_GameFreeEdge(const RAD_Game_t *game);
 
 static void RAD_GameAdoptUnit(RAD_Game_t *game, RAD_Unit_t *unit);
 static void RAD_GameReleaseUnit(RAD_Game_t *game, const RAD_Unit_t *unit);
@@ -58,7 +59,14 @@ const char* RAD_GameResultText(RAD_GameResult_t result)
                                             return "Einheit hat in diesem Zug schon angegriffen";
         case RAD_GAME_ERROR_TARGET_OUT_OF_RANGE:
                                             return "Ziel liegt ausserhalb der Reichweite";
-        default:                            return "unbekanntes Ergebnis";
+        case RAD_GAME_ERROR_OUTSIDE_DEPLOY_ZONE:
+                                            return "Feld liegt ausserhalb der Aufstellzone";
+        case RAD_GAME_ERROR_FINISHED:       return "das Spiel ist vorbei";
+        case RAD_GAME_ERROR_INVALID_PATH:   return "Weg fuehrt nicht von Nachbar zu Nachbar";
+        case RAD_GAME_ERROR_IMPASSABLE:     return "Feld ist unbegehbar";
+        case RAD_GAME_ERROR_OUT_OF_MOVEMENT:
+                                            return "Weg ist weiter als die Bewegung der Einheit";
+        default:                           return "unbekanntes Ergebnis";
     }
 }
 
@@ -68,6 +76,17 @@ RAD_GameResult_t RAD_GameAddPlayer(RAD_Game_t *game, RAD_UserId_t user)
     if(RAD_GameFindPlayer(game, user) != NULL)
     {
         return RAD_GAME_OK;
+    }
+
+    // Genau zwei spielen mit, einer je Kante (game.h). Gefragt wird vor dem Zug,
+    // damit ein dritter auch dort keinen Platz belegt.
+    if(user == RAD_USER_NONE)
+    {
+        return RAD_GAME_ERROR_NO_USER;
+    }
+    if(game->number_of_players >= RAD_GAME_NUMBER_OF_PLAYERS)
+    {
+        return RAD_GAME_ERROR_FULL;
     }
 
     const RAD_UserId_t current_before = RAD_TurnCurrentUser(&game->turn);
@@ -93,7 +112,7 @@ RAD_GameResult_t RAD_GameAddPlayer(RAD_Game_t *game, RAD_UserId_t user)
     // wieder aus der Reihe: beide sollen dieselben Benutzer kennen. "Kein Platz
     // mehr frei" ist dann wortwoertlich, nur eben im Speicher.
     // Zurueckgenommen ist nichts geschehen: gemeldet wird erst unten.
-    RAD_Player_t *player = RAD_CreatePlayer(user);
+    RAD_Player_t *player = RAD_CreatePlayer(user, RAD_GameFreeEdge(game));
     if(player == NULL)
     {
         RAD_TurnRemoveUser(&game->turn, user);
@@ -180,6 +199,37 @@ RAD_UserId_t RAD_GamePlayerAt(const RAD_Game_t *game, int32_t index)
     return RAD_TurnUserAt(&game->turn, index);
 }
 
+bool RAD_GameDeployZone(const RAD_Game_t *game, RAD_UserId_t user,
+                        int32_t *min_x, int32_t *min_y, int32_t *max_x, int32_t *max_y)
+{
+    const RAD_Player_t *player = RAD_GameFindPlayer(game, user);
+    if(player == NULL || game->world.width <= 0 || game->world.height <= 0)
+    {
+        return false;
+    }
+
+    // Die Kante mitgezaehlt, und nie ueber die Welt hinaus.
+    const int32_t width = game->world.width;
+    const int32_t depth = (RAD_DEPLOY_ZONE_DEPTH < width) ? RAD_DEPLOY_ZONE_DEPTH : width;
+    const bool west = (RAD_PlayerEdge(player) == RAD_PLAYER_EDGE_WEST);
+
+    *min_x = west ? 0 : width - depth;
+    *max_x = west ? depth - 1 : width - 1;
+    *min_y = 0;
+    *max_y = game->world.height - 1;
+    return true;
+}
+
+bool RAD_GameInDeployZone(const RAD_Game_t *game, RAD_UserId_t user, int32_t x, int32_t y)
+{
+    int32_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if(!RAD_GameDeployZone(game, user, &min_x, &min_y, &max_x, &max_y))
+    {
+        return false;
+    }
+    return (x >= min_x) && (x <= max_x) && (y >= min_y) && (y <= max_y);
+}
+
 RAD_UserId_t RAD_GameCurrentUser(const RAD_Game_t *game)
 {
     return RAD_TurnCurrentUser(&game->turn);
@@ -188,32 +238,6 @@ RAD_UserId_t RAD_GameCurrentUser(const RAD_Game_t *game)
 bool RAD_GameIsUsersTurn(const RAD_Game_t *game, RAD_UserId_t user)
 {
     return RAD_TurnIsUsersTurn(&game->turn, user);
-}
-
-RAD_GameResult_t RAD_GameEndTurn(RAD_Game_t *game, RAD_UserId_t user)
-{
-    // Die Regel steht im Zug; hier wird nur uebersetzt. "Steht nicht in der
-    // Reihe" heisst nach aussen "spielt nicht mit": wer mitspielt, steht in der
-    // Reihe -- dafuer sorgen RAD_GameAddPlayer und RAD_GameRemovePlayer.
-    switch(RAD_TurnEnd(&game->turn, user))
-    {
-        case RAD_TURN_OK:
-            game->started = true;
-            // Immer, auch wenn derselbe wieder dran ist: es ist ein neuer Zug.
-            RAD_GameStartTurn(game);
-            RAD_EventManagerPublishTurnChanged(game->event_manager, RAD_TurnCurrentUser(&game->turn));
-            return RAD_GAME_OK;
-
-        case RAD_TURN_ERROR_NO_USER:
-            return RAD_GAME_ERROR_NO_USER;
-
-        case RAD_TURN_ERROR_NOT_YOUR_TURN:
-            return RAD_GAME_ERROR_NOT_YOUR_TURN;
-
-        case RAD_TURN_ERROR_NOT_IN_ORDER:
-        default:
-            return RAD_GAME_ERROR_NOT_PLAYING;
-    }
 }
 
 bool RAD_GameHasStarted(const RAD_Game_t *game)
@@ -371,174 +395,6 @@ RAD_GameResult_t RAD_GameAddUnit(RAD_Game_t *game, RAD_UserId_t owner, const RAD
     return RAD_GAME_OK;
 }
 
-RAD_GameResult_t RAD_GameCheckDeployUnit(const RAD_Game_t *game, RAD_UserId_t user, RAD_UnitId_t unit, int32_t x, int32_t y)
-{
-    // In der Reihenfolge der Fragen: wer, was, wohin.
-    if(user == RAD_USER_NONE)
-    {
-        return RAD_GAME_ERROR_NO_USER;
-    }
-    if(!RAD_GameIsPlaying(game, user))
-    {
-        return RAD_GAME_ERROR_NOT_PLAYING;
-    }
-
-    const RAD_Unit_t *candidate = RAD_UnitPoolUnitById(game->unit_pool, unit);
-    if(candidate == NULL)
-    {
-        return RAD_GAME_ERROR_NO_UNIT;
-    }
-    if(candidate->owner != user)
-    {
-        return RAD_GAME_ERROR_NOT_OWNED;
-    }
-    if(candidate->state != RAD_UNIT_STATE_RESERVE)
-    {
-        return RAD_GAME_ERROR_NOT_IN_RESERVE;
-    }
-
-    if(!RAD_WorldInBounds(&game->world, x, y))
-    {
-        return RAD_GAME_ERROR_OUT_OF_BOUNDS;
-    }
-    const RAD_Tile_t *tile = &game->world.tiles[y][x];
-    if(tile->type == RAD_TILE_TYPE_VOID)
-    {
-        return RAD_GAME_ERROR_NO_GROUND;
-    }
-    if(tile->unit != RAD_UNIT_NONE)
-    {
-        return RAD_GAME_ERROR_OCCUPIED;
-    }
-
-    return RAD_GAME_OK;
-}
-
-RAD_GameResult_t RAD_GameCheckMoveUnit(const RAD_Game_t *game, RAD_UnitId_t unit)
-{
-    const RAD_Unit_t *candidate = RAD_UnitPoolUnitById(game->unit_pool, unit);
-    const RAD_GameResult_t may_act = RAD_GameCheckUnitMayAct(candidate);
-    if(may_act != RAD_GAME_OK)
-    {
-        return may_act;
-    }
-    if(candidate->turn.moved)
-    {
-        return RAD_GAME_ERROR_UNIT_ALREADY_MOVED;
-    }
-
-    return RAD_GAME_OK;
-}
-
-RAD_GameResult_t RAD_GameCheckAttack(const RAD_Game_t *game, RAD_UnitId_t unit, int32_t x, int32_t y)
-{
-    // In der Reihenfolge der Fragen: wer, dann wohin.
-    const RAD_Unit_t *candidate = RAD_UnitPoolUnitById(game->unit_pool, unit);
-    const RAD_GameResult_t may_act = RAD_GameCheckUnitMayAct(candidate);
-    if(may_act != RAD_GAME_OK)
-    {
-        return may_act;
-    }
-    if(candidate->turn.attacked)
-    {
-        return RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED;
-    }
-
-    if(!RAD_WorldInBounds(&game->world, x, y))
-    {
-        return RAD_GAME_ERROR_OUT_OF_BOUNDS;
-    }
-    if(!RAD_GameUnitReaches(candidate, x, y))
-    {
-        return RAD_GAME_ERROR_TARGET_OUT_OF_RANGE;
-    }
-
-    return RAD_GAME_OK;
-}
-
-bool RAD_GameUnitCanMove(const RAD_Game_t *game, RAD_UnitId_t unit)
-{
-    return RAD_GameCheckMoveUnit(game, unit) == RAD_GAME_OK;
-}
-
-bool RAD_GameUnitCanAttack(const RAD_Game_t *game, RAD_UnitId_t unit)
-{
-    const RAD_Unit_t *candidate = RAD_UnitPoolUnitById(game->unit_pool, unit);
-    return (RAD_GameCheckUnitMayAct(candidate) == RAD_GAME_OK) && !candidate->turn.attacked;
-}
-
-///
-/// Was Ziehen und Angreifen gemeinsam verlangen: die Einheit gibt es, sie steht
-/// auf dem Feld und ist nicht in diesem Zug aufgestellt worden.
-///
-static RAD_GameResult_t RAD_GameCheckUnitMayAct(const RAD_Unit_t *unit)
-{
-    if(unit == NULL)
-    {
-        return RAD_GAME_ERROR_NO_UNIT;
-    }
-    if(unit->state != RAD_UNIT_STATE_DEPLOYED)
-    {
-        return RAD_GAME_ERROR_UNIT_NOT_DEPLOYED;
-    }
-    if(unit->turn.deployed)
-    {
-        return RAD_GAME_ERROR_UNIT_JUST_DEPLOYED;
-    }
-
-    return RAD_GAME_OK;
-}
-
-///
-/// Reicht wenigstens eine Waffe eines Mitglieds von "unit" bis (x, y)? Die
-/// Entfernung in Feldern waagerecht plus senkrecht, zwischen min_range und
-/// max_range der Waffe (RAD_GameCheckAttack). Das eigene Feld nie.
-///
-static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y)
-{
-    const int32_t dx = x - unit->x;
-    const int32_t dy = y - unit->y;
-    const int32_t distance = ((dx < 0) ? -dx : dx) + ((dy < 0) ? -dy : dy);
-    if(distance == 0)
-    {
-        return false;
-    }
-
-    for(int32_t m = 0; (m < unit->number_of_members) && (m < RAD_UNIT_MAX_MEMBERS); ++m)
-    {
-        const RAD_UnitMember_t *member = &unit->members[m];
-        for(int32_t w = 0; (w < member->number_of_weapons) && (w < RAD_UNIT_MAX_WEAPONS); ++w)
-        {
-            const RAD_Weapon_t *weapon = &member->weapons[w];
-            if((distance >= weapon->min_range) && (distance <= weapon->max_range))
-            {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-///
-/// Ein neuer Zug beginnt: alle Einheiten vergessen, was sie im letzten getan
-/// haben (RAD_Unit_t.turn). Alle und nicht nur die dessen, der jetzt dran ist --
-/// handeln duerfen ohnehin nur seine, und so muss niemand wissen, wem welche
-/// gehoert. Vor der Meldung zu rufen, damit ein Abonnent schon den neuen Stand
-/// liest.
-///
-static void RAD_GameStartTurn(RAD_Game_t *game)
-{
-    const int32_t number_of_units = RAD_UnitPoolNumberOfUnits(game->unit_pool);
-    for(int32_t i = 0; i < number_of_units; ++i)
-    {
-        RAD_Unit_t *unit = RAD_UnitPoolUnitAt(game->unit_pool, i);
-        unit->turn.deployed = 0;
-        unit->turn.moved = 0;
-        unit->turn.attacked = 0;
-    }
-}
-
 ///
 /// Haelt Einheitenliste und Reserve des Besitzers mit der Einheit zusammen
 /// (player/player.h): sie steht in seiner Liste, und in seiner Reserve, solange
@@ -568,6 +424,23 @@ static void RAD_GameAdoptUnit(RAD_Game_t *game, RAD_Unit_t *unit)
 static void RAD_GameReleaseUnit(RAD_Game_t *game, const RAD_Unit_t *unit)
 {
     RAD_PlayerRemoveUnit(RAD_GameFindPlayer(game, unit->owner), unit);
+}
+
+///
+/// Die Kante fuer einen, der beitritt: die erste, die kein Mitspieler hat --
+/// WEST vor EAST. Mehr als RAD_GAME_NUMBER_OF_PLAYERS nimmt RAD_GameAddPlayer
+/// nicht auf, eine ist also immer frei.
+///
+static RAD_PlayerEdge_t RAD_GameFreeEdge(const RAD_Game_t *game)
+{
+    for(int32_t i = 0; i < game->number_of_players; ++i)
+    {
+        if(RAD_PlayerEdge(game->players[i]) == RAD_PLAYER_EDGE_WEST)
+        {
+            return RAD_PLAYER_EDGE_EAST;
+        }
+    }
+    return RAD_PLAYER_EDGE_WEST;
 }
 
 ///

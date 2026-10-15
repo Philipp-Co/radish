@@ -2,13 +2,13 @@
 # Game-Server-Instanzen auf diesem Host. Baut den C-Quellcode aus
 # radish/game-server-core/ mit ein (zucchini_server + radish_server, siehe
 # dort fuer die Begruendung der Shared-Memory-Kopplung): dieser Container
-# startet Django und eine Game-Instanz nebeneinander und haelt beide am
+# startet Django und vier Game-Instanzen nebeneinander und haelt alle am
 # Leben (siehe supervisord.conf) -- ein separater Einzel-Instanz-Container
 # wie frueher gibt es deshalb nicht mehr.
 #
-# Aktuell nur eine Instanz, nicht vier: zucchini_server hat Instanzname und
-# UDP-Port fest einkompiliert (siehe Kommentar in supervisord.conf) und kann
-# deshalb noch nicht mehrfach im selben Container laufen.
+# Vier Instanzen, game-instance-1 bis -4. Name und UDP-Port je Instanz
+# stehen in supervisord.conf; die Ports (9999-10002) hier unter EXPOSE muessen
+# dazu passen.
 #
 # Der Build-Kontext ist deshalb die Wurzel des Repositorys, nicht
 # radish/game-server/ allein.
@@ -87,6 +87,6 @@ COPY docker/game-server/supervisord.conf /etc/supervisord.conf
 RUN chmod +x /entrypoint.sh /usr/local/bin/game-instance-entrypoint.sh /usr/local/bin/register_instance.py
 
 EXPOSE 8000
-EXPOSE 9999/udp
+EXPOSE 9999-10002/udp
 
 ENTRYPOINT ["/entrypoint.sh"]

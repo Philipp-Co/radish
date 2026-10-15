@@ -2,6 +2,7 @@
 #define __RAD_IO_NET_TYPES_H__
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 ///
@@ -175,7 +176,9 @@ typedef struct
 {
     char profile[RAD_NET_UNIT_NAME_MAX];
     uint32_t health;
+    uint32_t health_max;
     uint32_t armor;
+    uint32_t toughness;
     uint32_t strength;
     uint32_t accuracy;
     RAD_NetWeapon_t weapons[RAD_NET_MEMBER_WEAPONS_MAX];
@@ -231,9 +234,100 @@ typedef struct
 } RAD_NetUnitDeployed_t;
 
 ///
+/// Eine Einheit ist gezogen (game.proto NetUnitMovedEvent): ihre Id und der Weg,
+/// den sie wirklich gegangen ist -- steps_to[0] ihr alter Standort, der letzte
+/// Eintrag das Feld, auf dem sie jetzt steht, dazwischen jedes Feld, damit sich
+/// der Zug nachzeichnen laesst. Mindestens zwei Felder. Der Server schickt es
+/// jedem Client, noch vor dem neuen Stand der Einheit und vor der Antwort auf
+/// das Kommando.
+///
+typedef struct
+{
+    RAD_NetEntityId_t entity;
+    RAD_NetPath_t path;
+} RAD_NetUnitMoved_t;
+
+///
+/// Die Aufstellzone eines Spielers (game.proto NetDeployZoneEvent): das Rechteck
+/// von "min" bis "max", beide Ecken eingeschlossen, in Weltkoordinaten. Der
+/// Server schickt je Mitspieler eines auf eine Discover-Anfrage.
+///
+typedef struct
+{
+    RAD_NetUserId_t user;
+    RAD_NetPosition_t min;
+    RAD_NetPosition_t max;
+} RAD_NetDeployZone_t;
+
+///
+/// Eine Einheit hat das Feld "target" angegriffen (game.proto
+/// NetUnitAttackedEvent), in Weltkoordinaten, und was es bewirkt hat. Der Server
+/// schickt es jedem Client fuer jeden Angriff, den er angenommen hat, noch vor
+/// dem neuen Stand der beiden Einheiten und vor der Antwort auf das Kommando.
+///
+/// "victim" ist die Einheit, die auf dem Feld stand, RAD_NET_ENTITY_NONE fuer
+/// ein leeres Feld. Die Zaehler sind die Stufen ihrer Schuesse: abgegeben,
+/// getroffen, durch die Ruestung, gewirkt (= abgezogene Lebenspunkte).
+///
+typedef struct
+{
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t target;
+    RAD_NetEntityId_t victim;
+    uint32_t shots;
+    uint32_t hits;
+    uint32_t penetrations;
+    uint32_t wounds;
+    uint32_t members_killed;
+    bool victim_destroyed;
+} RAD_NetUnitAttacked_t;
+
+///
+/// Eine Einheit ist zerstoert und vom Feld "position" genommen (game.proto
+/// NetUnitDestroyedEvent). Der Client vergisst sie.
+///
+typedef struct
+{
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t position;
+} RAD_NetUnitDestroyed_t;
+
+///
+/// Wie viele Mitspieler ein Spielende hoechstens mit Punkten nennt; was der Server
+/// darueber hinaus schickt, faellt weg.
+///
+#define RAD_NET_GAME_FINISHED_PLAYERS_MAX 2
+
+///
+/// Warum ein Spiel vorbei ist (game.proto NetGameEndReason): nach der letzten
+/// Runde nach Punkten, oder weil einer keine Einheit mehr hat.
+///
+typedef enum
+{
+    RAD_NET_GAME_END_NONE = 0,
+    RAD_NET_GAME_END_ROUNDS,
+    RAD_NET_GAME_END_ELIMINATED
+} RAD_NetGameEndReason_t;
+
+///
+/// Das Ende des Spiels (game.proto NetGameFinishedEvent): wer gewonnen hat --
+/// RAD_NET_USER_NONE bei einem Unentschieden --, warum, und die Punkte der
+/// Mitspieler, "number_of_players" belegt.
+///
+typedef struct
+{
+    RAD_NetUserId_t winner;
+    RAD_NetGameEndReason_t reason;
+    RAD_NetUserId_t users[RAD_NET_GAME_FINISHED_PLAYERS_MAX];
+    uint32_t scores[RAD_NET_GAME_FINISHED_PLAYERS_MAX];
+    size_t number_of_players;
+} RAD_NetGameFinished_t;
+
+///
 /// Die Antwort des Servers auf einen Zug (command.proto NetCommandResponse). Der
-/// Server wiederholt darin das Kommando; "success" sagt, ob er es ausgefuehrt hat.
-/// Die Beschreibung, die er mitschickt, faellt weg.
+/// Server wiederholt darin das Kommando, also den angefragten Weg; "success" sagt,
+/// ob er es angenommen hat. Wie weit die Einheit wirklich kam, sagt das Ereignis
+/// davor (RAD_NetUnitMoved_t). Die Beschreibung, die er mitschickt, faellt weg.
 ///
 typedef struct
 {
@@ -298,14 +392,22 @@ typedef struct
 
 ///
 /// Wire-Typ eines Tiles (tile.proto NetTileType). Die Wire-Werte sind eine eigene
-/// Tabelle (0 unbekannt, 1 ground, 2 water, 3 void).
+/// Tabelle (0 unbekannt, 1 ground, 2 water, 3 void, ab 4 die spaeteren). WATER
+/// ist auf der Strecke das seichte Wasser.
 ///
 typedef enum
 {
     RAD_NET_TILE_TYPE_UNKNOWN = 0,
     RAD_NET_TILE_TYPE_GROUND,
     RAD_NET_TILE_TYPE_WATER,
-    RAD_NET_TILE_TYPE_VOID
+    RAD_NET_TILE_TYPE_VOID,
+    RAD_NET_TILE_TYPE_MUD,
+    RAD_NET_TILE_TYPE_MEADOW,
+    RAD_NET_TILE_TYPE_FOREST,
+    RAD_NET_TILE_TYPE_WATER_DEEP,
+    RAD_NET_TILE_TYPE_CITY,
+    RAD_NET_TILE_TYPE_ROAD,
+    RAD_NET_TILE_TYPE_FORTIFICATION
 } RAD_NetTileType_t;
 
 ///
@@ -319,6 +421,17 @@ struct RAD_NetTile
     uint32_t z;
     RAD_NetTileType_t type;
     RAD_NetEntityId_t entity_id;
+
+    /// Ein Siegfeld (NetTile.victory).
+    bool victory;
+
+    ///
+    /// Das Gelaende, wie der Server es fuehrt (NetTile.movement_modifier, cover,
+    /// impassable): MV, CV und ob das Feld zu betreten ist.
+    ///
+    int32_t movement_modifier;
+    uint32_t cover;
+    bool impassable;
 };
 
 ///

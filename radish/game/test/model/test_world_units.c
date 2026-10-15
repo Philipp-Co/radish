@@ -49,6 +49,13 @@ static void zaehle_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_
     gezaehlt->moved++;
 }
 
+/// Angriffe gehen diese Tests nichts an; die Gruppe braucht trotzdem alle Zeiger.
+static void ohne_angriff(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
+    (void)result;
+}
+
 static void abonniere_einheiten_ereignisse(RAD_EventManager_t *events, RAD_UnitEreignisse_t *gezaehlt)
 {
     memset(gezaehlt, 0, sizeof(*gezaehlt));
@@ -58,7 +65,8 @@ static void abonniere_einheiten_ereignisse(RAD_EventManager_t *events, RAD_UnitE
         .user_argument = gezaehlt,
         .spawned = zaehle_spawned,
         .destroyed = zaehle_destroyed,
-        .moved = zaehle_moved
+        .moved = zaehle_moved,
+        .attacked = ohne_angriff
     });
 }
 
@@ -90,6 +98,7 @@ static RAD_Unit_t trupp(void)
     strcpy(values.members[0].profile, "Anfuehrer");
     values.members[0].health = 2;
     values.members[0].armor = 3;
+    values.members[0].toughness = 3;
     values.members[0].strength = 4;
     values.members[0].accuracy = 3;
     values.members[0].number_of_weapons = 1;
@@ -153,6 +162,10 @@ void test_world_reserve_einheit_steht_auf_keinem_feld(void)
     TEST_ASSERT_EQUAL_INT(-1, unit->x);
     TEST_ASSERT_EQUAL_INT(-1, unit->y);
     TEST_ASSERT_EQUAL_INT(0, unit->conditions.burning);
+
+    // Mit vollen Lebenspunkten: der Hoechstwert ist, was das Mitglied mitbringt.
+    TEST_ASSERT_EQUAL_INT(2, unit->members[0].health_max);
+    TEST_ASSERT_EQUAL_INT(1, unit->members[1].health_max);
 
     // Was aus der Armee kommt.
     TEST_ASSERT_EQUAL_STRING("Trupp", unit->name);

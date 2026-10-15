@@ -540,7 +540,7 @@ static void RAD_UnitDeploymentViewDrawScrollbar(const RAD_UnitDeploymentView_t *
     SDL_Rect thumb = *track;
     if(max_scroll > 0)
     {
-        // In 64 Bit gerechnet, wie bei der BarView.
+        // In 64 Bit gerechnet, damit das Produkt nicht ueberlaeuft.
         thumb.h = (int)(((int64_t)track->h * unit_deployment_view->list_area.h) / content_height);
         if(thumb.h < RAD_UNIT_DEPLOYMENT_VIEW_THUMB_MIN_HEIGHT)
         {

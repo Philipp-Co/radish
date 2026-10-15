@@ -119,6 +119,10 @@ Ergebnis mit hinein -- siehe dort und `radish/backend/web/views.py`).
       (`.../edit`) mit Suche im Namen -- bewusst keine Liste aller
       Eintraege. Alle Werte sind jederzeit aenderbar, auch wenn Spieler den
       Eintrag verwenden; nur Loeschen ist dann gesperrt.
+    - `/games/admin/terrain` -- die Werte der Tile-Typen (`api/admin/terrain/`,
+      `terrain/terrain-admin.component.ts`): MV, CV und unbegehbar je Typ in
+      einer Tabelle, je Zeile gespeichert. Nichts anzulegen oder zu loeschen
+      -- die Typen gehoeren zum Spiel. Gilt ab dem naechsten Spielstart.
 - `src/app/shared/game-canvas` -- `GameCanvasComponent`: Canvas und
   WASM-Client (`client.js`/`client.wasm`), aktuell ohne Verbindung zu einem
   Spielserver (die bisherige WebRTC/Relay-Verbindung ist entfernt, siehe

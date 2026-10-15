@@ -92,7 +92,7 @@ void test_view_laesst_output_bei_ablehnung_unberuehrt(void)
     // Die Zusage aus game.h: ein abgelehnter Aufruf schreibt nichts halb hinein.
     // Abgelehnt wird ueber das NULL-Spiel -- der einzige Weg, den es dafuer noch
     // gibt, seit die Stelle selbst per assert geprueft wird.
-    RAD_Tile_t tile = { .x = -42, .y = -42, .z = -42, .type = RAD_TILE_TYPE_WATER, .unit = 7 };
+    RAD_Tile_t tile = { .x = -42, .y = -42, .z = -42, .type = RAD_TILE_TYPE_WATER_SHALLOW, .unit = 7 };
     TEST_ASSERT_FALSE(RAD_GameTileAt(NULL, 0, 0, &tile));
     TEST_ASSERT_EQUAL_INT(-42, tile.x);
     TEST_ASSERT_EQUAL_INT(-42, tile.y);

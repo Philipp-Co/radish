@@ -153,6 +153,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 RADISH_GAME_DATA_DIR = os.environ.get("RADISH_GAME_DATA_DIR", "/run/radish")
 
 # Der Admin-Client von zucchini, ueber den instances/views.py die Codes der
-# Spieler in die Whitelist eintraegt und wieder austraegt. Er spricht die eine
-# zucchini-Instanz dieses Containers an (docker/game-server/Dockerfile).
+# Spieler in die Whitelist eintraegt und wieder austraegt. Welche
+# zucchini-Instanz des Containers er anspricht, sagt "-n <Instanzname>" je
+# Aufruf (siehe docker/game-server/supervisord.conf).
 ZUCCHINI_ADMIN_CLIENT = os.environ.get("ZUCCHINI_ADMIN_CLIENT", "/usr/local/bin/zucchini_admin_client")

@@ -30,9 +30,12 @@ Je Instanz ein Verzeichnis unter settings.RADISH_GAME_DATA_DIR:
 Angelegt und beim Start der Instanz geleert wird es von
 docker/game-server/game-instance-entrypoint.sh.
 
-Eine Instanz wird ueber ihren Namen in der URL identifiziert -- derselbe
-Name, unter dem sie sich beim Backend meldet (RADISH_GAME_SERVER_NAME, siehe
-docker/game-server/register_instance.py, dort GameServer.name).
+Eine Instanz wird ueber ihren Namen in der URL identifiziert -- ihren Namen
+in diesem Container, wie supervisord.conf ihn an game-instance-entrypoint.sh
+uebergibt. Derselbe Name ist ihr Zucchini-Name (zucchini_admin_client -n)
+und ihr Datenverzeichnis. Beim Backend steht er als GameServer.instance_name;
+dessen GameServer.name ist ein anderer, ueber alle Container eindeutiger
+(siehe docker/game-server/register_instance.py).
 """
 
 import json
@@ -65,8 +68,7 @@ _ACCESS_CODE = re.compile(r"^[0-9a-fA-F]{1,16}$")
 # eine Queue und weckt zucchini -- das ist sofort erledigt.
 ADMIN_CLIENT_TIMEOUT_SECONDS = 5
 
-# Instanznamen, wie RADISH_GAME_SERVER_NAME sie vergibt (z.B.
-# "game-instance-1"). Der Name wird Teil eines Pfads -- alles andere, etwa
+# Instanznamen, wie supervisord.conf sie vergibt (z.B. "game-instance-1"). Der Name wird Teil eines Pfads -- alles andere, etwa
 # "../", wird abgewiesen, bevor er das tut.
 _INSTANCE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -89,11 +91,14 @@ def valid_access_codes(codes):
     return 0 not in values and values[0] != values[1]
 
 
-def _whitelist(command, code):
-    """Ruft zucchini_admin_client mit "whitelist-add" oder "whitelist-remove"."""
+def _whitelist(name, command, code):
+    """
+    Ruft zucchini_admin_client mit "whitelist-add" oder "whitelist-remove" fuer
+    die Zucchini-Instanz "name" auf.
+    """
     try:
         subprocess.run(
-            [settings.ZUCCHINI_ADMIN_CLIENT, command, code],
+            [settings.ZUCCHINI_ADMIN_CLIENT, "-n", name, command, code],
             check=True,
             capture_output=True,
             timeout=ADMIN_CLIENT_TIMEOUT_SECONDS,
@@ -102,7 +107,7 @@ def _whitelist(command, code):
         raise WhitelistError(f"{command} fehlgeschlagen: {exc}") from exc
 
 
-def _revoke_access(directory):
+def _revoke_access(name, directory):
     """
     Traegt die Codes des vorigen Spiels aus der Whitelist aus und loescht
     zugang.json. Fehler werden nur geloggt: ein Code, der stehen bleibt, gehoert
@@ -122,7 +127,7 @@ def _revoke_access(directory):
     failed = False
     for code in codes if isinstance(codes, list) else []:
         try:
-            _whitelist("whitelist-remove", code)
+            _whitelist(name, "whitelist-remove", code)
         except WhitelistError as exc:
             logger.warning("Code nicht aus der Whitelist entfernt: %s", exc)
             failed = True
@@ -130,7 +135,7 @@ def _revoke_access(directory):
         access_file.unlink(missing_ok=True)
 
 
-def _grant_access(directory, codes):
+def _grant_access(name, directory, codes):
     """
     Traegt die Codes in die Whitelist ein und merkt sie sich in zugang.json --
     vor dem ersten Eintrag, damit auch ein halb gelungener Eintrag wieder
@@ -138,7 +143,7 @@ def _grant_access(directory, codes):
     """
     (directory / ACCESS_FILE).write_text(json.dumps(codes))
     for code in codes:
-        _whitelist("whitelist-add", code)
+        _whitelist(name, "whitelist-add", code)
 
 
 def _instance_dir(name):
@@ -180,8 +185,8 @@ def _prepare_game(name, spieldaten, codes):
     directory = _instance_dir(name)
     if not directory.is_dir():
         raise OSError(f"kein Verzeichnis fuer Instanz '{name}'")
-    _revoke_access(directory)
-    _grant_access(directory, codes)
+    _revoke_access(name, directory)
+    _grant_access(name, directory, codes)
 
     target = directory / GAME_START_FILE
     temporary = directory / (GAME_START_FILE + ".tmp")
@@ -199,7 +204,7 @@ def _cancel_game(name):
     dort ohnehin schon beendet.
     """
     directory = _instance_dir(name)
-    _revoke_access(directory)
+    _revoke_access(name, directory)
     try:
         (directory / GAME_START_FILE).unlink(missing_ok=True)
         _notify(directory)
@@ -235,15 +240,21 @@ class GameStartView(InstanceAPIView):
         spielstart.schema.json und daneben "zugangscodes", die Codes der
         beiden Spieler in derselben Reihenfolge (radish/backend/api/
         instance_client.py, game_start_request). Hier wird nur die grobe Form
-        geprueft (zwei Spieler unter "spieldaten", zwei verschiedene Codes) --
-        dass das Dokument dem Schema genuegt, stellt das Backend sicher (siehe
-        dortige Tests).
+        geprueft (zwei Spieler unter "spieldaten", eine Liste unter
+        "gelaende", zwei verschiedene Codes) -- dass das Dokument dem Schema
+        genuegt, stellt das Backend sicher (siehe dortige Tests).
         """
         data = request.data if isinstance(request.data, dict) else {}
         spieler = data.get("spieldaten")
         if not isinstance(spieler, list) or len(spieler) != 2:
             return Response(
                 {"detail": "spieldaten fehlt oder enthaelt nicht genau zwei Spieler."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        gelaende = data.get("gelaende")
+        if not isinstance(gelaende, list) or not gelaende:
+            return Response(
+                {"detail": "gelaende fehlt oder ist keine Liste von Tile-Typen."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         codes = data.get("zugangscodes")
@@ -254,8 +265,9 @@ class GameStartView(InstanceAPIView):
             )
 
         try:
-            # In die Datei nur die Spieldaten -- die Codes bleiben ausserhalb.
-            _prepare_game(name, {"spieldaten": spieler}, codes)
+            # In die Datei nur die Spieldaten und das Gelaende -- die Codes
+            # bleiben ausserhalb.
+            _prepare_game(name, {"spieldaten": spieler, "gelaende": gelaende}, codes)
         except (OSError, WhitelistError, InstanceNotRunning) as exc:
             return Response(
                 {"detail": f"Spiel konnte nicht aufgesetzt werden: {exc}"},

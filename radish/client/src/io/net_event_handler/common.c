@@ -1,5 +1,6 @@
 #include "common.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -20,8 +21,9 @@ void RAD_IoNetPrintDiscoverAnswerPrefix(const RAD_IoNetEventHandlerContext_t *co
 
 void RAD_IoNetPrintTile(const RAD_NetTile_t *tile)
 {
-    printf("Feld (%u, %u) Typ=%s z=%u Figur=",
-        (unsigned)tile->x, (unsigned)tile->y, RAD_NetTileTypeText(tile->type), (unsigned)tile->z);
+    printf("Feld (%u, %u) Typ=%s z=%u MV=%d CV=%u%s Figur=",
+        (unsigned)tile->x, (unsigned)tile->y, RAD_NetTileTypeText(tile->type), (unsigned)tile->z,
+        (int)tile->movement_modifier, (unsigned)tile->cover, tile->impassable ? " unbegehbar" : "");
 
     // -1 ist RAD_NET_ENTITY_NONE; jede andere Zahl ist eine Figur, auch die 0.
     if(tile->entity_id == RAD_NET_ENTITY_NONE)
@@ -42,10 +44,17 @@ static RAD_ClientTileType_t RAD_IoNetTileTypeToClient(RAD_NetTileType_t type)
 {
     switch(type)
     {
-        case RAD_NET_TILE_TYPE_GROUND:  return RAD_CLIENT_TILE_TYPE_GROUND;
-        case RAD_NET_TILE_TYPE_WATER:   return RAD_CLIENT_TILE_TYPE_WATER;
-        case RAD_NET_TILE_TYPE_VOID:    return RAD_CLIENT_TILE_TYPE_VOID;
-        case RAD_NET_TILE_TYPE_UNKNOWN: return RAD_CLIENT_TILE_TYPE_UNKNOWN;
+        case RAD_NET_TILE_TYPE_GROUND:        return RAD_CLIENT_TILE_TYPE_GROUND;
+        case RAD_NET_TILE_TYPE_WATER:         return RAD_CLIENT_TILE_TYPE_WATER_SHALLOW;
+        case RAD_NET_TILE_TYPE_VOID:          return RAD_CLIENT_TILE_TYPE_VOID;
+        case RAD_NET_TILE_TYPE_MUD:           return RAD_CLIENT_TILE_TYPE_MUD;
+        case RAD_NET_TILE_TYPE_MEADOW:        return RAD_CLIENT_TILE_TYPE_MEADOW;
+        case RAD_NET_TILE_TYPE_FOREST:        return RAD_CLIENT_TILE_TYPE_FOREST;
+        case RAD_NET_TILE_TYPE_WATER_DEEP:    return RAD_CLIENT_TILE_TYPE_WATER_DEEP;
+        case RAD_NET_TILE_TYPE_CITY:          return RAD_CLIENT_TILE_TYPE_CITY;
+        case RAD_NET_TILE_TYPE_ROAD:          return RAD_CLIENT_TILE_TYPE_ROAD;
+        case RAD_NET_TILE_TYPE_FORTIFICATION: return RAD_CLIENT_TILE_TYPE_FORTIFICATION;
+        case RAD_NET_TILE_TYPE_UNKNOWN:       return RAD_CLIENT_TILE_TYPE_UNKNOWN;
     }
     return RAD_CLIENT_TILE_TYPE_UNKNOWN;
 }
@@ -54,7 +63,13 @@ void RAD_IoNetApplyTile(RAD_IoNetEventHandlerContext_t *context, const RAD_NetTi
 {
     // RAD_NET_ENTITY_NONE und RAD_CLIENT_UNIT_ID_NONE sind beide -1.
     const RAD_ClientPosition_t position = { .x = (int32_t)tile->x, .y = (int32_t)tile->y };
-    RAD_ClientWorldApplyTile(context->world, position, RAD_IoNetTileTypeToClient(tile->type), tile->entity_id);
+    // CV kommt als uint32; was nicht in int32 passt, ist eine unerreichbare Deckung.
+    const RAD_ClientTerrain_t terrain = {
+        .movement_modifier = tile->movement_modifier,
+        .cover = (tile->cover > (uint32_t)INT32_MAX) ? INT32_MAX : (int32_t)tile->cover,
+        .impassable = tile->impassable
+    };
+    RAD_ClientWorldApplyTile(context->world, position, RAD_IoNetTileTypeToClient(tile->type), tile->entity_id, tile->victory, terrain);
 }
 
 ///
@@ -85,8 +100,14 @@ void RAD_IoNetUnitToClient(const RAD_NetUnit_t *unit, RAD_ClientUnit_t *out)
         memset(&member, 0, sizeof(member));
         strncpy(member.profile, net_member->profile, sizeof(member.profile) - 1);
         member.health = RAD_IoNetValue(net_member->health);
-        member.health_max = member.health;
+        // Der Hoechstwert kommt vom Server; schickt er keinen, ist es der jetzige.
+        member.health_max = RAD_IoNetValue(net_member->health_max);
+        if(member.health_max < member.health)
+        {
+            member.health_max = member.health;
+        }
         member.armor = RAD_IoNetValue(net_member->armor);
+        member.toughness = RAD_IoNetValue(net_member->toughness);
         member.strength = RAD_IoNetValue(net_member->strength);
         member.accuracy = RAD_IoNetValue(net_member->accuracy);
 

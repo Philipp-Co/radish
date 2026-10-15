@@ -85,10 +85,10 @@ void test_world_tile_hinzufuegen_setzt_typ_und_hoehe(void)
     RAD_TileEreignisse_t gezaehlt;
     abonniere_tile_ereignisse(events, &gezaehlt);
 
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 3, 5, 2, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 3, 5, 2, RAD_TILE_TYPE_WATER_SHALLOW));
 
     const RAD_Tile_t *tile = RAD_WorldTileAt(&world, 3, 5);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, tile->type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, tile->type);
     TEST_ASSERT_EQUAL_INT(2, tile->z);
 
     // Die Stelle bleibt die Stelle.
@@ -191,8 +191,8 @@ void test_world_tile_ausserhalb_der_welt_ist_kein_tile(void)
     RAD_TileEreignisse_t gezaehlt;
     abonniere_tile_ereignisse(events, &gezaehlt);
 
-    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, -1, 0, 0, RAD_TILE_TYPE_WATER));
-    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, RAD_WORLD_HEIGHT, 0, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, -1, 0, 0, RAD_TILE_TYPE_WATER_SHALLOW));
+    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, RAD_WORLD_HEIGHT, 0, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_FALSE(RAD_WorldRemoveTile(&world, RAD_WORLD_WIDTH, 0));
     TEST_ASSERT_FALSE(RAD_WorldRemoveTile(&world, 0, -1));
 
@@ -226,16 +226,16 @@ void test_world_tile_ereignis_folgt_dem_uebergang(void)
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
 
     // X -> Y
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 0, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 0, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.changed);
 
     // Derselbe Typ, andere Hoehe: auch eine Aenderung -- die Hoehe gehoert zum
     // Zustand des Feldes.
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 3, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 3, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_EQUAL_INT(2, gezaehlt.changed);
 
     // Und derselbe Stand meldet nichts.
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 3, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 3, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_EQUAL_INT(2, gezaehlt.changed);
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
@@ -331,7 +331,7 @@ void test_world_aenderungen_gegen_alten_stand(void)
     // Schreibfunktionen.
     world.tiles[0][0].type = RAD_TILE_TYPE_VOID;    // X -> VOID
     world.tiles[0][1].type = RAD_TILE_TYPE_GROUND;  // VOID -> X
-    world.tiles[0][2].type = RAD_TILE_TYPE_WATER;   // X -> Y
+    world.tiles[0][2].type = RAD_TILE_TYPE_WATER_SHALLOW;   // X -> Y
     world.tiles[1][0].z = 2;                        // X mit anderem z
     world.tiles[0][3].z = 5;                        // VOID bleibt VOID: keines
 
@@ -381,7 +381,7 @@ void test_world_groesse_laesst_sich_setzen(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, world.tiles[1][2].type);
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, world.tiles[1][3].type);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 3, 0));
-    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, 2, 0, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, 2, 0, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
 
     RAD_DestroyUnitPool(&units);
@@ -397,7 +397,7 @@ void test_world_ungueltige_groesse_aendert_nichts(void)
     RAD_UnitPool_t *units = RAD_CreateUnitPool();
     RAD_CreateWorld(&world, events, units);
     RAD_InitWorld(&world);
-    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 1, RAD_TILE_TYPE_WATER));
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 1, RAD_TILE_TYPE_WATER_SHALLOW));
 
     TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, 0, 4));
     TEST_ASSERT_FALSE(RAD_ResetWorldToSize(&world, 4, 0));
@@ -406,7 +406,7 @@ void test_world_ungueltige_groesse_aendert_nichts(void)
 
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_WIDTH, world.width);
     TEST_ASSERT_EQUAL_INT(RAD_WORLD_HEIGHT, world.height);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER, world.tiles[0][0].type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, world.tiles[0][0].type);
 
     RAD_DestroyUnitPool(&units);
     RAD_DestroyEventManager(&events);
@@ -448,6 +448,64 @@ void test_world_aenderungen_ueber_eine_neue_groesse(void)
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.added);
     TEST_ASSERT_EQUAL_INT(2, gezaehlt.removed);
     TEST_ASSERT_EQUAL_INT(0, gezaehlt.changed);
+
+    RAD_DestroyUnitPool(&units);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// **Das Gelaende folgt dem Typ** (RAD_World_t.terrain): RAD_WorldSetTerrain gibt
+/// jedem Feld die Werte seines Typs und meldet jedes Feld mit Gelaende, dessen
+/// Werte sich aendern, als changed. Wer danach einen Typ schreibt, bekommt die
+/// Werte des neuen mit.
+///
+void test_world_gelaende_folgt_dem_typ(void)
+{
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_World_t world;
+    RAD_UnitPool_t *units = RAD_CreateUnitPool();
+    RAD_CreateWorld(&world, events, units);
+    RAD_InitWorld(&world);
+
+    // Vor dem Spielstart hat kein Gelaende Werte.
+    TEST_ASSERT_EQUAL_INT(0, RAD_WorldTileAt(&world, 0, 0)->terrain.cover);
+    TEST_ASSERT_FALSE(RAD_WorldTileAt(&world, 0, 0)->terrain.impassable);
+
+    // Ein Wald in einer Welt aus Boden.
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 2, 1, 0, RAD_TILE_TYPE_FOREST));
+
+    RAD_TileEreignisse_t gezaehlt;
+    abonniere_tile_ereignisse(events, &gezaehlt);
+
+    RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES];
+    memset(terrain, 0, sizeof(terrain));
+    terrain[RAD_TILE_TYPE_FOREST] = (RAD_Terrain_t){ .movement_modifier = -1, .cover = 2, .impassable = false };
+    terrain[RAD_TILE_TYPE_WATER_DEEP] = (RAD_Terrain_t){ .movement_modifier = 0, .cover = 0, .impassable = true };
+    RAD_WorldSetTerrain(&world, terrain);
+
+    // Nur der Wald hat andere Werte bekommen -- und nur er meldet sich.
+    const RAD_Tile_t *wald = RAD_WorldTileAt(&world, 2, 1);
+    TEST_ASSERT_EQUAL_INT(-1, wald->terrain.movement_modifier);
+    TEST_ASSERT_EQUAL_INT(2, wald->terrain.cover);
+    TEST_ASSERT_EQUAL_INT(0, RAD_WorldTileAt(&world, 0, 0)->terrain.cover);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.changed);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.added);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.removed);
+
+    // Dieselbe Tabelle noch einmal aendert nichts und meldet nichts.
+    RAD_WorldSetTerrain(&world, terrain);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.changed);
+
+    // Ein neuer Typ bringt seine Werte mit, ein entfernter verliert sie.
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 0, RAD_TILE_TYPE_WATER_DEEP));
+    TEST_ASSERT_TRUE(RAD_WorldTileAt(&world, 0, 0)->terrain.impassable);
+    TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 2, 1));
+    TEST_ASSERT_EQUAL_INT(0, RAD_WorldTileAt(&world, 2, 1)->terrain.cover);
+
+    // Und die Tabelle ueberlebt das Zuruecksetzen (wie beim Laden einer Welt).
+    RAD_ResetWorld(&world);
+    TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 1, 1, 0, RAD_TILE_TYPE_FOREST));
+    TEST_ASSERT_EQUAL_INT(2, RAD_WorldTileAt(&world, 1, 1)->terrain.cover);
 
     RAD_DestroyUnitPool(&units);
     RAD_DestroyEventManager(&events);

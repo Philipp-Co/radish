@@ -42,6 +42,7 @@ import { CATALOG_BASE } from './catalog-shell.component';
               <th>Name</th>
               <th title="Lebenspunkte">LP</th>
               <th title="Rüstung">RP</th>
+              <th title="Widerstand">WI</th>
               <th title="Stärke">ST</th>
               <th title="Treffsicherheit">TS</th>
               <th title="Waffenslots">Waffen</th>
@@ -69,6 +70,7 @@ import { CATALOG_BASE } from './catalog-shell.component';
                 </td>
                 <td>{{ profile.health }}</td>
                 <td>{{ profile.armor }}</td>
+                <td>{{ profile.toughness }}</td>
                 <td>{{ profile.strength }}</td>
                 <td>{{ profile.accuracy }}</td>
                 <td>{{ profile.weapon_slots }}</td>

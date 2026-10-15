@@ -7,9 +7,11 @@ find_package(Threads REQUIRED)
 add_executable(server
     src/main.c
     src/interface/message.c
+    src/interface/game_report.c
     src/control/events/tiles.c
     src/control/execute.c
     src/control/loader.c
+    src/control/message_timing.c
 )
 
 # Fuer die eigenen Module des Servers, damit sie sich beim Namen ihres Moduls

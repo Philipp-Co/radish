@@ -15,6 +15,11 @@
 ///   "Gegner am Zug"    grau  -- ein anderer ist dran, Klicks tun nichts
 ///   "Niemand am Zug"   grau  -- der Server hat noch keinen genannt
 ///
+/// Davor steht die Runde, sobald der Server sie geschickt hat ("Runde 3/10: Zug
+/// beenden"). Ist das Spiel vorbei, zeigt sie stattdessen den Ausgang mit den
+/// eigenen Punkten zuerst -- "Gewonnen 25:10", "Verloren 10:25",
+/// "Unentschieden 10:10" (RAD_ClientWorldResult) --, grau, und Klicks tun nichts.
+///
 /// Der Text steht mittig in der Flaeche. Gedrueckt ist der gruene Knopf dunkler.
 ///
 /// **Wer dran ist, liest sie bei jedem Update aus der Welt**

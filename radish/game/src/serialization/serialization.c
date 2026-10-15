@@ -48,6 +48,9 @@ const char* RAD_SerializeResultText(RAD_SerializeResult_t result)
         case RAD_SERIALIZE_ERROR_INCONSISTENT:        return "Datei widerspricht sich selbst";
         case RAD_SERIALIZE_ERROR_WORLD_OCCUPIED:      return "auf der Welt stehen schon Figuren";
         case RAD_SERIALIZE_ERROR_OUT_OF_MEMORY:       return "kein Speicher";
+        case RAD_SERIALIZE_ERROR_VICTORY_OUT_OF_BOUNDS: return "Siegfeld ausserhalb der Welt";
+        case RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND:   return "Siegfeld nicht auf Land";
+        case RAD_SERIALIZE_ERROR_VICTORY_DUPLICATE:   return "Siegfeld doppelt";
         default:                                      return "unbekannter Fehler";
     }
 }

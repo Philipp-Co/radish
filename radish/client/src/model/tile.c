@@ -20,12 +20,15 @@ static void RAD_ClientTileNotify(const RAD_ClientTile_t *tile, RAD_ClientTileEve
     }
 }
 
-void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit)
+void RAD_ClientTileSet(RAD_ClientTile_t *tile, int32_t x, int32_t y, RAD_ClientTileType_t type, RAD_ClientUnit_t *unit, bool victory,
+                       RAD_ClientTerrain_t terrain)
 {
     tile->x = x;
     tile->y = y;
     tile->type = type;
     tile->unit = unit;
+    tile->victory = victory;
+    tile->terrain = terrain;
 
     RAD_ClientTileNotify(tile, RAD_CLIENT_TILE_EVENT_CHANGED);
 }
@@ -51,10 +54,17 @@ const char* RAD_ClientTileTypeText(RAD_ClientTileType_t type)
 {
     switch(type)
     {
-        case RAD_CLIENT_TILE_TYPE_GROUND:  return "ground";
-        case RAD_CLIENT_TILE_TYPE_WATER:   return "water";
-        case RAD_CLIENT_TILE_TYPE_VOID:    return "void";
-        case RAD_CLIENT_TILE_TYPE_UNKNOWN: return "unbekannt";
+        case RAD_CLIENT_TILE_TYPE_GROUND:        return "ground";
+        case RAD_CLIENT_TILE_TYPE_WATER_SHALLOW: return "water_shallow";
+        case RAD_CLIENT_TILE_TYPE_VOID:          return "void";
+        case RAD_CLIENT_TILE_TYPE_MUD:           return "mud";
+        case RAD_CLIENT_TILE_TYPE_MEADOW:        return "meadow";
+        case RAD_CLIENT_TILE_TYPE_FOREST:        return "forest";
+        case RAD_CLIENT_TILE_TYPE_WATER_DEEP:    return "water_deep";
+        case RAD_CLIENT_TILE_TYPE_CITY:          return "city";
+        case RAD_CLIENT_TILE_TYPE_ROAD:          return "road";
+        case RAD_CLIENT_TILE_TYPE_FORTIFICATION: return "fortification";
+        case RAD_CLIENT_TILE_TYPE_UNKNOWN:       return "unbekannt";
     }
     return "unbekannt";
 }

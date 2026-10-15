@@ -131,8 +131,7 @@ void test_start_geht_nur_einmal(void)
 
 ///
 /// Im Server tritt bei, wer sein erstes Kommando schickt -- auch vor dem Start.
-/// Wer so schon mitspielt, behaelt seine Stelle und bekommt seine Armee; wer
-/// nicht in der Datei steht, bleibt einfach dabei.
+/// Wer so schon mitspielt, behaelt seine Stelle und bekommt seine Armee.
 ///
 void test_start_nimmt_vorab_beigetretene_mit(void)
 {
@@ -140,15 +139,13 @@ void test_start_nimmt_vorab_beigetretene_mit(void)
     const RAD_UserId_t host = RAD_UserIdFromIdentifier(HOST);
     const RAD_UserId_t gast = RAD_UserIdFromIdentifier(GAST);
     RAD_GameAddPlayer(game, gast);
-    RAD_GameAddPlayer(game, 0x42);
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_StartGame(game, start));
-    TEST_ASSERT_EQUAL_INT32(3, RAD_GameNumberOfPlayers(game));
+    TEST_ASSERT_EQUAL_INT32(2, RAD_GameNumberOfPlayers(game));
     TEST_ASSERT_EQUAL_UINT64(gast, RAD_GamePlayerAt(game, 0));
-    TEST_ASSERT_EQUAL_UINT64(host, RAD_GamePlayerAt(game, 2));
+    TEST_ASSERT_EQUAL_UINT64(host, RAD_GamePlayerAt(game, 1));
     TEST_ASSERT_EQUAL_INT32(1, RAD_PlayerNumberOfUnits(RAD_GameFindPlayer(game, gast)));
     TEST_ASSERT_EQUAL_INT32(2, RAD_PlayerNumberOfUnits(RAD_GameFindPlayer(game, host)));
-    TEST_ASSERT_EQUAL_INT32(0, RAD_PlayerNumberOfUnits(RAD_GameFindPlayer(game, 0x42)));
 
     baue_ab();
 }
@@ -160,13 +157,13 @@ void test_start_nimmt_vorab_beigetretene_mit(void)
 void test_start_nimmt_nur_die_eigenen_beitritte_zurueck(void)
 {
     lege_an();
-    for(int32_t i = 0; i < RAD_MAX_PLAYERS - 1; ++i)
+    for(int32_t i = 0; i < RAD_GAME_NUMBER_OF_PLAYERS - 1; ++i)
     {
         RAD_GameAddPlayer(game, (RAD_UserId_t)(0x100 + i));
     }
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_FULL, RAD_StartGame(game, start));
-    TEST_ASSERT_EQUAL_INT32(RAD_MAX_PLAYERS - 1, RAD_GameNumberOfPlayers(game));
+    TEST_ASSERT_EQUAL_INT32(RAD_GAME_NUMBER_OF_PLAYERS - 1, RAD_GameNumberOfPlayers(game));
     TEST_ASSERT_FALSE(RAD_GameIsPlaying(game, RAD_UserIdFromIdentifier(HOST)));
     TEST_ASSERT_TRUE(RAD_GameIsPlaying(game, 0x100));
     TEST_ASSERT_EQUAL_INT32(0, RAD_UnitPoolNumberOfUnits(game->unit_pool));
@@ -243,6 +240,34 @@ void test_start_aus_fehlender_datei_aendert_nichts(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_NOT_FOUND,
         RAD_StartGameFromFile(game, "/gibt/es/nicht/spielstart.json", NULL));
     pruefe_unberuehrt();
+
+    baue_ab();
+}
+
+///
+/// Das Gelaende aus dem Start kommt auf jedes Feld seines Typs (RAD_WorldSetTerrain)
+/// -- und ein abgelehnter Start laesst es, wie es war.
+///
+void test_start_bringt_das_gelaende_auf_die_felder(void)
+{
+    lege_an();
+    start->terrain[RAD_TILE_TYPE_GROUND] = (RAD_Terrain_t){ .movement_modifier = 0, .cover = 1 };
+    start->terrain[RAD_TILE_TYPE_WATER_DEEP] = (RAD_Terrain_t){ .impassable = true };
+
+    // Abgelehnt: nichts aendert sich, auch nicht am Gelaende.
+    strcpy(start->players[1].identifier, "kurz");
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_USER, RAD_StartGame(game, start));
+    TEST_ASSERT_EQUAL_INT(0, game->world.tiles[0][0].terrain.cover);
+
+    strcpy(start->players[1].identifier, GAST);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_StartGame(game, start));
+
+    // Die Welt ohne Weltdefinition ist Boden.
+    RAD_Tile_t feld;
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 1, 1, &feld));
+    TEST_ASSERT_EQUAL_INT(1, feld.terrain.cover);
+    TEST_ASSERT_FALSE(feld.terrain.impassable);
+    TEST_ASSERT_TRUE(game->world.terrain[RAD_TILE_TYPE_WATER_DEEP].impassable);
 
     baue_ab();
 }

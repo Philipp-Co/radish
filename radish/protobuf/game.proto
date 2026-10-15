@@ -2,19 +2,52 @@ syntax = "proto3";
 
 import "tile.proto";
 
-// Beide Ereignisse sagen nur, dass etwas geschehen ist. "reserved" traegt keine
-// Bedeutung und wird nie gelesen -- wie bei NetDiscoverReserveRequest
-// (discover.proto) steht es nur da, damit der Typ ein Feld hat: protobuf-c rechnet
-// beim Auspacken mit dem Feld-Array des Typs, und das ist bei einem Typ ohne
-// Felder NULL (undefiniertes Verhalten, NULL + 0). Der Server laesst es leer.
+// Sagt nur, dass etwas geschehen ist. "reserved" traegt keine Bedeutung und wird
+// nie gelesen -- wie bei NetDiscoverReserveRequest (discover.proto) steht es nur
+// da, damit der Typ ein Feld hat: protobuf-c rechnet beim Auspacken mit dem
+// Feld-Array des Typs, und das ist bei einem Typ ohne Felder NULL (undefiniertes
+// Verhalten, NULL + 0). Der Server laesst es leer.
 message NetGameCreatedEvent
 {
     uint32 reserved = 1;
 }
 
+// Warum ein Spiel vorbei ist (RAD_GameEndReason_t). Die Nummern sind die des
+// Spiels.
+enum NetGameEndReason
+{
+    GAME_END_NONE = 0;
+    GAME_END_ROUNDS = 1;
+    GAME_END_ELIMINATED = 2;
+}
+
+// Die Punkte eines Spielers auf den Siegfeldern (RAD_GameScore), wie sie beim
+// Ende standen.
+message NetPlayerScore
+{
+    uint64 user_id = 1;
+    uint32 score = 2;
+}
+
+// Das Spiel ist vorbei: wer gewonnen hat -- 0 bei einem Unentschieden --, warum,
+// und die Punkte jedes Mitspielers. Danach nimmt der Server kein Kommando mehr
+// an. "reserved" ist das Feld von frueher, als das Ereignis nichts trug; es wird
+// nicht gelesen und bleibt leer.
 message NetGameFinishedEvent
 {
     uint32 reserved = 1;
+    uint64 winner_id = 2;
+    NetGameEndReason reason = 3;
+    repeated NetPlayerScore scores = 4;
+}
+
+// Die laufende Runde, ab 1, und nach wie vielen gewertet wird (RAD_GameRound,
+// RAD_GameNumberOfRounds). Der Server schickt es mit jedem Zugwechsel und auf
+// eine Discover-Anfrage.
+message NetRoundEvent
+{
+    uint32 round = 1;
+    uint32 rounds = 2;
 }
 
 // Wer gerade am Zug ist (RAD_GameCurrentUser). 0 heisst: niemand -- es spielt
@@ -70,6 +103,11 @@ message NetUnitMember
     uint32 strength = 4;
     uint32 accuracy = 5;
     repeated NetWeapon weapons = 6;
+    uint32 toughness = 7;
+
+    // Lebenspunkte, mit denen das Mitglied ins Spiel kam; "health" ist, was es
+    // davon noch hat (RAD_UnitMember_t.health_max).
+    uint32 health_max = 8;
 }
 
 // Eine Einheit, vollstaendig: aus dieser einen Nachricht laesst sie sich ganz
@@ -109,6 +147,23 @@ message NetReserveUnitEvent
     NetUnit unit = 1;
 }
 
+// Wo ein Spieler Einheiten aus seiner Reserve aufstellen darf
+// (RAD_GameDeployZone): das Rechteck von (min_x, min_y) bis (max_x, max_y), beide
+// Ecken eingeschlossen. Eine Nachricht je Mitspieler, nach NetPlayersEvent und
+// NetWorldSizeEvent -- die Zone haengt an der Breite der Welt.
+//
+// Das fertige Rechteck und nicht die Kante: der Client kennt die Regel nicht, er
+// zeigt nur, was der Server ihm sagt. Ob ein Feld darin liegt, prueft der Server
+// beim Aufstellen trotzdem selbst.
+message NetDeployZoneEvent
+{
+    uint64 user_id = 1;
+    uint32 min_x = 2;
+    uint32 min_y = 3;
+    uint32 max_x = 4;
+    uint32 max_y = 5;
+}
+
 // Eine Einheit steht jetzt auf dem Feld (x, y), wo vorher keine stand -- aus der
 // Reserve aufgestellt (RAD_WorldDeployUnit) oder vom Spiel direkt angelegt
 // (RAD_WorldSpawnUnit); fuer einen Client ist beides dasselbe. Der Server schickt
@@ -131,6 +186,63 @@ message NetUnitEvent
     NetUnit unit = 1;
 }
 
+// Ein Feld eines Weges, in Weltkoordinaten.
+message NetPathStep
+{
+    uint32 x = 1;
+    uint32 y = 2;
+}
+
+// Eine Einheit ist gezogen: der Weg, den sie wirklich gegangen ist, vom
+// Standort (steps[0]) bis zu dem Feld, auf dem sie jetzt steht -- Feld fuer
+// Feld, damit ein Client den Zug nachzeichnen kann. Wurde der angefragte Weg
+// unterwegs von einer Einheit versperrt, endet er davor. Geschickt nur, wenn
+// sie wenigstens ein Feld weit kam, also mit mindestens zwei Feldern und
+// hoechstens RAD_PATH_MAX_STEPS (16). Die Einheit nur mit ihrer Id: ihren
+// neuen Stand schickt der Server danach als NetUnitEvent.
+message NetUnitMovedEvent
+{
+    uint32 unit_id = 1;
+    repeated NetPathStep steps = 2;
+}
+
+// Eine Einheit hat das Feld (x, y) angegriffen -- gesendet fuer jeden Angriff,
+// den der Server angenommen hat, auch auf ein leeres Feld (RAD_AttackResult_t im
+// Spiel). Wo die Einheit steht, weiss der Client.
+//
+// Stand auf dem Feld eine Einheit, ist has_target gesetzt und target_id ihre Id;
+// die Zaehler sind die Stufen ihrer Schuesse, jede eine Teilmenge der vorigen:
+// abgegeben, getroffen, durch die Ruestung, gewirkt (= abgezogene Lebenspunkte).
+// target_destroyed: sie hat dabei ihr letztes Mitglied verloren -- dann kam
+// vorher schon NetUnitDestroyedEvent.
+//
+// Den neuen Stand beider Einheiten schickt der Server danach als NetUnitEvent:
+// den der angreifenden (attacked) und, wenn es sie noch gibt, den der
+// getroffenen (Mitglieder und Lebenspunkte).
+message NetUnitAttackedEvent
+{
+    uint32 unit_id = 1;
+    uint32 x = 2;
+    uint32 y = 3;
+    bool has_target = 4;
+    uint32 target_id = 5;
+    uint32 shots = 6;
+    uint32 hits = 7;
+    uint32 penetrations = 8;
+    uint32 wounds = 9;
+    uint32 members_killed = 10;
+    bool target_destroyed = 11;
+}
+
+// Eine Einheit ist zerstoert und vom Feld (x, y) genommen (RAD_OnUnitDestroyed_t
+// im Spiel, gemeldet nur fuer Einheiten auf dem Feld). Der Client vergisst sie.
+message NetUnitDestroyedEvent
+{
+    uint32 unit_id = 1;
+    uint32 x = 2;
+    uint32 y = 3;
+}
+
 message NetGameEvent
 {
     oneof event
@@ -144,5 +256,10 @@ message NetGameEvent
         NetReserveUnitEvent reserve_unit = 7;
         NetUnitDeployedEvent unit_deployed = 8;
         NetUnitEvent unit = 9;
+        NetUnitMovedEvent unit_moved = 10;
+        NetUnitAttackedEvent unit_attacked = 11;
+        NetDeployZoneEvent deploy_zone = 12;
+        NetRoundEvent round = 13;
+        NetUnitDestroyedEvent unit_destroyed = 14;
     }
 }
