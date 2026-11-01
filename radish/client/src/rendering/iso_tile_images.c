@@ -6,7 +6,9 @@
 /// Wo die Bilder im eingebetteten Dateisystem liegen, je RAD_IsoTileImage_t.
 ///
 static const char *RAD_ISO_TILE_IMAGE_PATHS[RAD_ISO_TILE_IMAGES] = {
-    [RAD_ISO_TILE_IMAGE_GRASS] = "/assets/tiles/grass_tile.png"
+    [RAD_ISO_TILE_IMAGE_GRASS]       = "/assets/tiles/grass_tile.png",
+    [RAD_ISO_TILE_IMAGE_GRASS_DECOR] = "/assets/tiles/grass_decor.png",
+    [RAD_ISO_TILE_IMAGE_FOREST]      = "/assets/tiles/forest.png"
 };
 
 static SDL_Texture *rad_iso_tile_images[RAD_ISO_TILE_IMAGES] = { NULL };

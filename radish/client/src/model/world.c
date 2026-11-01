@@ -8,6 +8,8 @@ typedef void (*RAD_ClientWorldReserveCreated_t)(void *user_argument, const RAD_C
 typedef void (*RAD_ClientWorldSizeChanged_t)(void *user_argument, const RAD_ClientWorld_t *world);
 typedef void (*RAD_ClientWorldUnitMoved_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                                            const RAD_ClientPosition_t *steps, size_t count);
+typedef void (*RAD_ClientWorldUnitAttacked_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                              RAD_ClientPosition_t target);
 
 static bool RAD_ClientWorldInBounds(int32_t x, int32_t y)
 {
@@ -80,6 +82,22 @@ static void RAD_ClientWorldNotifyUnitMoved(const RAD_ClientWorld_t *world, RAD_C
         if(callback != NULL)
         {
             callback(observer->user_argument, world, unit, steps, count);
+        }
+    }
+}
+
+static void RAD_ClientWorldNotifyUnitAttacked(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                              RAD_ClientPosition_t target)
+{
+    const RAD_ModelObservable_t observable = world->observable;
+
+    for(uint32_t i = 0; i < observable.number_of_observers; ++i)
+    {
+        const RAD_ModelObserver_t *observer = &observable.observers[i];
+        const RAD_ClientWorldUnitAttacked_t callback = (RAD_ClientWorldUnitAttacked_t)observer->callbacks[RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED];
+        if(callback != NULL)
+        {
+            callback(observer->user_argument, world, unit, target);
         }
     }
 }
@@ -175,6 +193,16 @@ void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit
 
     RAD_ClientTileSetUnit(&world->tiles[from.y][from.x], NULL);
     RAD_ClientTileSetUnit(&world->tiles[to.y][to.x], unit);
+}
+
+void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit, RAD_ClientPosition_t target)
+{
+    if(!RAD_ClientWorldInBounds(target.x, target.y))
+    {
+        return;
+    }
+
+    RAD_ClientWorldNotifyUnitAttacked(world, unit, target);
 }
 
 static RAD_ClientReserve_t* RAD_ClientWorldReserveOf(RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner)
@@ -455,7 +483,8 @@ bool RAD_ClientWorldSubscribe(const RAD_ClientWorld_t *world, RAD_ClientWorldObs
             [RAD_CLIENT_WORLD_EVENT_TILE_CREATED] = (RAD_ModelCallback_t)observer.tile_created,
             [RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED] = (RAD_ModelCallback_t)observer.reserve_created,
             [RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED] = (RAD_ModelCallback_t)observer.size_changed,
-            [RAD_CLIENT_WORLD_EVENT_UNIT_MOVED] = (RAD_ModelCallback_t)observer.unit_moved
+            [RAD_CLIENT_WORLD_EVENT_UNIT_MOVED] = (RAD_ModelCallback_t)observer.unit_moved,
+            [RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED] = (RAD_ModelCallback_t)observer.unit_attacked
         }
     };
     return RAD_ModelObservableSubscribe(RAD_ModelObservableOf(&world->observable), &generic);

@@ -50,6 +50,12 @@ void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void);
 void test_kampf_trifft_auch_eigene_einheiten(void);
 void test_kampf_derselbe_seed_derselbe_kampf(void);
 void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void);
+void test_sicht_gelaende_versperrt_was_dahinter_liegt(void);
+void test_sicht_einheiten_versperren(void);
+void test_sicht_die_linie_geht_von_mitte_zu_mitte(void);
+void test_sicht_durch_die_ecke(void);
+void test_sicht_grenzfaelle(void);
+void test_sicht_ist_gegenseitig(void);
 
 void test_view_zaehlt_alle_tiles(void);
 void test_view_liefert_jedes_tile_mit_seiner_position(void);
@@ -165,6 +171,12 @@ int main(void)
     RUN_TEST(test_kampf_trifft_auch_eigene_einheiten);
     RUN_TEST(test_kampf_derselbe_seed_derselbe_kampf);
     RUN_TEST(test_kampf_deckung_des_zielfeldes_erschwert_den_treffer);
+    RUN_TEST(test_sicht_gelaende_versperrt_was_dahinter_liegt);
+    RUN_TEST(test_sicht_einheiten_versperren);
+    RUN_TEST(test_sicht_die_linie_geht_von_mitte_zu_mitte);
+    RUN_TEST(test_sicht_durch_die_ecke);
+    RUN_TEST(test_sicht_grenzfaelle);
+    RUN_TEST(test_sicht_ist_gegenseitig);
 
     RUN_TEST(test_view_zaehlt_alle_tiles);
     RUN_TEST(test_view_liefert_jedes_tile_mit_seiner_position);

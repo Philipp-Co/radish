@@ -4,8 +4,9 @@
 
 ///
 /// Eine Einheit hat ein Feld angegriffen -- gleich, wessen: ins Log, mit dem,
-/// was der Angriff bewirkt hat. In die Welt traegt das Ereignis selbst nichts
-/// ein: was von der getroffenen Einheit uebrig ist, bringt danach ihr neuer
+/// was der Angriff bewirkt hat, und an die Beobachter der Welt
+/// (RAD_ClientWorldReportAttack), damit sich der Angriff zeigen laesst -- auch
+/// auf ein leeres Feld. In die Welt traegt das Ereignis selbst nichts ein: was von der getroffenen Einheit uebrig ist, bringt danach ihr neuer
 /// Stand (unit.c), eine zerstoerte hat der Server vorher gemeldet
 /// (unit_destroyed.c), und dass die angreifende in diesem Zug angegriffen hat,
 /// bringt ebenso ihr neuer Stand. Die Antwort auf das Kommando sagt nur, ob es
@@ -13,7 +14,9 @@
 ///
 void RAD_IoNetOnUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked)
 {
-    (void)user_argument;
+    RAD_IoNetEventHandlerContext_t *context = (RAD_IoNetEventHandlerContext_t*)user_argument;
+    RAD_ClientWorldReportAttack(context->world, attacked->entity,
+                                (RAD_ClientPosition_t){ .x = attacked->target.x, .y = attacked->target.y });
 
     if(attacked->victim == RAD_NET_ENTITY_NONE)
     {

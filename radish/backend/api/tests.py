@@ -215,9 +215,13 @@ class AdminTerrainTests(APITestCase):
         forest = next(entry for entry in terrain if entry["code"] == "forest")
         self.assertEqual(
             forest,
-            {"code": "forest", "label": "Wald", "movement_modifier": -1, "cover": 2, "impassable": False},
+            {"code": "forest", "label": "Wald", "movement_modifier": -1, "cover": 2, "impassable": False,
+             "blocks_sight": True},
         )
         self.assertTrue(next(e for e in terrain if e["code"] == "water_deep")["impassable"])
+        self.assertEqual(
+            [e["code"] for e in terrain if e["blocks_sight"]], ["forest", "city", "fortification"]
+        )
 
     def test_player_role_is_not_sufficient(self):
         self.client.force_authenticate(user=self.admin_user, token=PLAYER_TOKEN)
@@ -229,13 +233,15 @@ class AdminTerrainTests(APITestCase):
     def test_admin_changes_the_values(self):
         response = self.client.put(
             "/api/admin/terrain/forest/",
-            {"movement_modifier": -2, "cover": 3, "impassable": True},
+            {"movement_modifier": -2, "cover": 3, "impassable": True, "blocks_sight": False},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         forest = TerrainType.objects.get(code="forest")
-        self.assertEqual((forest.movement_modifier, forest.cover, forest.impassable), (-2, 3, True))
+        self.assertEqual(
+            (forest.movement_modifier, forest.cover, forest.impassable, forest.blocks_sight), (-2, 3, True, False)
+        )
 
     def test_code_cannot_be_changed(self):
         response = self.client.patch("/api/admin/terrain/forest/", {"code": "road", "cover": 1}, format="json")
@@ -247,7 +253,8 @@ class AdminTerrainTests(APITestCase):
 
     def test_values_outside_the_limits_are_rejected(self):
         for values in ({"cover": 11}, {"cover": -1}, {"movement_modifier": 11},
-                       {"movement_modifier": -11}, {"impassable": "vielleicht"}):
+                       {"movement_modifier": -11}, {"impassable": "vielleicht"},
+                       {"blocks_sight": "vielleicht"}):
             response = self.client.patch("/api/admin/terrain/forest/", values, format="json")
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, values)
 
@@ -1729,9 +1736,12 @@ class InstanceClientTests(GameTestCase):
         # Jeder Typ genau einmal, in der Reihenfolge des Spiels.
         self.assertEqual([entry["typ"] for entry in terrain], TerrainCode.values)
         forest = next(entry for entry in terrain if entry["typ"] == "forest")
-        self.assertEqual(forest, {"typ": "forest", "bewegung": -2, "deckung": 4, "unbegehbar": False})
+        self.assertEqual(
+            forest, {"typ": "forest", "bewegung": -2, "deckung": 4, "unbegehbar": False, "sichtblockierend": True}
+        )
         deep = next(entry for entry in terrain if entry["typ"] == "water_deep")
         self.assertTrue(deep["unbegehbar"])
+        self.assertFalse(deep["sichtblockierend"])
 
     @mock.patch("api.instance_client.requests.post")
     def test_start_without_terrain_type_fails(self, post):

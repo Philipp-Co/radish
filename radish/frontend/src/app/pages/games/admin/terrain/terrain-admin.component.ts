@@ -17,6 +17,7 @@ const FIELD_LABELS: Record<string, string> = {
   movement_modifier: 'MV',
   cover: 'CV',
   impassable: 'Unbegehbar',
+  blocks_sight: 'Sichtblockierend',
 };
 
 /**
@@ -36,6 +37,8 @@ const FIELD_LABELS: Record<string, string> = {
       <p class="muted">
         MV ändert die Bewegungsreichweite: ein Feld zu betreten kostet 1 − MV, mindestens 1.
         CV erschwert den Treffer auf eine Einheit darauf (W10 ≥ Genauigkeit + CV).
+        Ein sichtblockierendes Feld zwischen Schütze und Ziel verhindert den Angriff; das Feld
+        selbst bleibt angreifbar.
         Änderungen gelten ab dem nächsten Spielstart.
       </p>
 
@@ -53,6 +56,7 @@ const FIELD_LABELS: Record<string, string> = {
               <th>MV</th>
               <th>CV</th>
               <th>Unbegehbar</th>
+              <th>Sichtblockierend</th>
               <th></th>
             </tr>
           </thead>
@@ -69,6 +73,9 @@ const FIELD_LABELS: Record<string, string> = {
                 <td>
                   <input type="checkbox" [(ngModel)]="row.draft.impassable" />
                 </td>
+                <td>
+                  <input type="checkbox" [(ngModel)]="row.draft.blocks_sight" />
+                </td>
                 <td class="actions">
                   <button [disabled]="!changed(row) || row.saving" (click)="save(row)">
                     {{ row.saving ? 'Speichere...' : 'Speichern' }}
@@ -77,7 +84,7 @@ const FIELD_LABELS: Record<string, string> = {
               </tr>
               @if (row.error) {
                 <tr>
-                  <td colspan="5" class="error">{{ row.error }}</td>
+                  <td colspan="6" class="error">{{ row.error }}</td>
                 </tr>
               }
             }
@@ -138,7 +145,8 @@ export class TerrainAdminComponent implements OnInit {
     return (
       row.draft.movement_modifier !== saved.movement_modifier ||
       row.draft.cover !== saved.cover ||
-      row.draft.impassable !== saved.impassable
+      row.draft.impassable !== saved.impassable ||
+      row.draft.blocks_sight !== saved.blocks_sight
     );
   }
 
@@ -167,5 +175,6 @@ function values(terrain: AdminTerrainType): AdminTerrainValues {
     movement_modifier: terrain.movement_modifier,
     cover: terrain.cover,
     impassable: terrain.impassable,
+    blocks_sight: terrain.blocks_sight,
   };
 }

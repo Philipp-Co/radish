@@ -50,7 +50,7 @@ typedef enum
 
 ///
 /// Was das Gelaende des Feldes fuer das Spiel bedeutet, so wie der Server es
-/// schickt (NetTile.movement_modifier, cover, impassable). Die Werte pflegt das
+/// schickt (NetTile.movement_modifier, cover, impassable, blocks_sight). Die Werte pflegt das
 /// Backend; der Client fuehrt keine eigenen -- er liest sie, um Wege so zu
 /// rechnen wie der Server (control/terrain.h) und sie anzuzeigen.
 ///
@@ -64,6 +64,9 @@ typedef struct
 
     /// Ob eine Einheit das Feld betreten darf.
     bool impassable;
+
+    /// Ob das Feld die Sicht auf die Felder dahinter versperrt (control/line_of_sight.h).
+    bool blocks_sight;
 } RAD_ClientTerrain_t;
 
 typedef struct

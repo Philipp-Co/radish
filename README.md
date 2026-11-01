@@ -49,10 +49,10 @@ unterscheiden.
 | `radish/game-server-core/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
 | `radish/cmake/` | CMake-Beiwerk: die Einbindung von `jsmn`, `zucchini` und `Unity` |
-| `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` |
+| `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` und unter `assets/` die Bilder und die Schrift mit Hash im Namen samt `manifest.json` |
 | `radish/frontend/` | Angular-Frontend: Login, Spielübersicht, Spielansicht, Adminbereich (Rolle "Radish-Admin", listet angemeldete Game-Server) — bindet `radish/web/` unter `/wasm/` ein — siehe [radish/frontend/README.md](radish/frontend/README.md) |
 | `radish/backend/` | Django-Matchmaking-API + Keycloak-Login (`api/`), liefert `radish/frontend/` und `radish/web/` unter `/` bzw. `/wasm/` mit aus (`web/`) |
-| `radish/assets/` | Schrift, wird per `--embed-file` ins Wasm-Modul eingebettet |
+| `radish/assets/` | Bilder und Schrift des Clients; der Build legt sie einzeln nach `radish/web/assets/`, das Frontend lädt sie vor dem Start ins Wasm-Dateisystem |
 | `docker/` | Dockerfiles: Backend (Zucchini + Spielserver + Django, baut dabei `radish/frontend/` mit) |
 
 Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,

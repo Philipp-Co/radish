@@ -123,6 +123,10 @@
 /// die Einheit dieses Feld angreifen zu lassen (RAD_ControlAttackUnit,
 /// control/attack_unit.h), ein Klick auf Schliessen verwirft es.
 ///
+/// **Zielen laesst sie den Aufrufer** (RAD_ContextMenuViewSetAiming): steht das
+/// Ziel, "aim"; bestaetigt der Spieler, "fire"; verlaesst sie die Bestaetigung
+/// anders -- Schliessen, Abbruch, Spielende --, "release".
+///
 /// **Den Weg markiert sie auf der Karte**, solange er zusammengeklickt wird
 /// und auf die Bestaetigung wartet (ENTITY_MOVE,
 /// WAITING_FOR_MOVE_ACKNOWLEDGEMENT): jedes Feld darauf als durchscheinend
@@ -176,6 +180,19 @@
 /// view/context_menu/context_menu_view.c.
 ///
 typedef struct RAD_ContextMenuView RAD_ContextMenuView_t;
+
+///
+/// Wen sie benachrichtigt, wenn eine Einheit zielt (siehe oben). "unit" ist die
+/// angreifende Einheit, (x, y) das Ziel. Ein NULL-Callback heisst: dieses
+/// Ereignis nicht.
+///
+typedef struct
+{
+    void *user_argument;
+    void (*aim)(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
+    void (*fire)(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
+    void (*release)(void *user_argument, RAD_NetEntityId_t unit);
+} RAD_ContextMenuViewAiming_t;
 
 ///
 /// Legt eine ContextMenuView mit dem Mittelpunkt (center_x, center_y) und dem
@@ -262,6 +279,12 @@ void RAD_ContextMenuViewSetRingWidth(RAD_ContextMenuView_t *context_menu_view, i
 /// Farbe des Rings. Alpha wird beachtet: was darunter liegt, scheint durch.
 ///
 void RAD_ContextMenuViewSetColor(RAD_ContextMenuView_t *context_menu_view, SDL_Color color);
+
+///
+/// Wen sie benachrichtigt, wenn eine Einheit zielt (RAD_ContextMenuViewAiming_t);
+/// ersetzt, was vorher gesetzt war. Ohne Aufruf benachrichtigt sie niemanden.
+///
+void RAD_ContextMenuViewSetAiming(RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuViewAiming_t aiming);
 
 ///
 /// Wie viele Eintraege sie gerade hat (siehe oben).

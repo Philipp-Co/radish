@@ -24,10 +24,25 @@
 /// **Einen bestaetigten Zug stellt sie selbst dar** ("unit_moved", danach
 /// "changed" der beiden Felder): sie loest die Entitaet vom Start-Iso-Objekt,
 /// haelt das Ziel frei und traegt sie als Figur ausserhalb eines Feldes in die
-/// Iso-Map ein (RAD_IsoMapAddEntity). Eine MoveAnimation
-/// (view/animations/move_animation.h) laesst sie den Weg ablaufen; ist sie durch,
-/// kommt die Entitaet aufs Zielfeld. Die Zeit dafuer liest sie selbst
-/// (SDL_GetTicks64).
+/// Iso-Map ein (RAD_IsoMapAddEntity). Eine UnitAnimation
+/// (view/animations/unit_animation.h) laesst sie den Weg ablaufen und an jeder
+/// Ecke auf der Stelle drehen; ist sie durch, kommt die Entitaet aufs Zielfeld.
+/// Die Zeit dafuer liest sie selbst (SDL_GetTicks64).
+///
+/// **Die Blickrichtung der Figuren fuehrt sie selbst** (RAD_IsoEntity_t.facing),
+/// das Spiel kennt keine: eine neu aufgestellte schaut zum Gegner, eine ziehende
+/// dreht sich in die Richtung ihres Schrittes, und so bleibt sie danach stehen.
+///
+/// **Den Turm richtet sie auf Ziele** (RAD_IsoMapViewAim, RAD_IsoMapViewFire,
+/// RAD_IsoMapViewReleaseAim): auf Anweisung des Aufrufers -- etwa, sobald der
+/// Spieler ein Ziel gewaehlt hat -- und bei jedem Angriff, den die Welt meldet
+/// ("unit_attacked"). Auch das kennt nur der Client (RAD_IsoEntity_t.turret_angle).
+///
+/// **Mit dem Schuss explodiert das Zielfeld** (RAD_IsoMapViewFire): sobald der
+/// Turm auf dem Ziel steht, laeuft dort einmal eine Explosion durch
+/// (rendering/iso_effect.h), zufaellig eine von mehreren
+/// (RAD_IsoEffectRandomExplosion), im Bild fuer die Richtung, aus der der
+/// Schuss kommt. Sie steht so lange als Effekt in der Iso-Map (RAD_IsoMapAddEffect).
 ///
 /// An jedem neuen Feld und jeder neuen Reserve meldet sie sich selbst an;
 /// RAD_DestroyIsoMapView meldet sie ueberall wieder ab.
@@ -76,5 +91,33 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
 /// darin.
 ///
 void RAD_IsoMapViewHandleMouseMotion(RAD_IsoMapView_t *iso_map_view, const SDL_MouseMotionEvent *motion);
+
+///
+/// Dreht den Turm der Figur von "unit" so, dass sein Rohr auf die Mitte von Feld
+/// (target_x, target_y) zeigt, und laesst ihn dort -- bis RAD_IsoMapViewFire
+/// oder RAD_IsoMapViewReleaseAim. Auf dem kuerzeren Weg, so schnell, wie ihr Bild
+/// es sagt (RAD_IsoUnitTurretMs); zieht sie gerade, erst an ihrem Ziel. Ein
+/// laufendes Zielen ersetzt es.
+///
+/// Ohne Figur, ohne drehbaren Turm (RAD_IsoUnitHasTurret) oder mit einem Ziel
+/// auf ihrem eigenen Feld geschieht nichts.
+///
+void RAD_IsoMapViewAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y);
+
+///
+/// Wie RAD_IsoMapViewAim, der Turm bleibt aber nur so lange auf dem Ziel, bis
+/// die Explosion dort durchgelaufen ist -- mindestens RAD_IsoUnitFireHoldMs --,
+/// und laeuft dann nach vorn zurueck: fuer einen Angriff, der ausgefuehrt
+/// wird. Steht der Turm auf dem Ziel, explodiert es;
+/// ohne drehbaren Turm sofort -- auch ohne Figur, dann im Bild fuer
+/// RAD_ISO_FACING_X_MINUS.
+///
+void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y);
+
+///
+/// Dreht den Turm der Figur von "unit" nach vorn zurueck, etwa wenn ein Ziel
+/// doch nicht angegriffen wird.
+///
+void RAD_IsoMapViewReleaseAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit);
 
 #endif

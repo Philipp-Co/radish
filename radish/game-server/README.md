@@ -90,18 +90,12 @@ cd radish/game-server
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
 python manage.py runserver
 ```
 
-Ein Admin-Login braucht einen Superuser:
-
-```bash
-python manage.py createsuperuser
-```
-
-Danach ist die (bis auf `django.contrib.admin` selbst leere) Admin-Oberflaeche
-unter <http://localhost:8000/admin/> erreichbar.
+Danach ist die Instanz-API unter <http://localhost:8000/api/> erreichbar. Eine
+Admin-Oberflaeche gibt es nicht: game-server hat keine eigenen Models, und die
+API ruft nur das Backend auf.
 
 Tests:
 
@@ -115,5 +109,8 @@ python manage.py test instances
 docker compose up --build game-server
 ```
 
-Danach unter <http://localhost:8090/admin/> erreichbar (Port-Mapping siehe
-[`docker-compose.yaml`](../../docker-compose.yaml)).
+Danach ist die Instanz-API unter <http://localhost:8090/api/> erreichbar
+(Port-Mapping siehe [`docker-compose.yaml`](../../docker-compose.yaml)). Das
+Image laeuft im Produktionsmodus (`DJANGO_DEBUG=0`, gunicorn statt
+`runserver`) und braucht `DJANGO_SECRET_KEY`; Compose setzt dafuer einen
+Entwicklungswert.

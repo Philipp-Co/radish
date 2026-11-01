@@ -437,8 +437,8 @@ class TerrainType(models.Model):
     """
     Was ein Tile-Typ fuer das Spiel bedeutet: MV, um wie viele Felder er die
     Bewegungsreichweite aendert (Betreten kostet 1 - MV, mindestens 1), CV,
-    die Deckung, die er einer Einheit darauf gibt, und ob er unbegehbar ist.
-    Geht mit jedem Spielstart an die Instanz (instance_client.
+    die Deckung, die er einer Einheit darauf gibt, ob er unbegehbar ist und
+    ob er die Sicht auf die Felder dahinter versperrt. Geht mit jedem Spielstart an die Instanz (instance_client.
     game_start_document).
 
     Genau eine Zeile je TerrainCode, angelegt von der Migration. Der Admin
@@ -458,6 +458,7 @@ class TerrainType(models.Model):
         default=0, validators=[MaxValueValidator(MAX_TERRAIN_MODIFIER)]
     )
     impassable = models.BooleanField(default=False)
+    blocks_sight = models.BooleanField(default=False)
 
     class Meta:
         # In der Reihenfolge der Typen im Spiel -- so legt die Migration sie an.

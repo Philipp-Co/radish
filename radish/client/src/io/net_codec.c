@@ -734,6 +734,7 @@ static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile)
     out->movement_modifier = tile->movement_modifier;
     out->cover = tile->cover;
     out->impassable = tile->impassable;
+    out->blocks_sight = tile->blocks_sight;
 
     switch(tile->type)
     {

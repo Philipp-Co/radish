@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Schlaegt migrate fehl (z.B. Postgres noch nicht bereit), bricht der Container
+# ab, statt daphne mit nicht migrierter Datenbank zu starten. Compose startet
+# ihn dann neu (restart: unless-stopped in docker-compose.yaml), bis die
+# Datenbank erreichbar ist.
+set -e
+
 python manage.py migrate --noinput
 
 # Timeouts/Limits bewusst explizit statt Daphne-Default:

@@ -31,7 +31,15 @@ COPY jsmn/ jsmn/
 # uebersetzt die protobuf-c-Laufzeit (protobuf-c/protobuf-c.c) selbst aus ihm,
 # statt sie zu verlinken -- siehe dort fuer die Begruendung.
 COPY protobuf-c/ protobuf-c/
-COPY radish/ radish/
+# Nur, was der Host-Build von radish braucht (radish/CMakeLists.txt ohne
+# Emscripten: game/, protobuf/, game-server-core/ und cmake/) -- nicht ganz
+# radish/. Sonst loeste jede Aenderung an Frontend, Backend oder den Bildern
+# einen kompletten Neubau der C-Programme aus.
+COPY radish/CMakeLists.txt radish/
+COPY radish/cmake/ radish/cmake/
+COPY radish/game/ radish/game/
+COPY radish/protobuf/ radish/protobuf/
+COPY radish/game-server-core/ radish/game-server-core/
 
 # Erst Zucchini als eigenes Dachprojekt (zucchini_server + Admin-Client),
 # dann radish ohne Emscripten (Bibliotheken + Server aus
@@ -69,10 +77,21 @@ COPY radish/assets/worlds/ /usr/local/share/radish/worlds/
 ENV RADISH_WORLD_PATH=/usr/local/share/radish/worlds/default.json
 
 WORKDIR /app
-COPY radish/game-server/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements.txt nur fuer die Installation, nicht ins Image.
+COPY radish/game-server/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY radish/game-server/ /app/
+# Nur, was zur Laufzeit gebraucht wird: die beiden Python-Pakete. gunicorn
+# laedt config.wsgi direkt, manage.py braucht es im Image nicht. Bewusst nicht
+# radish/game-server/ als Ganzes -- README, .gitignore und neue Dateien
+# daneben sollen nicht ungefragt im Image landen. Tests, __pycache__/ und
+# Editor-Reste in den Paketen haelt die .dockerignore fern.
+COPY radish/game-server/config/ /app/config/
+COPY radish/game-server/instances/ /app/instances/
+
+# Produktionsmodus (siehe DEBUG/SECRET_KEY in config/settings.py): ohne
+# DJANGO_SECRET_KEY aus der Umgebung startet Django nicht.
+ENV DJANGO_DEBUG=0
 
 # supervisord haelt Django und die Game-Instanz nebeneinander am Leben und
 # startet neu, was abstuerzt (siehe supervisord.conf). entrypoint.sh bleibt
@@ -84,7 +103,24 @@ COPY docker/game-server/entrypoint.sh /entrypoint.sh
 COPY docker/game-server/game-instance-entrypoint.sh /usr/local/bin/game-instance-entrypoint.sh
 COPY docker/game-server/register_instance.py /usr/local/bin/register_instance.py
 COPY docker/game-server/supervisord.conf /etc/supervisord.conf
-RUN chmod +x /entrypoint.sh /usr/local/bin/game-instance-entrypoint.sh /usr/local/bin/register_instance.py
+# 755 bzw. a+rX statt nur +x: COPY uebernimmt die Rechte aus dem
+# Arbeitsverzeichnis, und dort sind manche Dateien nur fuer ihren Besitzer
+# lesbar (0600/0711) -- fuer root egal, fuer den Benutzer radish unten nicht.
+RUN chmod 755 /entrypoint.sh /usr/local/bin/game-instance-entrypoint.sh /usr/local/bin/register_instance.py \
+    && chmod 644 /etc/supervisord.conf \
+    && chmod -R a+rX /app
+
+# Nicht als root, aber alle Prozesse unter demselben Benutzer (siehe
+# supervisord.conf). Beschreibbar braucht radish nur zwei Verzeichnisse:
+# /run/radish fuer die Dateien der Instanzen (RADISH_GAME_DATA_DIR, siehe
+# game-instance-entrypoint.sh) und /run/supervisord fuer PID-Datei und Socket
+# von supervisord. Die IPC von zucchini liegt unter /tmp und wird mit 0666
+# angelegt (zucchini/utils/src/ipc/), das geht ohne Weiteres. Code und Programme
+# gehoeren weiter root und sind fuer radish nur lesbar.
+RUN addgroup -S radish && adduser -S -D -H -G radish radish \
+    && mkdir -p /run/radish /run/supervisord \
+    && chown radish:radish /run/radish /run/supervisord
+USER radish
 
 EXPOSE 8000
 EXPOSE 9999-10002/udp

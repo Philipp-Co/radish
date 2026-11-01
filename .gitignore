@@ -10,6 +10,8 @@ radish/backend/.venv/
 radish/game-server/db.sqlite3
 radish/game-server/.venv/
 *.wasm
+# Vom Client-Build erzeugt (radish/client/publish_assets.cmake).
+radish/web/assets/
 jsmn/
 protobuf-c/
 radish/frontend/node_modules/

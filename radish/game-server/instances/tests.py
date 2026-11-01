@@ -8,7 +8,7 @@ from unittest import mock
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient, APITestCase
+from rest_framework.test import APIClient, APISimpleTestCase
 
 
 # Gekuerzt -- vollstaendig siehe radish/game/schema/spielstart.schema.json.
@@ -28,7 +28,7 @@ START = {**SPIELDATEN, "zugangscodes": CODES}
 
 
 @mock.patch("instances.views._prepare_game")
-class GameStartViewTests(APITestCase):
+class GameStartViewTests(APISimpleTestCase):
     def setUp(self):
         self.url = reverse("instances:game-start", args=["game-instance-1"])
 
@@ -84,7 +84,7 @@ class GameStartViewTests(APITestCase):
 
 
 @mock.patch("instances.views._cancel_game")
-class GameCancelViewTests(APITestCase):
+class GameCancelViewTests(APISimpleTestCase):
     def setUp(self):
         self.url = reverse("instances:game-cancel", args=["game-instance-1"])
 
@@ -103,7 +103,7 @@ class GameCancelViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
-class GameDataFileTests(APITestCase):
+class GameDataFileTests(APISimpleTestCase):
     """
     Start und Abbruch gegen ein echtes Verzeichnis (RADISH_GAME_DATA_DIR auf
     ein temporaeres umgebogen); nur das Signal selbst ist gemockt.

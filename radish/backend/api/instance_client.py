@@ -114,6 +114,7 @@ def _terrain_document():
             "bewegung": entry.movement_modifier,
             "deckung": entry.cover,
             "unbegehbar": entry.impassable,
+            "sichtblockierend": entry.blocks_sight,
         }
         for entry in terrain
     ]

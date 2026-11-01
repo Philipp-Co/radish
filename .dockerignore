@@ -1,7 +1,10 @@
 # Der Build-Kontext des Backends ist die Wurzel des Repositorys (es braucht
 # radish/, jsmn/ und zucchini/ zusammen). Ohne diese Liste ginge emsdk/ mit --
-# einige Gigabyte, die kein Image je anfasst. Auch der Kontext von web/ ist
-# die Wurzel und profitiert mit.
+# einige Gigabyte, die kein Image je anfasst.
+#
+# Muster ohne "**/" gelten nur relativ zur Wurzel: "__pycache__/" trifft
+# radish/backend/api/__pycache__/ nicht. Was in jeder Tiefe weg soll, steht
+# deshalb mit "**/" da.
 
 .git/
 .gitignore
@@ -19,6 +22,7 @@ radish/build/
 # "wasm-builder" selbst (docker/backend/Dockerfile).
 radish/web/client.js
 radish/web/client.wasm
+radish/web/assets/
 
 # Editor-Beiwerk.
 radish/.cache/
@@ -28,10 +32,18 @@ radish/compile_commands.json
 # ihre Abhaengigkeiten selbst aus der jeweiligen requirements.txt.
 radish/backend/.venv/
 radish/game-server/.venv/
-__pycache__/
+**/__pycache__/
+**/*.pyc
 
-# Frontend-Abhaengigkeiten/-Build werden im Node-Stage von
-# docker/web/Dockerfile frisch installiert bzw. gebaut.
+# Die Tests von Backend und game-server laufen nur ausserhalb der Images.
+radish/backend/**/tests.py
+radish/game-server/**/tests.py
+
+# Ein lokales `manage.py collectstatic`; das Image sammelt selbst.
+radish/backend/staticfiles/
+
+# Frontend-Abhaengigkeiten/-Build werden in der Stage "frontend-builder" von
+# docker/backend/Dockerfile frisch installiert bzw. gebaut.
 radish/frontend/node_modules/
 radish/frontend/dist/
 radish/frontend/.angular/
@@ -41,6 +53,6 @@ radish/frontend/.angular/
 # "backend-db") -- die soll nicht mehr ins Image gelangen.
 radish/backend/db.sqlite3
 radish/game-server/db.sqlite3
-*.swp
+**/*.swp
 
 README.md

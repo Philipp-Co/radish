@@ -155,7 +155,13 @@ typedef enum
     ///
     RAD_CONTROL_ERROR_INVALID_PATH,
     RAD_CONTROL_ERROR_IMPASSABLE,
-    RAD_CONTROL_ERROR_OUT_OF_MOVEMENT
+    RAD_CONTROL_ERROR_OUT_OF_MOVEMENT,
+
+    ///
+    /// Aus dem Angreifen (RAD_GameCheckAttack), hinten angehaengt: zwischen
+    /// Einheit und Ziel versperrt Gelaende oder eine Einheit die Sicht.
+    ///
+    RAD_CONTROL_ERROR_NO_LINE_OF_SIGHT
 } RAD_ControlResult_t;
 
 ///

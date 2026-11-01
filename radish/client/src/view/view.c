@@ -187,6 +187,9 @@ static void RAD_ViewFillUnitInfo(RAD_UnitInfoView_t *unit_info_view, const RAD_C
 static bool RAD_ViewSameLoadout(const RAD_ClientMember_t *a, const RAD_ClientMember_t *b);
 static void RAD_ViewOnShownUnitChanged(void *user_argument, const RAD_ClientUnit_t *unit);
 static void RAD_ViewOnShownUnitRemoved(void *user_argument, const RAD_ClientUnit_t *unit);
+static void RAD_ViewOnAim(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
+static void RAD_ViewOnFire(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
+static void RAD_ViewOnReleaseAim(void *user_argument, RAD_NetEntityId_t unit);
 static void RAD_ViewMeasureFps(RAD_ViewFpsMetric_t *fps, RAD_DebugView_t *debug_view);
 static void RAD_ViewStartUpdateTimeMeasurement(RAD_ViewUpdateTimeMetric_t *update_time);
 static void RAD_ViewEndUpdateTimeMeasurement(RAD_ViewUpdateTimeMetric_t *update_time, RAD_DebugView_t *debug_view);
@@ -358,6 +361,13 @@ RAD_RootView_t* RAD_CreateView(
         return NULL;
     }
     RAD_ContextMenuViewSetColor(view->context_menu_view, (SDL_Color){ 96, 96, 96, 160 });
+    // Waehlt der Spieler ein Ziel, richtet die IsoMapView den Turm darauf.
+    RAD_ContextMenuViewSetAiming(view->context_menu_view, (RAD_ContextMenuViewAiming_t){
+        .user_argument = view->iso_map_view,
+        .aim = RAD_ViewOnAim,
+        .fire = RAD_ViewOnFire,
+        .release = RAD_ViewOnReleaseAim
+    });
 
     // In der linken oberen Ecke, hoechstens so breit wie die Zeichenflaeche;
     // die Hoehe folgt ihrem Inhalt.
@@ -666,6 +676,26 @@ static void RAD_ViewShowUnit(RAD_RootView_t *view, const RAD_ClientUnit_t *unit)
             .removed = RAD_ViewOnShownUnitRemoved
         });
     }
+}
+
+//
+// Zielen aus der ContextMenuView (RAD_ContextMenuViewAiming_t). "user_argument"
+// ist die IsoMapView.
+//
+
+static void RAD_ViewOnAim(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y)
+{
+    RAD_IsoMapViewAim((RAD_IsoMapView_t*)user_argument, unit, x, y);
+}
+
+static void RAD_ViewOnFire(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y)
+{
+    RAD_IsoMapViewFire((RAD_IsoMapView_t*)user_argument, unit, x, y);
+}
+
+static void RAD_ViewOnReleaseAim(void *user_argument, RAD_NetEntityId_t unit)
+{
+    RAD_IsoMapViewReleaseAim((RAD_IsoMapView_t*)user_argument, unit);
 }
 
 static void RAD_ViewOnShownUnitChanged(void *user_argument, const RAD_ClientUnit_t *unit)

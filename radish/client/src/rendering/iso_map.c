@@ -15,7 +15,7 @@ static int RAD_MapDepthComparator(const void *a, const void *b);
 #define RAD_ISO_MAP_LAYERS 3
 
 static void RAD_IsoMapRemoveObject(RAD_IsoMap_t *map, RAD_IsoObject_t *object);
-static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, RAD_NetEntityId_t id);
+static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit);
 
 static void RAD_IsoMapFreeEntities(RAD_IsoObject_t *object);
 static bool RAD_IsoMapInBounds(int32_t x, int32_t y);
@@ -226,18 +226,64 @@ RAD_IsoObject_t* RAD_IsoObjectAtScreenCoordinates(RAD_IsoMap_t *map, int32_t scr
 }
 
 ///
-/// Wo eine Figur ausserhalb eines Feldes auf dem Bildschirm steht, ohne Kamera:
-/// dieselbe Rechnung wie RAD_CreateIsoObject fuer ein Feld, nur mit
-/// Nachkommastellen.
+/// Wo eine Figur ausserhalb eines Feldes oder ein Effekt bei (x, y) auf dem
+/// Bildschirm steht, ohne Kamera: dieselbe Rechnung wie RAD_CreateIsoObject fuer
+/// ein Feld, nur mit Nachkommastellen.
 ///
-static float RAD_IsoMapEntityScreenX(const RAD_IsoEntity_t *entity)
+static float RAD_IsoMapLooseScreenX(float x, float y)
 {
-    return (entity->x + entity->y) * (float)(RAD_ISO_TILE_WIDTH / 2);
+    return (x + y) * (float)(RAD_ISO_TILE_WIDTH / 2);
 }
 
-static float RAD_IsoMapEntityScreenY(const RAD_IsoEntity_t *entity)
+static float RAD_IsoMapLooseScreenY(float x, float y)
 {
-    return (entity->y - entity->x) * (float)(RAD_ISO_TILE_HEIGHT / 2);
+    return (y - x) * (float)(RAD_ISO_TILE_HEIGHT / 2);
+}
+
+///
+/// Fuehrt einen Eintrag ausserhalb eines Feldes in die Zeichenliste ein; false,
+/// wenn er schon darin steht.
+///
+static bool RAD_IsoMapAddLoose(RAD_IsoMap_t *map, RAD_IsoRenderable_t renderable)
+{
+    for(int32_t i = 0; i < map->number_of_iso_objects; ++i)
+    {
+        if((map->iso_objects[i].type == renderable.type) && (map->iso_objects[i].entity == renderable.entity))
+        {
+            return false;
+        }
+    }
+
+    map->iso_objects[map->number_of_iso_objects++] = renderable;
+    qsort(
+        map->iso_objects, map->number_of_iso_objects, sizeof(RAD_IsoRenderable_t), RAD_MapDepthComparator
+    );
+    return true;
+}
+
+///
+/// Nimmt einen Eintrag ausserhalb eines Feldes aus der Zeichenliste; false,
+/// wenn er nicht darin stand.
+///
+static bool RAD_IsoMapRemoveLoose(RAD_IsoMap_t *map, RAD_IsoRenderableType_t type, const void *pointer)
+{
+    for(int32_t i = 0; i < map->number_of_iso_objects; ++i)
+    {
+        if((map->iso_objects[i].type != type) || ((const void*)map->iso_objects[i].entity != pointer))
+        {
+            continue;
+        }
+
+        // Verschieben haelt die Reihenfolge der uebrigen, wie bei einem Feld
+        // (RAD_IsoMapRemoveObject).
+        for(int32_t j = i + 1; j < map->number_of_iso_objects; ++j)
+        {
+            map->iso_objects[j - 1] = map->iso_objects[j];
+        }
+        map->number_of_iso_objects--;
+        return true;
+    }
+    return false;
 }
 
 void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map)
@@ -245,7 +291,7 @@ void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map)
     // Wer eine Figur eingetragen hat, darf sie jederzeit versetzen
     // (RAD_IsoMapAddEntity) -- ihre Tiefe stimmt also nur, wenn hier neu sortiert
     // wird. Ohne Figuren aendert sich die Reihenfolge nur beim Eintragen.
-    if(map->number_of_entities > 0)
+    if((map->number_of_entities > 0) || (map->number_of_effects > 0))
     {
         qsort(
             map->iso_objects, map->number_of_iso_objects, sizeof(RAD_IsoRenderable_t), RAD_MapDepthComparator
@@ -259,14 +305,22 @@ void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map)
         {
             RAD_RenderIsoObject(renderer, renderable->object, 0, 0, &map->camera);
         }
-        else
+        else if(renderable->type == RAD_ISO_RENDERABLE_ENTITY)
         {
             // Wie RAD_RenderIsoObject: Kamera abziehen, jede Ebene eine Kachel hoeher.
             const RAD_IsoEntity_t *entity = renderable->entity;
-            const int32_t screen_x = (int32_t)lroundf(RAD_IsoMapEntityScreenX(entity)) - map->camera.x;
-            const int32_t screen_y = (int32_t)lroundf(RAD_IsoMapEntityScreenY(entity)) - map->camera.y
+            const int32_t screen_x = (int32_t)lroundf(RAD_IsoMapLooseScreenX(entity->x, entity->y)) - map->camera.x;
+            const int32_t screen_y = (int32_t)lroundf(RAD_IsoMapLooseScreenY(entity->x, entity->y)) - map->camera.y
                                      + entity->layer * -RAD_ISO_TILE_HEIGHT;
             RAD_RenderIsoEntity(renderer, entity, screen_x, screen_y);
+        }
+        else
+        {
+            const RAD_IsoEffect_t *effect = renderable->effect;
+            const int32_t screen_x = (int32_t)lroundf(RAD_IsoMapLooseScreenX(effect->x, effect->y)) - map->camera.x;
+            const int32_t screen_y = (int32_t)lroundf(RAD_IsoMapLooseScreenY(effect->x, effect->y)) - map->camera.y
+                                     + effect->layer * -RAD_ISO_TILE_HEIGHT;
+            RAD_RenderIsoEffect(renderer, effect, screen_x, screen_y);
         }
     }
     /*
@@ -292,27 +346,33 @@ void RAD_RenderIsoMap(SDL_Renderer *renderer, RAD_IsoMap_t *map)
 
 ///
 /// Ebene und Tiefe eines Eintrags: fuer ein Feld wie angelegt, fuer eine Figur
-/// aus ihrer Position (RAD_IsoMapEntityScreenY).
+/// oder einen Effekt aus der Position (RAD_IsoMapLooseScreenY).
 ///
 static void RAD_MapDepthOf(const RAD_IsoRenderable_t *renderable, int32_t *layer, float *screen_y)
 {
     if(renderable->type == RAD_ISO_RENDERABLE_OBJECT)
     {
-        *layer = renderable->object->layer;
+        *layer = 0;
         *screen_y = (float)renderable->object->screen_y;
+    }
+    else if(renderable->type == RAD_ISO_RENDERABLE_ENTITY)
+    {
+        *layer = 1;
+        *screen_y = RAD_IsoMapLooseScreenY(renderable->entity->x, renderable->entity->y);
     }
     else
     {
-        *layer = renderable->entity->layer;
-        *screen_y = RAD_IsoMapEntityScreenY(renderable->entity);
+        *layer = 1;
+        *screen_y = RAD_IsoMapLooseScreenY(renderable->effect->x, renderable->effect->y);
     }
 }
 
 ///
 /// Hinten zuerst: nach Ebene, dann nach Tiefe. Steht eine Figur so tief wie ein
-/// Feld, kommt das Feld zuerst -- sie liegt darauf. qsort ist nicht stabil;
-/// ohne diese Regel koennte sie von Frame zu Frame mal unter, mal ueber ihm
-/// landen. Zwei Figuren gleicher Tiefe ordnet ihre Id.
+/// Feld, kommt das Feld zuerst -- sie liegt darauf --, ein Effekt kommt nach
+/// beiden (RAD_IsoRenderableType_t). qsort ist nicht stabil; ohne diese Regel
+/// koennte sie von Frame zu Frame mal unter, mal ueber ihm landen. Zwei Figuren
+/// gleicher Tiefe ordnet ihre Id, zwei Effekte ihre Adresse.
 ///
 static int RAD_MapDepthComparator(const void *a, const void *b)
 {
@@ -334,7 +394,7 @@ static int RAD_MapDepthComparator(const void *a, const void *b)
     }
     if(renderable_a->type != renderable_b->type)
     {
-        return (renderable_a->type == RAD_ISO_RENDERABLE_OBJECT) ? -1 : 1;
+        return (renderable_a->type < renderable_b->type) ? -1 : 1;
     }
     if(renderable_a->type == RAD_ISO_RENDERABLE_ENTITY)
     {
@@ -342,54 +402,50 @@ static int RAD_MapDepthComparator(const void *a, const void *b)
         const RAD_NetEntityId_t id_b = renderable_b->entity->id;
         return (id_a < id_b) ? -1 : (id_a > id_b) ? 1 : 0;
     }
+    if(renderable_a->type == RAD_ISO_RENDERABLE_EFFECT)
+    {
+        const uintptr_t address_a = (uintptr_t)renderable_a->effect;
+        const uintptr_t address_b = (uintptr_t)renderable_b->effect;
+        return (address_a < address_b) ? -1 : (address_a > address_b) ? 1 : 0;
+    }
     return 0;
 }
 
 bool RAD_IsoMapAddEntity(RAD_IsoMap_t *map, RAD_IsoEntity_t *entity)
 {
-    if(map->number_of_entities >= RAD_ISO_MAP_ENTITIES_MAX)
+    if(map->number_of_entities >= RAD_ISO_MAP_ENTITIES_MAX
+       || !RAD_IsoMapAddLoose(map, (RAD_IsoRenderable_t){ .type = RAD_ISO_RENDERABLE_ENTITY, .entity = entity }))
     {
         return false;
     }
-
-    for(int32_t i = 0; i < map->number_of_iso_objects; ++i)
-    {
-        if((map->iso_objects[i].type == RAD_ISO_RENDERABLE_ENTITY) && (map->iso_objects[i].entity == entity))
-        {
-            return false;
-        }
-    }
-
-    map->iso_objects[map->number_of_iso_objects++] = (RAD_IsoRenderable_t){
-        .type = RAD_ISO_RENDERABLE_ENTITY,
-        .entity = entity
-    };
     map->number_of_entities++;
-
-    qsort(
-        map->iso_objects, map->number_of_iso_objects, sizeof(RAD_IsoRenderable_t), RAD_MapDepthComparator
-    );
     return true;
 }
 
 void RAD_IsoMapRemoveEntity(RAD_IsoMap_t *map, const RAD_IsoEntity_t *entity)
 {
-    for(int32_t i = 0; i < map->number_of_iso_objects; ++i)
+    if(RAD_IsoMapRemoveLoose(map, RAD_ISO_RENDERABLE_ENTITY, entity))
     {
-        if((map->iso_objects[i].type != RAD_ISO_RENDERABLE_ENTITY) || (map->iso_objects[i].entity != entity))
-        {
-            continue;
-        }
-
-        // Verschieben haelt die Reihenfolge der uebrigen, wie bei einem Feld
-        // (RAD_IsoMapRemoveObject).
-        for(int32_t j = i + 1; j < map->number_of_iso_objects; ++j)
-        {
-            map->iso_objects[j - 1] = map->iso_objects[j];
-        }
-        map->number_of_iso_objects--;
         map->number_of_entities--;
-        return;
+    }
+}
+
+bool RAD_IsoMapAddEffect(RAD_IsoMap_t *map, RAD_IsoEffect_t *effect)
+{
+    if(map->number_of_effects >= RAD_ISO_MAP_EFFECTS_MAX
+       || !RAD_IsoMapAddLoose(map, (RAD_IsoRenderable_t){ .type = RAD_ISO_RENDERABLE_EFFECT, .effect = effect }))
+    {
+        return false;
+    }
+    map->number_of_effects++;
+    return true;
+}
+
+void RAD_IsoMapRemoveEffect(RAD_IsoMap_t *map, const RAD_IsoEffect_t *effect)
+{
+    if(RAD_IsoMapRemoveLoose(map, RAD_ISO_RENDERABLE_EFFECT, effect))
+    {
+        map->number_of_effects--;
     }
 }
 
@@ -431,7 +487,7 @@ void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile)
     // Ein Siegfeld zeichnet sich selbst anders (RAD_RenderIsoObject).
     map->data[layer][y][x].victory = tile->victory;
 
-    RAD_IsoMapSetEntity(map, x, y, (tile->unit != NULL) ? tile->unit->id : RAD_NET_ENTITY_NONE);
+    RAD_IsoMapSetEntity(map, x, y, tile->unit);
 }
 
 void RAD_IsoMapRemoveTile(RAD_IsoMap_t *map, uint32_t x, uint32_t y)
@@ -481,33 +537,44 @@ static void RAD_IsoMapRemoveObject(RAD_IsoMap_t *map, RAD_IsoObject_t *object)
 }
 
 ///
-/// Setzt die Einheit auf Feld (x, y) oder nimmt sie weg (RAD_NET_ENTITY_NONE).
-/// Einheiten stehen auf Ebene 0, in RAD_ISO_UNIT_DEPTH; die anderen Tiefen
-/// bleiben, wie sie sind.
+/// Setzt die Einheit "unit" auf Feld (x, y) oder nimmt sie weg (NULL). Einheiten
+/// stehen auf Ebene 0, in RAD_ISO_UNIT_DEPTH; die anderen Tiefen bleiben, wie
+/// sie sind. Das Bild der Figur folgt dem Typ der Einheit (RAD_IsoUnitSpriteOf);
+/// kommt eine andere Einheit aufs Feld, gilt ihre Blickrichtung als nicht gesetzt.
 ///
-static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, RAD_NetEntityId_t id)
+static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit)
 {
-    RAD_IsoEntity_t **unit = &map->data[0][y][x].entities[RAD_ISO_UNIT_DEPTH];
+    RAD_IsoEntity_t **entity = &map->data[0][y][x].entities[RAD_ISO_UNIT_DEPTH];
 
-    if(id == RAD_NET_ENTITY_NONE)
+    if(unit == NULL)
     {
-        free(*unit);
-        *unit = NULL;
+        free(*entity);
+        *entity = NULL;
         return;
     }
 
-    if(*unit == NULL)
+    if(*entity == NULL)
     {
         // calloc: Position und Ebene gelten erst ausserhalb eines Feldes
         // (rendering/entity.h), bis dahin 0.
-        *unit = calloc(1, sizeof(RAD_IsoEntity_t));
-        if(*unit == NULL)
+        *entity = calloc(1, sizeof(RAD_IsoEntity_t));
+        if(*entity == NULL)
         {
             return;
         }
+        (*entity)->id = RAD_NET_ENTITY_NONE;
     }
 
-    (*unit)->id = id;
+    if((*entity)->id != unit->id)
+    {
+        (*entity)->facing = RAD_ISO_FACING_X_MINUS;
+        (*entity)->facing_set = false;
+        (*entity)->turning = false;
+        (*entity)->turret_angle = 0.0f;
+    }
+
+    (*entity)->id = unit->id;
+    (*entity)->sprite = RAD_IsoUnitSpriteOf(unit->name);
 }
 
 ///

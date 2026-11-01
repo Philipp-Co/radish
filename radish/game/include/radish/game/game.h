@@ -125,7 +125,13 @@ typedef enum
     /// Der Weg kostet mehr, als die Einheit an Bewegung hat (RAD_Unit_t.movement,
     /// RAD_TileMovementCost).
     ///
-    RAD_GAME_ERROR_OUT_OF_MOVEMENT
+    RAD_GAME_ERROR_OUT_OF_MOVEMENT,
+
+    ///
+    /// Zwischen Einheit und Ziel liegt ein sichtblockierendes Feld
+    /// (RAD_Terrain_t.blocks_sight) oder eine Einheit (RAD_GameHasLineOfSight).
+    ///
+    RAD_GAME_ERROR_NO_LINE_OF_SIGHT
 } RAD_GameResult_t;
 
 ///
@@ -430,6 +436,8 @@ RAD_GameResult_t RAD_GameCheckMovePath(const RAD_Game_t *game, RAD_UnitId_t unit
 ///     RAD_GAME_ERROR_UNIT_ALREADY_ATTACKED  sie hat in diesem Zug schon angegriffen
 ///     RAD_GAME_ERROR_OUT_OF_BOUNDS          (x, y) liegt ausserhalb der Welt
 ///     RAD_GAME_ERROR_TARGET_OUT_OF_RANGE    keine ihrer Waffen reicht bis (x, y)
+///     RAD_GAME_ERROR_NO_LINE_OF_SIGHT       sie sieht (x, y) nicht
+///                                           (RAD_GameHasLineOfSight)
 ///
 /// **Die Reichweite:** die Entfernung zum Ziel zaehlt in Feldern waagerecht plus
 /// senkrecht, wie ein Weg ueber die vier Nachbarn. Wenigstens eine Waffe
@@ -439,6 +447,26 @@ RAD_GameResult_t RAD_GameCheckMovePath(const RAD_Game_t *game, RAD_UnitId_t unit
 /// ebenso. Was der Angriff bewirkt, steht in control/attack_unit.c.
 ///
 RAD_GameResult_t RAD_GameCheckAttack(const RAD_Game_t *game, RAD_UnitId_t unit, int32_t x, int32_t y);
+
+///
+/// Sieht das Feld (from_x, from_y) das Feld (to_x, to_y)? Die Sichtlinie hinter
+/// RAD_GAME_ERROR_NO_LINE_OF_SIGHT.
+///
+/// **Die Linie** laeuft von der Mitte des einen Feldes zur Mitte des anderen.
+/// Geprueft wird jedes Feld, durch das sie geht, ausser den beiden Enden: es
+/// versperrt die Sicht, wenn sein Gelaende sichtblockierend ist
+/// (RAD_Terrain_t.blocks_sight) oder eine Einheit darauf steht -- gleich wessen.
+/// Ein Ziel im Wald sieht man also, eines hinter dem Wald nicht.
+///
+/// **Geht sie genau durch eine Ecke**, streift sie die beiden Felder daneben nur.
+/// Versperrt ist sie dort erst, wenn beide die Sicht versperren: durch eine
+/// diagonale Luecke sieht man hindurch. Damit ist die Sicht gegenseitig -- wer
+/// gesehen wird, sieht zurueck.
+///
+/// Nachbarn sehen sich immer, ein Feld sich selbst auch. false, wenn "game" NULL
+/// ist oder eines der Enden ausserhalb der Welt liegt.
+///
+bool RAD_GameHasLineOfSight(const RAD_Game_t *game, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y);
 
 ///
 /// Kurzform fuer Anzeigen: true, wenn die Einheit in diesem Zug noch ziehen bzw.

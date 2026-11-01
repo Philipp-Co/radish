@@ -52,6 +52,11 @@ message NetTile
     sint32 movement_modifier = 8;
     uint32 cover = 9;
     bool impassable = 10;
+
+    // Ob das Feld die direkte Sicht auf die Felder dahinter versperrt
+    // (RAD_Terrain_t.blocks_sight). Der Client markiert damit beim Angriff nur,
+    // was der Server annimmt (RAD_GameHasLineOfSight).
+    bool blocks_sight = 11;
 }
 
 message NetTileCreatedEvent 

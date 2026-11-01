@@ -22,10 +22,12 @@ Range-Support) -- fuer dieses Projekt (kleiner Spiele-Client, keine
 externen Abhaengigkeiten gewuenscht) reicht das aber.
 """
 
+import re
 from pathlib import Path
 
 from django.conf import settings
 from django.http import Http404
+from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.views.static import serve
 
 # radish/backend/config/settings.py setzt BASE_DIR = radish/backend/ --
@@ -35,9 +37,69 @@ FRONTEND_DIST_DIR = Path(settings.BASE_DIR).parent / "frontend" / "dist" / "radi
 WASM_DIR = Path(settings.BASE_DIR).parent / "web"
 
 
+def _accepts_gzip(request):
+    """Ob Accept-Encoding gzip erlaubt (und nicht per "gzip;q=0" ablehnt)."""
+    for part in request.headers.get("Accept-Encoding", "").split(","):
+        name, *params = (p.strip() for p in part.split(";"))
+        if name.lower() != "gzip":
+            continue
+        for param in params:
+            if param.startswith("q="):
+                try:
+                    return float(param[2:]) > 0
+                except ValueError:
+                    return False
+        return True
+    return False
+
+
+# Dateien mit Inhalts-Hash im Namen: die Angular-Bundles ("main-R6I5S75B.js",
+# angular.json "outputHashing": "all") und die Client-Assets
+# ("turn.04b160980f5a.png", radish/client/publish_assets.cmake). Aendert sich
+# der Inhalt, aendert sich der Name -- der Browser darf sie also behalten,
+# ohne je nachzufragen.
+_HASHED_FILE = re.compile(r"(-[A-Z0-9]{8}\.(js|css)|\.[0-9a-f]{12}\.[a-z0-9]+)$")
+
+
+def _set_cache_control(response, filename):
+    """
+    Gehashte Dateien ein Jahr und unveraenderlich; alles andere (index.html,
+    client.js/client.wasm, assets/manifest.json) traegt einen festen Namen und
+    wird bei jeder Verwendung per If-Modified-Since nachgeprueft (304, solange
+    unveraendert) -- sonst liefe ein alter client.js mit einem neuen Manifest.
+    """
+    if _HASHED_FILE.search(filename):
+        patch_cache_control(response, max_age=31536000, immutable=True, public=True)
+    else:
+        patch_cache_control(response, no_cache=True)
+
+
+def _serve(request, filename, document_root):
+    """
+    Wie serve(), bevorzugt aber eine vorkomprimierte "<filename>.gz" daneben
+    (im Docker-Image beim Build erzeugt, siehe docker/backend/Dockerfile).
+    serve() setzt fuer "client.js.gz" selbst Content-Type text/javascript und
+    Content-Encoding gzip (mimetypes.guess_type erkennt die Endung als
+    Kodierung). Ohne .gz -- lokal oder bei Bildern -- das Original wie bisher.
+    """
+    if _accepts_gzip(request):
+        try:
+            response = serve(request, f"{filename}.gz", document_root=document_root)
+        except Http404:
+            pass
+        else:
+            patch_vary_headers(response, ("Accept-Encoding",))
+            _set_cache_control(response, filename)
+            return response
+    response = serve(request, filename, document_root=document_root)
+    patch_vary_headers(response, ("Accept-Encoding",))
+    _set_cache_control(response, filename)
+    return response
+
+
 def index(request):
     """Liefert das gebaute Angular-index.html unter "/"."""
-    return serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
+    return _serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
 
 
 def wasm_file(request, filename):
@@ -50,7 +112,7 @@ def wasm_file(request, filename):
     (ueber django.utils._os.safe_join) und liefert 404 bei unbekannten oder
     ausserhalb von WASM_DIR liegenden Pfaden.
     """
-    return serve(request, filename, document_root=WASM_DIR)
+    return _serve(request, filename, document_root=WASM_DIR)
 
 
 def static_file(request, filename):
@@ -69,6 +131,6 @@ def static_file(request, filename):
     docker/web/default.conf.
     """
     try:
-        return serve(request, filename, document_root=FRONTEND_DIST_DIR)
+        return _serve(request, filename, document_root=FRONTEND_DIST_DIR)
     except Http404:
-        return serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
+        return _serve(request, "index.html", document_root=FRONTEND_DIST_DIR)

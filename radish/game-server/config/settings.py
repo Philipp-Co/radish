@@ -29,48 +29,53 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# Siehe https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+#
+# Wie im Backend (radish/backend/config/settings.py): ohne
+# Umgebungsvariablen Entwicklungsmodus (lokales `manage.py test`). Das
+# Docker-Image setzt DJANGO_DEBUG=0 (siehe docker/game-server/Dockerfile) und
+# braucht dann einen eigenen DJANGO_SECRET_KEY -- ohne startet es nicht.
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure--thi5fbtf5!a$^6%j_cm6adi2_rruv@$y=2xj%1%@xpkm&ny3i'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+_DEV_SECRET_KEY = 'django-insecure--thi5fbtf5!a$^6%j_cm6adi2_rruv@$y=2xj%1%@xpkm&ny3i'
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or (_DEV_SECRET_KEY if DEBUG else None)
+if not SECRET_KEY:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY muss gesetzt sein, wenn DJANGO_DEBUG nicht 1 ist.")
 
 # "game-server" ist der Compose-Servicename, unter dem das Backend diesen
 # Container erreicht (siehe docker-compose.yaml). Ohne ihn lehnt Django jeden
-# Aufruf des Backends mit 400 ab -- die leere Liste erlaubt auch mit DEBUG nur
-# localhost.
-ALLOWED_HOSTS = ["game-server", "localhost", "127.0.0.1"]
+# Aufruf des Backends mit 400 ab. Fuer einen anderen Hostnamen kommagetrennt
+# per DJANGO_ALLOWED_HOSTS.
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "game-server,localhost,127.0.0.1").split(",")
 
 
 # Application definition
 
+# Nur die Instanz-API (instances/), die das Backend aufruft -- kein Admin,
+# keine Benutzer, keine Sessions, keine Static-Files: game-server hat keine
+# eigenen Daten und keine Oberflaeche fuer den Browser.
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
     'rest_framework',
     'instances',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# `manage.py check --deploy` mahnt HSTS, die Umleitung auf HTTPS und ein
+# Secure-CSRF-Cookie an. Alle drei betreffen Browser; die Instanz-API ruft nur
+# das Backend im Docker-Netz auf.
+SILENCED_SYSTEM_CHECKS = ["security.W004", "security.W008", "security.W016"]
 
 ROOT_URLCONF = 'config.urls'
 
@@ -82,8 +87,6 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
             ],
         },
     },
@@ -92,34 +95,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+# Keine Datenbank: game-server hat keine Models, und was er zwischen den
+# Aufrufen festhalten muss, liegt als Datei bei der Instanz (siehe
+# RADISH_GAME_DATA_DIR unten). Deshalb auch kein `migrate` beim Start
+# (docker/game-server/entrypoint.sh).
+DATABASES = {}
 
 
 # Internationalization
@@ -134,16 +114,17 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
-STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
+# Nur JSON: die API ruft ausschliesslich das Backend auf. DRFs Browsable API
+# braeuchte Templates und Static-Files (staticfiles), die es hier nicht gibt.
+#
+# UNAUTHENTICATED_USER None: ohne Anmeldung (siehe instances/views.py,
+# InstanceAPIView) setzte DRF sonst request.user auf
+# django.contrib.auth.models.AnonymousUser -- und braeuchte dafuer die App
+# django.contrib.auth samt Datenbank.
+REST_FRAMEWORK = {
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "UNAUTHENTICATED_USER": None,
+}
 
 # Wo die Instanzen ihre Dateien austauschen: je Instanz ein Verzeichnis
 # <RADISH_GAME_DATA_DIR>/<instanz>/ mit der Spielstart-Datei (schreibt

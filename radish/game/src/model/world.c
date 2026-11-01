@@ -266,7 +266,8 @@ static bool RAD_WorldTerrainEqual(const RAD_Terrain_t *a, const RAD_Terrain_t *b
 {
     return (a->movement_modifier == b->movement_modifier)
         && (a->cover == b->cover)
-        && (a->impassable == b->impassable);
+        && (a->impassable == b->impassable)
+        && (a->blocks_sight == b->blocks_sight);
 }
 
 RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *values, RAD_UserId_t owner)

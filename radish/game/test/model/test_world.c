@@ -496,6 +496,12 @@ void test_world_gelaende_folgt_dem_typ(void)
     RAD_WorldSetTerrain(&world, terrain);
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.changed);
 
+    // Auch die Sicht allein ist eine Aenderung.
+    terrain[RAD_TILE_TYPE_FOREST].blocks_sight = true;
+    RAD_WorldSetTerrain(&world, terrain);
+    TEST_ASSERT_TRUE(wald->terrain.blocks_sight);
+    TEST_ASSERT_EQUAL_INT(2, gezaehlt.changed);
+
     // Ein neuer Typ bringt seine Werte mit, ein entfernter verliert sie.
     TEST_ASSERT_TRUE(RAD_WorldAddTile(&world, 0, 0, 0, RAD_TILE_TYPE_WATER_DEEP));
     TEST_ASSERT_TRUE(RAD_WorldTileAt(&world, 0, 0)->terrain.impassable);

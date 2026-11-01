@@ -869,7 +869,7 @@ static RAD_GameStartResult_t RAD_ReadTerrains(const RAD_GameStartTokens_t *t, in
 }
 
 ///
-/// Ein Eintrag in "gelaende": der Typ und seine drei Werte, alle Pflicht. Ein
+/// Ein Eintrag in "gelaende": der Typ und seine vier Werte, alle Pflicht. Ein
 /// Typ, der schon in "seen" steht, ist ein Schemafehler.
 ///
 static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES], bool seen[RAD_NUMBER_OF_TILE_TYPES])
@@ -879,7 +879,7 @@ static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int
         return RAD_GAME_START_ERROR_SCHEMA;
     }
 
-    enum { TYP, BEWEGUNG, DECKUNG, UNBEGEHBAR, ALLE = (1u << 4) - 1 };
+    enum { TYP, BEWEGUNG, DECKUNG, UNBEGEHBAR, SICHTBLOCKIEREND, ALLE = (1u << 5) - 1 };
     uint32_t found = 0;
     int32_t type = -1;
     RAD_Terrain_t values = { 0 };
@@ -920,6 +920,11 @@ static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int
         {
             ok = RAD_ReadBool(t, value, &values.impassable);
             found |= RAD_FOUND(UNBEGEHBAR);
+        }
+        else if(RAD_KeyIs(t, key, "sichtblockierend"))
+        {
+            ok = RAD_ReadBool(t, value, &values.blocks_sight);
+            found |= RAD_FOUND(SICHTBLOCKIEREND);
         }
 
         if(!ok)

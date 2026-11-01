@@ -55,6 +55,14 @@ typedef struct
 
     /// Ob eine Einheit das Feld betreten darf.
     bool impassable;
+
+    ///
+    /// Ob das Feld die direkte Sicht auf die Felder dahinter versperrt. Liegt es
+    /// zwischen Schuetze und Ziel, ist kein Angriff moeglich
+    /// (RAD_GameHasLineOfSight, control/attack_unit.c). Auf das Feld selbst sieht
+    /// man -- eine Einheit darauf hat dann seine Deckung.
+    ///
+    bool blocks_sight;
 } RAD_Terrain_t;
 
 struct RAD_Tile

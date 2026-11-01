@@ -668,6 +668,7 @@ RAD_NetCodecResult_t RAD_SerializeTilesEventToMessage(const RAD_Tile_t *tiles,
         net_tiles[i].movement_modifier = tile->terrain.movement_modifier;
         net_tiles[i].cover = (uint32_t)tile->terrain.cover;
         net_tiles[i].impassable = tile->terrain.impassable;
+        net_tiles[i].blocks_sight = tile->terrain.blocks_sight;
 
         tile_pointers[i] = &net_tiles[i];
     }

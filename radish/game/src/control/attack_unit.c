@@ -34,14 +34,18 @@
 /// **Die Reihenfolge ist fest**: Mitglieder, darin Waffen, darin Schuesse, je in
 /// ihrer Reihenfolge. Zum selben Seed kommt also derselbe Kampf heraus.
 ///
-/// Angegriffen werden darf jedes Feld in Reichweite, auch ein leeres -- dann
-/// wird nicht geschossen -- und auch eine eigene Einheit, die dann wie jede
-/// andere getroffen wird. Spaetere Regeln koennen das einschraenken.
+/// Angegriffen werden darf jedes Feld in Reichweite und in Sicht, auch ein
+/// leeres -- dann wird nicht geschossen -- und auch eine eigene Einheit, die dann
+/// wie jede andere getroffen wird. Spaetere Regeln koennen das einschraenken.
+///
+/// **Die Sicht** versperren Gelaende (RAD_Terrain_t.blocks_sight) und Einheiten
+/// auf den Feldern zwischen Schuetze und Ziel (RAD_GameHasLineOfSight).
 ///
 
 static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y);
 static bool RAD_GameWeaponReaches(const RAD_Weapon_t *weapon, int32_t distance);
 static int32_t RAD_GameDistance(const RAD_Unit_t *unit, int32_t x, int32_t y);
+static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y);
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
                              int32_t cover, RAD_Unit_t *target, RAD_AttackResult_t *result);
 static void RAD_GameRemoveMember(RAD_Unit_t *unit, int32_t member);
@@ -89,6 +93,10 @@ RAD_GameResult_t RAD_GameCheckAttack(const RAD_Game_t *game, RAD_UnitId_t unit, 
     if(!RAD_GameUnitReaches(candidate, x, y))
     {
         return RAD_GAME_ERROR_TARGET_OUT_OF_RANGE;
+    }
+    if(!RAD_GameHasLineOfSight(game, candidate->x, candidate->y, x, y))
+    {
+        return RAD_GAME_ERROR_NO_LINE_OF_SIGHT;
     }
 
     return RAD_GAME_OK;
@@ -261,6 +269,82 @@ static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y)
 static bool RAD_GameWeaponReaches(const RAD_Weapon_t *weapon, int32_t distance)
 {
     return (distance >= weapon->min_range) && (distance <= weapon->max_range);
+}
+
+///
+/// Die Regel steht in game.h. Gelaufen wird die Linie Feld fuer Feld, wie sie
+/// die Kanten des Rasters kreuzt -- jedes Feld, durch das sie geht, und keins
+/// daneben.
+///
+/// Gerechnet wird in ganzen Zahlen: die Linie geht von Mitte zu Mitte, nach
+/// ix Schritten waagerecht und iy senkrecht steht sie vor der Kante bei
+/// (2*ix + 1) / (2*nx) bzw. (2*iy + 1) / (2*ny) ihrer Laenge. Welche sie
+/// zuerst kreuzt, sagt der Vergleich ueber Kreuz; sind beide gleich, geht sie
+/// durch die Ecke. Zum selben Paar Felder kommt also immer dieselbe Antwort, und
+/// in umgekehrter Richtung dieselben Felder.
+///
+bool RAD_GameHasLineOfSight(const RAD_Game_t *game, int32_t from_x, int32_t from_y, int32_t to_x, int32_t to_y)
+{
+    if((game == NULL)
+       || !RAD_WorldInBounds(&game->world, from_x, from_y)
+       || !RAD_WorldInBounds(&game->world, to_x, to_y))
+    {
+        return false;
+    }
+
+    const int32_t nx = (to_x > from_x) ? (to_x - from_x) : (from_x - to_x);
+    const int32_t ny = (to_y > from_y) ? (to_y - from_y) : (from_y - to_y);
+    const int32_t sx = (to_x > from_x) ? 1 : -1;
+    const int32_t sy = (to_y > from_y) ? 1 : -1;
+
+    int32_t x = from_x;
+    int32_t y = from_y;
+    for(int32_t ix = 0, iy = 0; (ix < nx) || (iy < ny);)
+    {
+        const int32_t decision = (1 + 2 * ix) * ny - (1 + 2 * iy) * nx;
+        if(decision == 0)
+        {
+            // Durch die Ecke: versperrt nur, wenn beide Felder daneben es sind.
+            // Keins davon ist ein Ende -- das naechste Feld liegt schraeg.
+            if(RAD_GameTileBlocksSight(game, x + sx, y) && RAD_GameTileBlocksSight(game, x, y + sy))
+            {
+                return false;
+            }
+            x += sx;
+            y += sy;
+            ++ix;
+            ++iy;
+        }
+        else if(decision < 0)
+        {
+            x += sx;
+            ++ix;
+        }
+        else
+        {
+            y += sy;
+            ++iy;
+        }
+
+        // Das Ziel selbst versperrt nichts.
+        if(((x != to_x) || (y != to_y)) && RAD_GameTileBlocksSight(game, x, y))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+///
+/// Versperrt das Feld (x, y) die Sicht -- sein Gelaende oder eine Einheit darauf?
+/// (x, y) liegt in der Welt: es liegt auf der Linie zwischen zwei Feldern darin,
+/// und die Welt ist ein Rechteck.
+///
+static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y)
+{
+    const RAD_Tile_t *tile = &game->world.tiles[y][x];
+    return tile->terrain.blocks_sight || (tile->unit != RAD_UNIT_NONE);
 }
 
 /// Felder waagerecht plus senkrecht von "unit" bis (x, y).

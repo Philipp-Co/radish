@@ -512,61 +512,71 @@
       "typ": "void",
       "bewegung": 0,
       "deckung": 0,
-      "unbegehbar": true
+      "unbegehbar": true,
+      "sichtblockierend": false
     },
     {
       "typ": "ground",
       "bewegung": 0,
       "deckung": 1,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": false
     },
     {
       "typ": "water_shallow",
       "bewegung": -1,
       "deckung": 0,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": false
     },
     {
       "typ": "mud",
       "bewegung": -1,
       "deckung": 0,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": false
     },
     {
       "typ": "meadow",
       "bewegung": 0,
       "deckung": 0,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": false
     },
     {
       "typ": "forest",
       "bewegung": -1,
       "deckung": 2,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": true
     },
     {
       "typ": "water_deep",
       "bewegung": 0,
       "deckung": 0,
-      "unbegehbar": true
+      "unbegehbar": true,
+      "sichtblockierend": false
     },
     {
       "typ": "city",
       "bewegung": 0,
       "deckung": 2,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": true
     },
     {
       "typ": "road",
       "bewegung": 1,
       "deckung": 0,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": false
     },
     {
       "typ": "fortification",
       "bewegung": -1,
       "deckung": 3,
-      "unbegehbar": false
+      "unbegehbar": false,
+      "sichtblockierend": true
     }
   ]
 }

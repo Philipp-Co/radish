@@ -13,26 +13,54 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# Siehe https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+#
+# Ohne Umgebungsvariablen laeuft das Backend wie bisher im Entwicklungsmodus
+# (lokales `manage.py runserver`/`manage.py test`). Das Docker-Image setzt
+# DJANGO_DEBUG=0 (siehe docker/backend/Dockerfile) und braucht dann einen
+# eigenen DJANGO_SECRET_KEY -- ohne startet es nicht, statt still mit dem
+# Entwicklungs-Schluessel unten zu laufen.
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_99ut97a+qjco&q#^g9nh8rlm=5qv%f&rx%9twmc@t)q3$)yw0'
+_DEV_SECRET_KEY = 'django-insecure-_99ut97a+qjco&q#^g9nh8rlm=5qv%f&rx%9twmc@t)q3$)yw0'
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or (_DEV_SECRET_KEY if DEBUG else None)
+if not SECRET_KEY:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY muss gesetzt sein, wenn DJANGO_DEBUG nicht 1 ist.")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-# Ohne diese Liste greift bei DEBUG=True nur der Django-Default
-# (localhost/127.0.0.1/[::1]) -- das deckt den Browser (KEYCLOAK_REDIRECT_URI
-# zeigt auf localhost:8000) und lokales `manage.py runserver` ab, aber nicht
-# Aufrufe von anderen Containern im selben Docker-Netz, die den Servicenamen
-# "backend" als Host senden (siehe game-server/register_instance.py, das
+# Der Default deckt den Browser (KEYCLOAK_REDIRECT_URI zeigt auf
+# localhost:8000) und lokales `manage.py runserver` ab, ausserdem Aufrufe von
+# anderen Containern im selben Docker-Netz, die den Servicenamen "backend"
+# als Host senden (siehe game-server/register_instance.py, das
 # RADISH_BACKEND_URL="http://backend:8000" gegen genau diesen Host aufruft).
-ALLOWED_HOSTS = ["backend", "localhost", "127.0.0.1"]
+# Fuer einen anderen Hostnamen kommagetrennt per DJANGO_ALLOWED_HOSTS.
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "backend,localhost,127.0.0.1").split(",")
+
+# HTTPS-Absicherung, standardmaessig aus: lokal und in docker-compose.yaml
+# laeuft das Backend ueber reines HTTP (localhost:8000), und Secure-Cookies
+# kaemen dort nie zurueck -- kein Login mehr. Einschalten, sobald der Browser
+# das Backend nur noch per HTTPS erreicht.
+#
+#   DJANGO_SECURE_COOKIES=1        Session- und CSRF-Cookie nur ueber HTTPS
+#   DJANGO_SECURE_SSL_REDIRECT=1   HTTP-Anfragen auf HTTPS umleiten
+#   DJANGO_SECURE_HSTS_SECONDS=n   HSTS-Header; der Browser merkt sich das fuer
+#                                  n Sekunden und laesst kein HTTP mehr zu --
+#                                  erst klein anfangen
+#   DJANGO_BEHIND_TLS_PROXY=1      TLS endet an einem Reverse-Proxy davor, der
+#                                  X-Forwarded-Proto setzt. Ohne das haelt
+#                                  Django jede Anfrage fuer HTTP, und
+#                                  SECURE_SSL_REDIRECT leitet endlos um.
+SESSION_COOKIE_SECURE = os.environ.get("DJANGO_SECURE_COOKIES") == "1"
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT") == "1"
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+if os.environ.get("DJANGO_BEHIND_TLS_PROXY") == "1":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
@@ -123,6 +151,22 @@ DATABASES = {
         'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', 'radish'),
         'HOST': os.environ.get('DJANGO_DB_HOST', 'localhost'),
         'PORT': os.environ.get('DJANGO_DB_PORT', '5433'),
+        # Connection-Pool von psycopg 3 statt einer neuen Verbindung je
+        # Anfrage: ohne ihn baut Django fuer jede Anfrage eine Verbindung auf
+        # (gemessen etwa 7 ms, scram-sha-256) und schliesst sie danach wieder.
+        # CONN_MAX_AGE ist dafuer unter ASGI nicht geeignet -- Verbindungen
+        # haengen dort an Threads, die Django-Doku empfiehlt den Pool.
+        #
+        # Ein Backend-Prozess mit wenigen gleichzeitigen Anfragen: 2 Verbindungen
+        # stehen bereit, bis zu 10 gleichzeitig. Ist der Pool erschoepft, wartet
+        # eine Anfrage hoechstens 10 s auf eine freie Verbindung.
+        'OPTIONS': {
+            'pool': {
+                'min_size': 2,
+                'max_size': 10,
+                'timeout': 10,
+            },
+        },
     }
 }
 
@@ -162,6 +206,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Ziel von `manage.py collectstatic` (im Docker-Image beim Build, siehe
+# docker/backend/Dockerfile): die Static-Files der installierten Apps, vor
+# allem die CSS/JS des Django-Admins. Ohne DEBUG liefert die staticfiles-App
+# sie nicht mehr selbst aus -- das uebernimmt dann config/urls.py.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

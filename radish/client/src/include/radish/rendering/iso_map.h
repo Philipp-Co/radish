@@ -2,6 +2,7 @@
 #define __RAD_MAP_H__
 
 #include <SDL2/SDL_render.h>
+#include <radish/rendering/iso_effect.h>
 #include <radish/rendering/iso_object.h>
 #include <radish/rendering/iso_definitions.h>
 #include <radish/rendering/camera.h>
@@ -20,15 +21,25 @@ typedef struct
 ///
 #define RAD_ISO_MAP_ENTITIES_MAX 8
 
+///
+/// Wie viele Effekte gleichzeitig eingetragen sein koennen (RAD_IsoMapAddEffect).
+///
+#define RAD_ISO_MAP_EFFECTS_MAX 8
+
+///
+/// Bei gleicher Tiefe wird in dieser Reihenfolge gezeichnet: das Feld, darauf
+/// eine Figur, darueber ein Effekt.
+///
 typedef enum
 {
     RAD_ISO_RENDERABLE_OBJECT = 0,
-    RAD_ISO_RENDERABLE_ENTITY
+    RAD_ISO_RENDERABLE_ENTITY,
+    RAD_ISO_RENDERABLE_EFFECT
 } RAD_IsoRenderableType_t;
 
 ///
-/// Ein Eintrag der Zeichenliste (RAD_IsoMap_t.iso_objects): ein Feld oder eine
-/// Figur, die nicht auf einem Feld steht. "type" sagt, welches.
+/// Ein Eintrag der Zeichenliste (RAD_IsoMap_t.iso_objects): ein Feld, eine
+/// Figur, die nicht auf einem Feld steht, oder ein Effekt. "type" sagt, welches.
 ///
 typedef struct
 {
@@ -40,6 +51,9 @@ typedef struct
 
         /// Gehoert dem, der sie eingetragen hat (RAD_IsoMapAddEntity).
         RAD_IsoEntity_t *entity;
+
+        /// Gehoert dem, der ihn eingetragen hat (RAD_IsoMapAddEffect).
+        RAD_IsoEffect_t *effect;
     };
 } RAD_IsoRenderable_t;
 
@@ -49,12 +63,15 @@ typedef struct
 
     ///
     /// Was RAD_RenderIsoMap zeichnet, in dieser Reihenfolge: nach Ebene und
-    /// Tiefe sortiert (hinten zuerst). Felder und Figuren ausserhalb eines
-    /// Feldes; "number_of_entities" davon sind Figuren.
+    /// Tiefe sortiert (hinten zuerst). Felder, Figuren ausserhalb eines
+    /// Feldes und Effekte; "number_of_entities" davon sind Figuren,
+    /// "number_of_effects" Effekte.
     ///
     int32_t number_of_iso_objects;
     int32_t number_of_entities;
-    RAD_IsoRenderable_t iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3 + RAD_ISO_MAP_ENTITIES_MAX];
+    int32_t number_of_effects;
+    RAD_IsoRenderable_t iso_objects[RAD_ISO_MAP_SIZE * RAD_ISO_MAP_SIZE * 3 + RAD_ISO_MAP_ENTITIES_MAX
+                                    + RAD_ISO_MAP_EFFECTS_MAX];
 
     RAD_Camera_t camera;
 
@@ -79,7 +96,7 @@ RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, in
 /// geaendert. Das Iso-Objekt wird beim ersten Mal angelegt und danach nur
 /// aktualisiert. Wie es aussieht, richtet sich bei jedem Aufruf nach seinem Typ
 /// (RAD_IsoTileApplyType); die Figur in RAD_ISO_UNIT_DEPTH folgt der Einheit des Feldes,
-/// Hinter- und Vordergrund bleiben unberuehrt, und ein Siegfeld
+/// ihr Bild deren Typ (RAD_IsoUnitSpriteOf), Hinter- und Vordergrund bleiben unberuehrt, und ein Siegfeld
 /// wird als solches gezeichnet (RAD_IsoObject_t.victory). Ausserhalb des
 /// Rasters wird verworfen.
 ///
@@ -113,6 +130,24 @@ bool RAD_IsoMapAddEntity(RAD_IsoMap_t *map, RAD_IsoEntity_t *entity);
 /// nicht eingetragene bleibt still.
 ///
 void RAD_IsoMapRemoveEntity(RAD_IsoMap_t *map, const RAD_IsoEntity_t *entity);
+
+///
+/// Traegt einen Effekt ein (rendering/iso_effect.h). Gezeichnet wird er bei
+/// (effect->x, effect->y) auf Ebene effect->layer, eingereiht wie eine Figur
+/// ausserhalb eines Feldes (RAD_IsoMapAddEntity); bei gleicher Tiefe ueber ihr.
+///
+/// **"effect" bleibt beim Aufrufer** und muss gueltig bleiben, bis
+/// RAD_IsoMapRemoveEffect. Er darf ihn jederzeit aendern.
+///
+/// false, wenn schon RAD_ISO_MAP_EFFECTS_MAX eingetragen sind oder dieser schon.
+///
+bool RAD_IsoMapAddEffect(RAD_IsoMap_t *map, RAD_IsoEffect_t *effect);
+
+///
+/// Nimmt den Effekt aus der Zeichenliste; er selbst bleibt beim Aufrufer. Ein
+/// nicht eingetragener bleibt still.
+///
+void RAD_IsoMapRemoveEffect(RAD_IsoMap_t *map, const RAD_IsoEffect_t *effect);
 
 void RAD_ToFlatCoordinates(RAD_IsoMap_t *map, const int32_t screen_x, const int32_t screen_y, int32_t *x, int32_t *y);
 

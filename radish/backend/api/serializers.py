@@ -739,7 +739,7 @@ class AdminEquipmentSerializer(_CatalogAdminSerializer):
 class AdminTerrainTypeSerializer(serializers.ModelSerializer):
     """
     Ein Tile-Typ mit seinen Werten. Der Typ selbst (code) steht fest -- er
-    gehoert zum Spiel --, aenderbar sind nur MV, CV und unbegehbar. "label"
+    gehoert zum Spiel --, aenderbar sind nur MV, CV, unbegehbar und sichtblockierend. "label"
     ist die Bezeichnung fuer den Adminbereich.
     """
 
@@ -747,5 +747,5 @@ class AdminTerrainTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TerrainType
-        fields = ["code", "label", "movement_modifier", "cover", "impassable"]
+        fields = ["code", "label", "movement_modifier", "cover", "impassable", "blocks_sight"]
         read_only_fields = ["code"]

@@ -5,7 +5,11 @@ sqlparse==0.6.0
 typing_extensions==4.16.0
 requests==2.32.3
 djangorestframework-simplejwt[crypto]==5.3.1
-psycopg2-binary==2.9.13
+# psycopg 3 statt psycopg2: nur damit hat Django einen eingebauten
+# Connection-Pool (OPTIONS "pool" in config/settings.py). Fertige
+# musllinux-Wheels, auf Alpine also ohne Build-Abhaengigkeiten.
+psycopg[binary]==3.2.3
+psycopg-pool==3.2.4
 
 # ASGI-Server + Channels fuer WebSocket-Unterstuetzung (siehe config/asgi.py,
 # api/routing.py, api/consumers.py, api/middleware.py). Reine Python-/

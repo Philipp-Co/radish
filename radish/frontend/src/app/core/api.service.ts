@@ -251,9 +251,14 @@ export interface AdminTerrainType {
   cover: number;
   /** Ob eine Einheit das Feld betreten oder darauf aufgestellt werden darf. */
   impassable: boolean;
+  /** Ob das Feld die direkte Sicht auf die Felder dahinter versperrt. */
+  blocks_sight: boolean;
 }
 
-export type AdminTerrainValues = Pick<AdminTerrainType, 'movement_modifier' | 'cover' | 'impassable'>;
+export type AdminTerrainValues = Pick<
+  AdminTerrainType,
+  'movement_modifier' | 'cover' | 'impassable' | 'blocks_sight'
+>;
 
 /** Filter fuer listCatalogEntries; search sucht im Namen (ohne Gross-/Kleinschreibung). */
 export interface CatalogFilter {

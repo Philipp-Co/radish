@@ -5,17 +5,19 @@
 #include <stdbool.h>
 
 ///
-/// Die Bilder der Felder (RAD_IsoObject_t.image), einmal geladen und von allen
+/// Die Bilder der Felder (RAD_IsoObject_t.image und .overlay), einmal geladen und von allen
 /// Feldern geteilt. Eine Textur haengt am Renderer, RAD_IsoTileApplyType hat
 /// aber keinen: deshalb laedt main() sie nach dem Renderer vorab, und die Typen
 /// (rendering/iso_tile/) holen sie sich mit RAD_IsoTileImage.
 ///
-/// Die Dateien liegen unter assets/tiles/ und werden ins Wasm eingebettet
-/// (client/CMakeLists.txt, --embed-file).
+/// Die Dateien liegen unter assets/tiles/; das Frontend legt sie vor main() ins
+/// Dateisystem des Moduls (client/publish_assets.cmake).
 ///
 typedef enum
 {
     RAD_ISO_TILE_IMAGE_GRASS = 0,
+    RAD_ISO_TILE_IMAGE_GRASS_DECOR,
+    RAD_ISO_TILE_IMAGE_FOREST,
     RAD_ISO_TILE_IMAGES
 } RAD_IsoTileImage_t;
 

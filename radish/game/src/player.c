@@ -66,6 +66,8 @@ const char* RAD_GameResultText(RAD_GameResult_t result)
         case RAD_GAME_ERROR_IMPASSABLE:     return "Feld ist unbegehbar";
         case RAD_GAME_ERROR_OUT_OF_MOVEMENT:
                                             return "Weg ist weiter als die Bewegung der Einheit";
+        case RAD_GAME_ERROR_NO_LINE_OF_SIGHT:
+                                            return "Ziel ist nicht in Sicht";
         default:                           return "unbekanntes Ergebnis";
     }
 }

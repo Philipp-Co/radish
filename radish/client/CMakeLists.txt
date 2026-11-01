@@ -18,8 +18,11 @@ add_executable(client
     src/rendering/iso_map.c
     src/rendering/entity.c
     src/rendering/iso_tile_images.c
+    src/rendering/iso_facing.c
+    src/rendering/iso_unit_images.c
+    src/rendering/iso_effect_images.c
+    src/rendering/iso_effect.c
     src/rendering/iso_tile/iso_tile.c
-    src/rendering/iso_tile/decorations.c
     src/rendering/iso_tile/void.c
     src/rendering/iso_tile/ground.c
     src/rendering/iso_tile/water_shallow.c
@@ -70,6 +73,7 @@ add_executable(client
     src/events/event_manager.c
 
     src/control/terrain.c
+    src/control/line_of_sight.c
     src/control/deploy_unit.c
     src/control/move_unit.c
     src/control/attack_unit.c
@@ -95,7 +99,7 @@ add_executable(client
     src/view/debug/debug_view.c
     src/view/end_turn_view.c
     src/view/animations/interpolation.c
-    src/view/animations/move_animation.c
+    src/view/animations/unit_animation.c
 )
 
 target_include_directories(client PRIVATE
@@ -142,21 +146,35 @@ target_compile_options(client PRIVATE
     "-sUSE_SDL_IMAGE=2"
 )
 
+# Bilder und Font stecken nicht im Wasm, sondern liegen einzeln mit Hash im
+# Namen unter web/assets/, dazu manifest.json (siehe publish_assets.cmake). So
+# kann der Browser jede Datei fuer sich cachen, und eine Code-Aenderung laedt
+# nicht alle Bilder neu. Das Frontend legt sie vor main() ins Dateisystem des
+# Moduls (preRun, ueber das exportierte FS).
+#
+# Ein eigenes Ziel statt POST_BUILD an client: es laeuft bei jedem Bau, auch
+# wenn sich nur ein Bild geaendert hat und client nicht neu gelinkt wird.
 # assets/ und web/ liegen weiterhin neben den Unterprojekten, nicht in client/.
-set(ZUC_FONT_PATH "${PROJECT_SOURCE_DIR}/assets/LiberationSansBold.ttf")
-set(ZUC_TILES_PATH "${PROJECT_SOURCE_DIR}/assets/tiles")
+add_custom_target(client_assets ALL
+    COMMAND "${CMAKE_COMMAND}"
+        "-DASSETS_DIR=${PROJECT_SOURCE_DIR}/assets"
+        "-DOUTPUT_DIR=${PROJECT_SOURCE_DIR}/web/assets"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/publish_assets.cmake"
+    COMMENT "Assets nach web/assets/ (mit Hash im Namen)"
+    VERBATIM
+)
+add_dependencies(client client_assets)
 
 target_link_options(client PRIVATE
     "-sUSE_SDL=2"
     "-sUSE_SDL_TTF=2"
     "-sUSE_SDL_IMAGE=2"
     "-sSDL2_IMAGE_FORMATS=[\"png\"]"
-    # SHELL: haelt Schalter und Pfad zusammen -- CMake entfernt doppelte Optionen,
-    # ein zweites, loses "--embed-file" fiele sonst weg.
-    "SHELL:--embed-file ${ZUC_FONT_PATH}@/assets/LiberationSansBold.ttf"
-    "SHELL:--embed-file ${ZUC_TILES_PATH}@/assets/tiles"
+    # Ohne --embed-file sieht emcc keine eingebetteten Dateien mehr; das volle
+    # Dateisystem soll trotzdem sicher mitkommen, das Frontend schreibt hinein.
+    "-sFORCE_FILESYSTEM"
     "-sEXPORTED_FUNCTIONS=['_main','_RAD_OnMessageReceived','_zuc_on_connection_state','_RAD_ClientSetPlayerId','_malloc','_free']"
-    "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']"
+    "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','FS']"
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createZucchiniModule"
     "-sENVIRONMENT=web"

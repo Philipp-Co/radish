@@ -9,12 +9,10 @@
 /// Funktion in rendering/iso_tile/, eine Datei je Typ; hier steht nur der
 /// Verteiler.
 ///
-/// Am Typ haengen die Farbe der oberen Flaeche (RAD_IsoObject_t.background_color),
-/// das Bild statt des Wuerfels (RAD_IsoObject_t.image, rendering/iso_tile_images.h)
-/// und die Dekorationen hinter und vor der Einheit (RAD_IsoObject_t.background,
-/// .foreground). Die Dekorationen gehoeren damit dem Typ: jede Funktion setzt
-/// beide, auch auf RAD_ISO_DECORATION_NONE. Siegfeld und Fokus gehen beim Zeichnen
-/// der Flaeche weiter vor (RAD_RenderIsoObject).
+/// Am Typ haengen die Farbe der oberen Flaeche (RAD_IsoObject_t.background_color)
+/// und das Bild statt des Wuerfels (RAD_IsoObject_t.image,
+/// rendering/iso_tile_images.h). Siegfeld und Fokus gehen beim Zeichnen der
+/// Flaeche weiter vor (RAD_RenderIsoObject).
 ///
 
 ///

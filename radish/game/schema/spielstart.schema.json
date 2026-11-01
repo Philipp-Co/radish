@@ -159,7 +159,7 @@
     "terrain": {
       "description": "Ein Tile-Typ und seine Werte (RAD_Terrain_t im Spiel).",
       "type": "object",
-      "required": ["typ", "bewegung", "deckung", "unbegehbar"],
+      "required": ["typ", "bewegung", "deckung", "unbegehbar", "sichtblockierend"],
       "additionalProperties": false,
       "properties": {
         "typ": {
@@ -178,6 +178,10 @@
         },
         "unbegehbar": {
           "description": "Ob eine Einheit das Feld betreten oder darauf aufgestellt werden darf.",
+          "type": "boolean"
+        },
+        "sichtblockierend": {
+          "description": "Ob das Feld die direkte Sicht auf die Felder dahinter versperrt: liegt es zwischen Schuetze und Ziel, ist kein Angriff moeglich. Auf das Feld selbst sieht man.",
           "type": "boolean"
         }
       }

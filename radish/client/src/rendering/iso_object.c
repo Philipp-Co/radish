@@ -32,20 +32,20 @@ RAD_IsoObject_t RAD_CreateIsoObject(int32_t x, int32_t y, int32_t layer)
         .victory = false,
         .layer = layer,
         .image = NULL,
-        .background = RAD_ISO_DECORATION_NONE,
-        .foreground = RAD_ISO_DECORATION_NONE,
+        .overlay = NULL,
+        .overlay_offset_y = 0,
         .entities = { NULL }
     };
     return object;
 }
 
 ///
-/// Zeichnet object->image auf den Rahmen des Wuerfels, dessen Raute bei
+/// Zeichnet "image" auf den Rahmen des Wuerfels von "object", dessen Raute bei
 /// (screen_x, screen_y) beginnt. Fokus und Siegfeld als Einfaerbung, Fokus
 /// zuerst; die Textur teilen sich alle Felder, deshalb danach zurueckgesetzt.
 ///
 static void RAD_RenderIsoObjectImage(SDL_Renderer *renderer, const RAD_IsoObject_t *object,
-                                     int32_t screen_x, int32_t screen_y)
+                                     SDL_Texture *image, int32_t screen_x, int32_t screen_y)
 {
     const SDL_Rect target = {
         .x = screen_x,
@@ -56,16 +56,16 @@ static void RAD_RenderIsoObjectImage(SDL_Renderer *renderer, const RAD_IsoObject
 
     if(object->focus)
     {
-        SDL_SetTextureColorMod(object->image, 255, 80, 80);
+        SDL_SetTextureColorMod(image, 255, 80, 80);
     }
     else if(object->victory)
     {
         const SDL_Color victory = RAD_ISO_OBJECT_VICTORY_COLOR;
-        SDL_SetTextureColorMod(object->image, victory.r, victory.g, victory.b);
+        SDL_SetTextureColorMod(image, victory.r, victory.g, victory.b);
     }
 
-    SDL_RenderCopy(renderer, object->image, NULL, &target);
-    SDL_SetTextureColorMod(object->image, 255, 255, 255);
+    SDL_RenderCopy(renderer, image, NULL, &target);
+    SDL_SetTextureColorMod(image, 255, 255, 255);
 }
 
 ///
@@ -315,16 +315,17 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
 
     if(NULL != object->image)
     {
-        RAD_RenderIsoObjectImage(renderer, object, screen_x, screen_y);
+        RAD_RenderIsoObjectImage(renderer, object, object->image, screen_x, screen_y);
     }
     else
     {
         RAD_RenderIsoObjectCube(renderer, object, screen_x, screen_y);
     }
 
-    if(NULL != object->background.render)
+    if(NULL != object->overlay)
     {
-        object->background.render(renderer, object->background.user_argument, screen_x, screen_y);
+        RAD_RenderIsoObjectImage(renderer, object, object->overlay,
+                                 screen_x, screen_y + object->overlay_offset_y);
     }
 
     // Hinten zuerst: Hintergrund, Mitte, Vordergrund (RAD_IsoDepth_t).
@@ -334,10 +335,5 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
         {
             RAD_RenderIsoEntity(renderer, object->entities[depth], screen_x, screen_y);
         }
-    }
-
-    if(NULL != object->foreground.render)
-    {
-        object->foreground.render(renderer, object->foreground.user_argument, screen_x, screen_y);
     }
 }

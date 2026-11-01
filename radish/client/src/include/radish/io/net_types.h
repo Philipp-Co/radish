@@ -427,11 +427,13 @@ struct RAD_NetTile
 
     ///
     /// Das Gelaende, wie der Server es fuehrt (NetTile.movement_modifier, cover,
-    /// impassable): MV, CV und ob das Feld zu betreten ist.
+    /// impassable, blocks_sight): MV, CV, ob das Feld zu betreten ist und ob es
+    /// die Sicht dahinter versperrt.
     ///
     int32_t movement_modifier;
     uint32_t cover;
     bool impassable;
+    bool blocks_sight;
 };
 
 ///

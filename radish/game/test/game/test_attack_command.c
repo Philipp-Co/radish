@@ -691,3 +691,168 @@ void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void)
 
     abbauen();
 }
+
+///
+/// Macht das Feld (x, y) sichtblockierend (RAD_Terrain_t.blocks_sight). Am Feld
+/// selbst, nicht ueber die Tabelle der Welt -- der Test will einzelne Felder.
+///
+static void versperre(int32_t x, int32_t y)
+{
+    RAD_WorldTileAt(&game->world, x, y)->terrain.blocks_sight = true;
+}
+
+///
+/// **Gelaende versperrt die Sicht dahinter**, nicht auf sich selbst: ein Ziel im
+/// Wald ist zu sehen, eines hinter dem Wald nicht. Ein abgelehnter Angriff zaehlt
+/// nicht.
+///
+void test_sicht_gelaende_versperrt_was_dahinter_liegt(void)
+{
+    aufbauen();
+
+    const RAD_UnitId_t figur = bewaffnete_figur(2, 2, 5);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 4, 2));
+
+    versperre(3, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 3, 2));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 4, 2));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 6, 2));
+    // Daneben vorbei ist frei -- nach (4,3) nicht: die Linie dorthin streift (3,2).
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 3, 4));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 4, 3));
+
+    greife_an(figur, 4, 2);
+    TEST_ASSERT_FALSE(hat_angegriffen(figur));
+
+    // Unter dem Schuetzen versperrt nichts.
+    versperre(2, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 2, 4));
+
+    abbauen();
+}
+
+///
+/// **Einheiten versperren die Sicht** wie Gelaende -- gleich wessen. Die Einheit
+/// selbst ist ein Ziel.
+///
+void test_sicht_einheiten_versperren(void)
+{
+    aufbauen();
+
+    const RAD_UnitId_t figur = bewaffnete_figur(2, 2, 5);
+    const RAD_UnitId_t davor = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3);
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, davor);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, angreifer, davor));
+
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 2, 3));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 2, 5));
+
+    // Ist sie weg, ist die Sicht frei.
+    RAD_WorldRemoveUnit(&game->world, davor);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 2, 5));
+
+    abbauen();
+}
+
+///
+/// **Die Linie nimmt jedes Feld, durch das sie geht, und keins daneben.** Von
+/// (0,0) nach (4,1) kreuzt sie die Mittellinie bei x = 2: dort geht sie durch
+/// (2,0) und (2,1), an (3,0) und (1,1) vorbei.
+///
+void test_sicht_die_linie_geht_von_mitte_zu_mitte(void)
+{
+    aufbauen();
+
+    versperre(3, 0);
+    versperre(1, 1);
+    TEST_ASSERT_TRUE(RAD_GameHasLineOfSight(game, 0, 0, 4, 1));
+
+    versperre(2, 1);
+    TEST_ASSERT_FALSE(RAD_GameHasLineOfSight(game, 0, 0, 4, 1));
+    TEST_ASSERT_FALSE(RAD_GameHasLineOfSight(game, 4, 1, 0, 0));
+
+    abbauen();
+}
+
+///
+/// **Durch eine Ecke** sieht man, solange nur eines der beiden Felder daneben die
+/// Sicht versperrt.
+///
+void test_sicht_durch_die_ecke(void)
+{
+    aufbauen();
+
+    const RAD_UnitId_t figur = bewaffnete_figur(2, 2, 4);
+
+    versperre(3, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 3, 3));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 4, 4));
+
+    versperre(2, 3);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 3, 3));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 4, 4));
+
+    abbauen();
+}
+
+///
+/// Nachbarn sehen sich immer, ein Feld sich selbst auch; ausserhalb der Welt und
+/// ohne Spiel sieht niemand.
+///
+void test_sicht_grenzfaelle(void)
+{
+    aufbauen();
+
+    versperre(1, 1);
+    versperre(2, 1);
+    TEST_ASSERT_TRUE(RAD_GameHasLineOfSight(game, 1, 1, 2, 1));
+    TEST_ASSERT_TRUE(RAD_GameHasLineOfSight(game, 1, 1, 1, 1));
+
+    TEST_ASSERT_FALSE(RAD_GameHasLineOfSight(NULL, 0, 0, 1, 0));
+    TEST_ASSERT_FALSE(RAD_GameHasLineOfSight(game, -1, 0, 1, 0));
+    TEST_ASSERT_FALSE(RAD_GameHasLineOfSight(game, 0, 0, game->world.width, 0));
+
+    abbauen();
+}
+
+///
+/// **Die Sicht ist gegenseitig:** auf zufaellig verstelltem Gelaende sieht jedes
+/// Feld genau die Felder, die es sehen.
+///
+void test_sicht_ist_gegenseitig(void)
+{
+    aufbauen();
+
+    enum { GROESSE = 9 };
+    uint32_t zufall = 12345u;
+    for(int32_t y = 0; y < GROESSE; ++y)
+    {
+        for(int32_t x = 0; x < GROESSE; ++x)
+        {
+            zufall = zufall * 1103515245u + 12345u;
+            if(((zufall >> 16) % 4u) == 0u)
+            {
+                versperre(x, y);
+            }
+        }
+    }
+
+    int32_t gesehen = 0;
+    int32_t verdeckt = 0;
+    for(int32_t a = 0; a < GROESSE * GROESSE; ++a)
+    {
+        for(int32_t b = 0; b < GROESSE * GROESSE; ++b)
+        {
+            const bool hin = RAD_GameHasLineOfSight(game, a % GROESSE, a / GROESSE, b % GROESSE, b / GROESSE);
+            const bool zurueck = RAD_GameHasLineOfSight(game, b % GROESSE, b / GROESSE, a % GROESSE, a / GROESSE);
+            TEST_ASSERT_EQUAL(hin, zurueck);
+            gesehen += hin ? 1 : 0;
+            verdeckt += hin ? 0 : 1;
+        }
+    }
+    // Beides kommt vor -- sonst prueft der Test nichts.
+    TEST_ASSERT_TRUE(gesehen > 0);
+    TEST_ASSERT_TRUE(verdeckt > 0);
+
+    abbauen();
+}

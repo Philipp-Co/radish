@@ -32,14 +32,17 @@
     "{\"name\":\"" name "\",\"kennung\":\"" kennung "\"," \
     "\"armee\":{\"name\":\"Armee " name "\",\"spezies\":\"Menschen\",\"einheiten\":[" einheiten "]}}"
 
-/// Ein Eintrag in "gelaende", und alle zehn Typen je einmal.
-#define TERRAIN(typ, mv, cv, unbegehbar) \
-    "{\"typ\":\"" typ "\",\"bewegung\":" mv ",\"deckung\":" cv ",\"unbegehbar\":" unbegehbar "}"
+/// Ein Eintrag in "gelaende", und alle zehn Typen je einmal. TERRAIN ist nicht
+/// sichtblockierend, TERRAIN_SICHT sagt es selbst.
+#define TERRAIN_SICHT(typ, mv, cv, unbegehbar, sichtblockierend) \
+    "{\"typ\":\"" typ "\",\"bewegung\":" mv ",\"deckung\":" cv ",\"unbegehbar\":" unbegehbar \
+    ",\"sichtblockierend\":" sichtblockierend "}"
+#define TERRAIN(typ, mv, cv, unbegehbar) TERRAIN_SICHT(typ, mv, cv, unbegehbar, "false")
 
 #define TERRAIN_OHNE_ROAD \
     TERRAIN("void", "0", "0", "true") "," TERRAIN("ground", "0", "1", "false") "," \
     TERRAIN("water_shallow", "-1", "0", "false") "," TERRAIN("mud", "-1", "0", "false") "," \
-    TERRAIN("meadow", "0", "0", "false") "," TERRAIN("forest", "-1", "2", "false") "," \
+    TERRAIN("meadow", "0", "0", "false") "," TERRAIN_SICHT("forest", "-1", "2", "false", "true") "," \
     TERRAIN("water_deep", "0", "0", "true") "," TERRAIN("city", "0", "2", "false") "," \
     TERRAIN("fortification", "-1", "3", "false")
 
@@ -149,7 +152,8 @@ void test_spielstart_uebergeht_unbekannte_schluessel(void)
         "]}},"
         SPIELER("b", "bbbbbbbb", EINHEIT_1)
         "],\"gelaende\":[" TERRAIN_OHNE_ROAD ","
-        "{\"farbe\":\"grau\",\"typ\":\"road\",\"bewegung\":1,\"deckung\":0,\"unbegehbar\":false}]}"));
+        "{\"farbe\":\"grau\",\"typ\":\"road\",\"bewegung\":1,\"deckung\":0,\"unbegehbar\":false,"
+        "\"sichtblockierend\":false}]}"));
 
     TEST_ASSERT_EQUAL_STRING("a", start->players[0].name);
     TEST_ASSERT_EQUAL_STRING("S", start->players[0].units[0].members[0].profile);
@@ -169,10 +173,12 @@ void test_spielstart_liest_das_gelaende(void)
     TEST_ASSERT_EQUAL_INT(-1, wald->movement_modifier);
     TEST_ASSERT_EQUAL_INT(2, wald->cover);
     TEST_ASSERT_FALSE(wald->impassable);
+    TEST_ASSERT_TRUE(wald->blocks_sight);
 
     const RAD_Terrain_t *strasse = &start->terrain[RAD_TILE_TYPE_ROAD];
     TEST_ASSERT_EQUAL_INT(1, strasse->movement_modifier);
     TEST_ASSERT_EQUAL_INT(0, strasse->cover);
+    TEST_ASSERT_FALSE(strasse->blocks_sight);
 
     TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_WATER_DEEP].impassable);
     TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_VOID].impassable);
@@ -182,7 +188,7 @@ void test_spielstart_liest_das_gelaende(void)
 }
 
 ///
-/// Jeder Typ genau einmal, jeder Eintrag mit allen vier Schluesseln -- sonst ist
+/// Jeder Typ genau einmal, jeder Eintrag mit allen fuenf Schluesseln -- sonst ist
 /// es kein Spielstart.
 ///
 void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void)
@@ -199,7 +205,11 @@ void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void)
         // unbekannter Typ
         MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("lava", "1", "0", "false") "]"),
         // ohne "deckung"
-        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD ",{\"typ\":\"road\",\"bewegung\":1,\"unbegehbar\":false}]"),
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD ",{\"typ\":\"road\",\"bewegung\":1,\"unbegehbar\":false,\"sichtblockierend\":false}]"),
+        // ohne "sichtblockierend"
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD ",{\"typ\":\"road\",\"bewegung\":1,\"deckung\":0,\"unbegehbar\":false}]"),
+        // sichtblockierend kein Wahrheitswert
+        MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN_SICHT("road", "1", "0", "false", "1") "]"),
         // Deckung negativ, Bewegung keine ganze Zahl, unbegehbar kein Wahrheitswert
         MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "-1", "false") "]"),
         MIT_GELAENDE("[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1.5", "0", "false") "]"),

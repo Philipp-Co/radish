@@ -1,6 +1,7 @@
 #include <radish/view/context_menu/context_menu_view.h>
 #include <radish/control/attack_unit.h>
 #include <radish/control/deploy_unit.h>
+#include <radish/control/line_of_sight.h>
 #include <radish/control/move_unit.h>
 #include <radish/control/terrain.h>
 #include <math.h>
@@ -199,6 +200,15 @@ struct RAD_ContextMenuView
     int32_t target_y;
 
     ///
+    /// Wen sie benachrichtigt, wenn eine Einheit zielt
+    /// (RAD_ContextMenuViewSetAiming), und welche Einheit gerade auf das Ziel
+    /// gerichtet ist und auf die Bestaetigung wartet -- RAD_NET_ENTITY_NONE fuer
+    /// keine (RAD_ContextMenuViewSelectTarget, RAD_ContextMenuViewReleaseAim).
+    ///
+    RAD_ContextMenuViewAiming_t aiming;
+    RAD_NetEntityId_t aimed_unit;
+
+    ///
     /// Die Verbindung zum Backend, ueber die die Kommandos hinausgehen
     /// (control/deploy_unit.h, control/move_unit.h). Gehoert dem Aufrufer.
     ///
@@ -230,10 +240,12 @@ static void RAD_ContextMenuViewTakeDeployment(RAD_ContextMenuView_t *context_men
 static void RAD_ContextMenuViewExtendPath(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientTile_t *tile);
 static void RAD_ContextMenuViewReadWeaponRanges(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientUnit_t *unit);
 static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientTile_t *tile);
+static void RAD_ContextMenuViewReleaseAim(RAD_ContextMenuView_t *context_menu_view);
 static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_view);
 static void RAD_ContextMenuViewFillRing(SDL_Renderer *renderer, float center_x, float center_y, float inner_radius, float outer_radius, SDL_Color color);
 static void RAD_ContextMenuViewFillTile(SDL_Renderer *renderer, float center_x, float center_y, SDL_Color color);
 static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu_view, int32_t distance);
+static const char* RAD_ContextMenuViewAttackRejection(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y);
 static void RAD_ContextMenuViewDrawPath(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 static void RAD_ContextMenuViewDrawReach(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 static bool RAD_ContextMenuViewPathContains(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y);
@@ -281,6 +293,8 @@ RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t cente
         .may_attack = false,
         .target_x = 0,
         .target_y = 0,
+        .aiming = { .user_argument = NULL },
+        .aimed_unit = RAD_NET_ENTITY_NONE,
         .session = session,
         .world = world,
         .map = map
@@ -475,6 +489,11 @@ void RAD_ContextMenuViewSetRingWidth(RAD_ContextMenuView_t *context_menu_view, i
 void RAD_ContextMenuViewSetColor(RAD_ContextMenuView_t *context_menu_view, SDL_Color color)
 {
     context_menu_view->color = color;
+}
+
+void RAD_ContextMenuViewSetAiming(RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuViewAiming_t aiming)
+{
+    context_menu_view->aiming = aiming;
 }
 
 int32_t RAD_ContextMenuViewItemCount(const RAD_ContextMenuView_t *context_menu_view)
@@ -815,6 +834,7 @@ static void RAD_ContextMenuViewRunAction(RAD_ContextMenuView_t *context_menu_vie
     if(context_menu_view->world != NULL && RAD_ClientWorldIsFinished(context_menu_view->world))
     {
         RAD_ContextMenuStateMachineOnCancel(context_menu_view->state_machine);
+        RAD_ContextMenuViewReleaseAim(context_menu_view);
         return;
     }
 
@@ -904,6 +924,15 @@ static void RAD_ContextMenuViewRunAction(RAD_ContextMenuView_t *context_menu_vie
             {
                 printf("[ContextMenuView] Einheit %d greift Feld (%d, %d) an\n",
                        (int)context_menu_view->move_unit, (int)context_menu_view->target_x, (int)context_menu_view->target_y);
+                // Der Turm steht schon; nach dem Schuss laeuft er zurueck. Das
+                // bestaetigte Ereignis tut dasselbe noch einmal -- auch, wenn der
+                // Server ablehnt, steht er so am Ende wieder vorn.
+                context_menu_view->aimed_unit = RAD_NET_ENTITY_NONE;
+                if(context_menu_view->aiming.fire != NULL)
+                {
+                    context_menu_view->aiming.fire(context_menu_view->aiming.user_argument, context_menu_view->move_unit,
+                                                   context_menu_view->target_x, context_menu_view->target_y);
+                }
                 RAD_ControlAttackUnit(context_menu_view->session, context_menu_view->move_unit,
                                       (int16_t)context_menu_view->target_x, (int16_t)context_menu_view->target_y);
             }
@@ -1048,12 +1077,11 @@ static void RAD_ContextMenuViewReadWeaponRanges(RAD_ContextMenuView_t *context_m
 ///
 /// In ENTITY_ATTACK: wertet aus, dass der Spieler das Feld "tile" als Ziel
 /// angeklickt hat, NULL fuer keins -- nicht das der Einheit, das bricht die
-/// Zielwahl ab (RAD_ContextMenuViewOnTileSelected). Ein Feld ist ein Ziel, wenn
-/// keine eigene Einheit darauf steht und wenigstens eine
-/// ihrer Waffen die Entfernung abdeckt -- in Feldern waagerecht plus
-/// senkrecht, zwischen min_range und max_range. Ein leeres Feld ist ein
-/// gueltiges Ziel. Dann merkt sie es sich, und die Zustandsmaschine erfaehrt
-/// es (OnTargetSelected); sonst geschieht nichts. Beides geht ins Log.
+/// Zielwahl ab (RAD_ContextMenuViewOnTileSelected). Ob es ein Ziel ist, sagt
+/// RAD_ContextMenuViewAttackRejection -- dieselbe Frage, nach der die Markierung
+/// geht. Ist es eins, merkt sie es sich, die Einheit zielt darauf ("aim",
+/// RAD_ContextMenuViewSetAiming), und die Zustandsmaschine erfaehrt es
+/// (OnTargetSelected); sonst geschieht nichts. Beides geht ins Log.
 ///
 static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientTile_t *tile)
 {
@@ -1063,20 +1091,7 @@ static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_
     }
 
     const int32_t distance = abs(tile->x - context_menu_view->tile_x) + abs(tile->y - context_menu_view->tile_y);
-    const RAD_ClientPlayerId_t own = (RAD_ClientPlayerId_t)context_menu_view->session->own_player_id;
-
-    const bool in_range = RAD_ContextMenuViewInRange(context_menu_view, distance);
-
-    const char *rejected = NULL;
-    if(tile->unit != NULL && own != RAD_CLIENT_PLAYER_NONE && tile->unit->owner == own)
-    {
-        rejected = "eigene Einheit";
-    }
-    else if(!in_range)
-    {
-        rejected = "keine Waffe reicht so weit";
-    }
-
+    const char *rejected = RAD_ContextMenuViewAttackRejection(context_menu_view, tile->x, tile->y);
     if(rejected != NULL)
     {
         printf("[ContextMenuView] Feld (%d, %d) kein Ziel: %s (Entfernung %d)\n",
@@ -1088,12 +1103,41 @@ static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_
     context_menu_view->target_y = tile->y;
     printf("[ContextMenuView] Ziel (%d, %d), Entfernung %d, %s\n",
            (int)tile->x, (int)tile->y, (int)distance, (tile->unit != NULL) ? "Einheit darauf" : "leer");
+
+    context_menu_view->aimed_unit = context_menu_view->move_unit;
+    if(context_menu_view->aiming.aim != NULL)
+    {
+        context_menu_view->aiming.aim(context_menu_view->aiming.user_argument, context_menu_view->move_unit,
+                                      tile->x, tile->y);
+    }
     RAD_ContextMenuStateMachineOnTargetSelected(context_menu_view->state_machine);
 }
 
 ///
+/// Ist eine Einheit auf ein Ziel gerichtet, das nicht bestaetigt wurde
+/// ("aimed_unit"), laesst sie den Turm zurueckdrehen ("release"); sonst
+/// geschieht nichts.
+///
+static void RAD_ContextMenuViewReleaseAim(RAD_ContextMenuView_t *context_menu_view)
+{
+    if(context_menu_view->aimed_unit == RAD_NET_ENTITY_NONE)
+    {
+        return;
+    }
+
+    const RAD_NetEntityId_t unit = context_menu_view->aimed_unit;
+    context_menu_view->aimed_unit = RAD_NET_ENTITY_NONE;
+    if(context_menu_view->aiming.release != NULL)
+    {
+        context_menu_view->aiming.release(context_menu_view->aiming.user_argument, unit);
+    }
+}
+
+///
 /// Bringt Eintraege und UnitDeploymentView auf den Stand des Zustands. Nach
-/// jedem Ereignis an die Zustandsmaschine zu rufen.
+/// jedem Ereignis an die Zustandsmaschine zu rufen. Ausserhalb der Bestaetigung
+/// eines Angriffs ist keine Einheit mehr auf ein Ziel gerichtet
+/// (RAD_ContextMenuViewReleaseAim).
 ///
 /// Die Eintraege werden nur bei einem Zustandswechsel neu gebaut
 /// (RAD_ContextMenuViewFillItems). Die UnitDeploymentView ist offen genau in
@@ -1104,6 +1148,10 @@ static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_
 static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_view)
 {
     const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(context_menu_view->state_machine);
+    if(state != RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT)
+    {
+        RAD_ContextMenuViewReleaseAim(context_menu_view);
+    }
     if(state != context_menu_view->items_state)
     {
         RAD_ContextMenuViewFillItems(context_menu_view, state);
@@ -1192,10 +1240,8 @@ static void RAD_ContextMenuViewFillTile(SDL_Renderer *renderer, float center_x, 
 ///
 /// Deckt wenigstens eine Waffe der Einheit die Entfernung "distance" ab, in
 /// Feldern waagerecht plus senkrecht, zwischen min_range und max_range
-/// (attack_ranges)? Dieselbe Frage fuer die Zielwahl
-/// (RAD_ContextMenuViewSelectTarget) und die Markierung
-/// (RAD_ContextMenuViewDrawAttackRange) -- so markiert sie genau, was sie als
-/// Ziel annimmt.
+/// (attack_ranges)? Ein Teil der Frage nach einem Ziel
+/// (RAD_ContextMenuViewAttackRejection).
 ///
 static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu_view, int32_t distance)
 {
@@ -1208,6 +1254,55 @@ static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu
         }
     }
     return false;
+}
+
+///
+/// Warum die Zielwahl (x, y) nicht annimmt, NULL, wenn sie es tut:
+///
+///   - das Feld der Einheit selbst
+///   - ein Feld, das der Client nicht kennt -- auch eines ausserhalb der Karte
+///   - eine eigene Einheit darauf (das Spiel liesse sie zu, die Zielwahl nicht)
+///   - keine Waffe reicht so weit (RAD_ContextMenuViewInRange)
+///   - nicht in Sicht (RAD_ControlHasLineOfSight, dieselbe Regel wie
+///     RAD_GameHasLineOfSight im Spiel)
+///
+/// Ein leeres Feld ist ein Ziel. Ein statischer Text fuers Log. Dieselbe Frage
+/// fuer die Zielwahl (RAD_ContextMenuViewSelectTarget) und die Markierung
+/// (RAD_ContextMenuViewDrawAttackRange) -- so markiert sie genau, was sie als
+/// Ziel annimmt.
+///
+static const char* RAD_ContextMenuViewAttackRejection(const RAD_ContextMenuView_t *context_menu_view, int32_t x, int32_t y)
+{
+    const int32_t from_x = context_menu_view->tile_x;
+    const int32_t from_y = context_menu_view->tile_y;
+    if(x == from_x && y == from_y)
+    {
+        return "Feld der Einheit";
+    }
+
+    const RAD_ClientTile_t *tile = RAD_ClientWorldTileAt(context_menu_view->world, x, y);
+    if(tile == NULL)
+    {
+        return "Feld unbekannt";
+    }
+
+    const RAD_ClientPlayerId_t own = (context_menu_view->session != NULL)
+        ? (RAD_ClientPlayerId_t)context_menu_view->session->own_player_id
+        : RAD_CLIENT_PLAYER_NONE;
+    if(tile->unit != NULL && own != RAD_CLIENT_PLAYER_NONE && tile->unit->owner == own)
+    {
+        return "eigene Einheit";
+    }
+
+    if(!RAD_ContextMenuViewInRange(context_menu_view, abs(x - from_x) + abs(y - from_y)))
+    {
+        return "keine Waffe reicht so weit";
+    }
+    if(!RAD_ControlHasLineOfSight(context_menu_view->world, from_x, from_y, x, y))
+    {
+        return "nicht in Sicht";
+    }
+    return NULL;
 }
 
 ///
@@ -1228,14 +1323,13 @@ static void RAD_ContextMenuViewDrawPath(const RAD_ContextMenuView_t *context_men
 }
 
 ///
-/// Markiert die Felder in Reichweite der angreifenden Einheit rot
-/// (RAD_ContextMenuViewInRange), das Feld der Einheit nicht -- und mit
-/// "with_target" das gewaehlte Ziel kraeftiger. Abgesucht wird die Raute bis zur
-/// groessten Reichweite um die Einheit; was die Karte nicht zeichnet, faellt weg
-/// (RAD_ContextMenuViewMarkTile). Ob dort eine eigene Einheit steht, weiss die
-/// ContextMenuView nicht -- ein solches Feld ist markiert, als Ziel aber
-/// abgelehnt (RAD_ContextMenuViewSelectTarget). Den Blend-Modus setzt der
-/// Aufrufer.
+/// Markiert die Felder rot, die die angreifende Einheit als Ziel waehlen kann
+/// (RAD_ContextMenuViewAttackRejection): in Reichweite, in Sicht und ohne eigene
+/// Einheit darauf -- und mit "with_target" das gewaehlte Ziel kraeftiger.
+/// Abgesucht wird die Raute bis zur groessten Reichweite um die Einheit; was die
+/// Karte nicht zeichnet, faellt weg (RAD_ContextMenuViewMarkTile). Gerechnet wird
+/// in jedem Bild neu: bewegt sich eine fremde Einheit, folgt die Markierung. Den
+/// Blend-Modus setzt der Aufrufer.
 ///
 static void RAD_ContextMenuViewDrawAttackRange(const RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer, bool with_target)
 {
@@ -1252,14 +1346,17 @@ static void RAD_ContextMenuViewDrawAttackRange(const RAD_ContextMenuView_t *cont
     {
         for(int32_t dx = -reach; dx <= reach; dx++)
         {
-            const int32_t distance = abs(dx) + abs(dy);
-            if(distance == 0 || !RAD_ContextMenuViewInRange(context_menu_view, distance))
+            if(abs(dx) + abs(dy) > reach)
             {
                 continue;
             }
 
             const int32_t x = context_menu_view->tile_x + dx;
             const int32_t y = context_menu_view->tile_y + dy;
+            if(RAD_ContextMenuViewAttackRejection(context_menu_view, x, y) != NULL)
+            {
+                continue;
+            }
             const bool target = with_target && (x == context_menu_view->target_x) && (y == context_menu_view->target_y);
             RAD_ContextMenuViewMarkTile(context_menu_view, renderer, x, y,
                                         target ? RAD_CONTEXT_MENU_VIEW_RANGE_TARGET_COLOR : RAD_CONTEXT_MENU_VIEW_RANGE_COLOR);

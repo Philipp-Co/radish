@@ -33,6 +33,11 @@ services:
       DJANGO_DB_NAME: "radish"
       DJANGO_DB_USER: "radish"
       DJANGO_DB_PASSWORD: "radish"
+      # Das Image laeuft im Produktionsmodus (DJANGO_DEBUG=0, siehe
+      # docker/backend/Dockerfile) und verlangt einen eigenen Schluessel.
+      # Wie KEYCLOAK_CLIENT_SECRET oben nur ein Wert fuer die lokale
+      # Entwicklung -- produktiv durch einen geheimen ersetzen.
+      DJANGO_SECRET_KEY: "radish-backend-dev-django-secret-key-nicht-produktiv-verwenden"
     ports:
       - "8000:8000"
     depends_on:
@@ -136,6 +141,10 @@ services:
       # <RADISH_GAME_DATA_DIR>/<Instanzname>/ (siehe
       # docker/game-server/game-instance-entrypoint.sh).
       RADISH_GAME_DATA_DIR: "/run/radish"
+      # Das Image laeuft im Produktionsmodus (DJANGO_DEBUG=0, siehe
+      # docker/game-server/Dockerfile) und verlangt einen eigenen Schluessel.
+      # Wie die Secrets oben nur ein Wert fuer die lokale Entwicklung.
+      DJANGO_SECRET_KEY: "radish-game-server-dev-django-secret-key-nicht-produktiv-verwenden"
     ports:
       - "8090:8000"
       # Je Instanz ihr UDP-Port aus supervisord.conf.

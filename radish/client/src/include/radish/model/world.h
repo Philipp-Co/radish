@@ -155,7 +155,8 @@ typedef enum
     RAD_CLIENT_WORLD_EVENT_TILE_CREATED = 0,
     RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED,
     RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED,
-    RAD_CLIENT_WORLD_EVENT_UNIT_MOVED
+    RAD_CLIENT_WORLD_EVENT_UNIT_MOVED,
+    RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED
 } RAD_ClientWorldEvent_t;
 
 ///
@@ -170,6 +171,9 @@ typedef enum
 /// die Welt ihn ausfuehrt: die Einheit steht dabei noch auf steps[0]. "steps"
 /// gehoert dem Aufrufer und gilt nur waehrend des Callbacks.
 ///
+/// "unit_attacked" meldet, dass eine Einheit das Feld "target" angegriffen hat
+/// (RAD_ClientWorldReportAttack). Die Welt aendert dabei nichts.
+///
 typedef struct
 {
     void *user_argument;
@@ -178,6 +182,8 @@ typedef struct
     void (*size_changed)(void *user_argument, const RAD_ClientWorld_t *world);
     void (*unit_moved)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                        const RAD_ClientPosition_t *steps, size_t count);
+    void (*unit_attacked)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                          RAD_ClientPosition_t target);
 } RAD_ClientWorldObserver_t;
 
 ///
@@ -239,6 +245,15 @@ const RAD_ClientTile_t* RAD_ClientWorldTileAt(const RAD_ClientWorld_t *world, in
 ///
 void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                                const RAD_ClientPosition_t *steps, size_t count);
+
+///
+/// Meldet "unit_attacked": die Einheit "unit" hat das Feld "target"
+/// angegriffen, wie der Server es bestaetigt hat. Nur fuer die Beobachter --
+/// was der Angriff bewirkt hat, bringen die neuen Staende der Einheiten
+/// (io/net_event_handler/unit_attacked.c). Ein Ziel ausserhalb der Welt meldet
+/// sie nicht.
+///
+void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit, RAD_ClientPosition_t target);
 
 ///
 /// Uebernimmt "unit" in das Repository und ihre Id in die Reserve ihres

@@ -3,11 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <radish/rendering/iso_map.h>
 #include <radish/rendering/iso_object.h>
 #include <radish/rendering/iso_tile_images.h>
+#include <radish/rendering/iso_effect_images.h>
+#include <radish/rendering/iso_unit_images.h>
 #include <radish/io/net_codec.h>
 #include <radish/io/net_event_handler.h>
 #include <radish/io/net_request.h>
@@ -234,8 +238,15 @@ int main(void)
 
     // Nach der View: die Texturen brauchen ihren Renderer. Vor dem ersten Feld:
     // die kommen erst, wenn die Verbindung offen ist (zuc_on_connection_state).
-    // Fehlt ein Bild, zeichnen die Felder ihren Wuerfel -- kein Abbruch.
+    // Fehlt ein Bild, zeichnen die Felder ihren Wuerfel und die Einheiten ihr
+    // Rechteck, ein Effekt bleibt unsichtbar -- kein Abbruch.
     RAD_IsoTileImagesLoad(RAD_ViewRenderer(view));
+    RAD_IsoUnitImagesLoad(RAD_ViewRenderer(view));
+    RAD_IsoEffectImagesLoad(RAD_ViewRenderer(view));
+
+    // Welche Explosion ein Angriff zeigt, waehlt jeder Client selbst
+    // (RAD_IsoEffectRandomExplosion) -- je Start anders.
+    srand((unsigned)time(NULL));
 
     printf("Zucchini-Client gestartet.\n");
 
@@ -243,6 +254,8 @@ int main(void)
 
     // Vor der View: die Texturen haengen an ihrem Renderer.
     RAD_IsoTileImagesFree();
+    RAD_IsoUnitImagesFree();
+    RAD_IsoEffectImagesFree();
     RAD_DestroyView(&view);
     // Nach der RootView: ihre IsoMapView legt laufende Zuege noch auf die Map zurueck.
     RAD_DestroyIsoMap(&map);

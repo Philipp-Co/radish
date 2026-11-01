@@ -161,6 +161,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
     title: 'radish -- Spiel',
   },
-  { path: '', pathMatch: 'full', redirectTo: 'games' },
-  { path: '**', redirectTo: 'games' },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./pages/landing/landing.component').then((m) => m.LandingComponent),
+    title: 'radish',
+  },
+  { path: '**', redirectTo: '' },
 ];

@@ -1,11 +1,12 @@
 import { Component, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
+  imports: [RouterLink],
   template: `
     <main class="login-page">
       <div class="card">
@@ -14,6 +15,7 @@ import { AuthService } from '../../core/auth.service';
           Melde dich an, um Spiele zu erstellen, ihnen beizutreten und zu spielen.
         </p>
         <button (click)="login()">Mit Keycloak einloggen</button>
+        <a routerLink="/" class="back">&larr; Zur Startseite</a>
       </div>
     </main>
   `,
@@ -34,6 +36,11 @@ import { AuthService } from '../../core/auth.service';
       button {
         width: 100%;
         margin-top: 1rem;
+      }
+      .back {
+        display: inline-block;
+        margin-top: 1rem;
+        font-size: 0.875rem;
       }
     `,
   ],

@@ -199,8 +199,54 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     this.gameSocket.sendCommand(payload);
   }
 
+  /**
+   * Laedt Bilder und Schrift des Clients. Sie stecken nicht im Wasm, sondern
+   * liegen einzeln mit Hash im Namen unter wasmBaseUrl/assets/ (siehe
+   * radish/client/publish_assets.cmake); manifest.json bildet den Pfad, unter
+   * dem der C-Code sie oeffnet ("/assets/..."), auf diesen Namen ab. Weil ein
+   * geaendertes Bild einen neuen Namen bekommt, darf der Browser jede Datei
+   * dauerhaft cachen (radish/backend/web/views.py) -- nur das Manifest wird
+   * jedes Mal neu geprueft.
+   */
+  private async loadAssets(): Promise<Array<[string, Uint8Array]>> {
+    const baseUrl = `${environment.wasmBaseUrl}/assets`;
+    const manifestResponse = await fetch(`${baseUrl}/manifest.json`);
+    if (!manifestResponse.ok) {
+      throw new Error(`${baseUrl}/manifest.json: HTTP ${manifestResponse.status}`);
+    }
+    const manifest: Record<string, string> = await manifestResponse.json();
+    return Promise.all(
+      Object.entries(manifest).map(async ([path, file]): Promise<[string, Uint8Array]> => {
+        const response = await fetch(`${baseUrl}/${file}`);
+        if (!response.ok) {
+          throw new Error(`${baseUrl}/${file}: HTTP ${response.status}`);
+        }
+        return [path, new Uint8Array(await response.arrayBuffer())];
+      }),
+    );
+  }
+
+  /**
+   * Legt die geladenen Assets ins Emscripten-Dateisystem (Module.FS, in
+   * radish/client/CMakeLists.txt exportiert). Laeuft als preRun, also vor
+   * main() -- der C-Code findet sie dort, wo frueher --embed-file sie ablegte.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private writeAssets(module: any, assets: Array<[string, Uint8Array]>): void {
+    for (const [path, data] of assets) {
+      module.FS.mkdirTree(path.substring(0, path.lastIndexOf('/')));
+      module.FS.writeFile(path, data);
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private loadWasmModule(): Promise<any> {
+    // Parallel zu client.js, nicht erst danach.
+    const assets = this.loadAssets();
+    // Ohne das gaelte ein Fehler hier als unbehandelt, solange client.js noch
+    // laedt; gemeldet wird er unten ueber reject.
+    assets.catch(() => undefined);
+
     return new Promise((resolve, reject) => {
       const canvas = this.canvasRef.nativeElement;
       canvas.addEventListener('click', () => canvas.focus());
@@ -219,8 +265,17 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
           );
           return;
         }
-        window
-          .createZucchiniModule({ canvas, print: console.log, printErr: console.error })
+        const createModule = window.createZucchiniModule;
+        assets
+          .then((loaded) =>
+            createModule({
+              canvas,
+              print: console.log,
+              printErr: console.error,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              preRun: [(module: any) => this.writeAssets(module, loaded)],
+            }),
+          )
           .then(resolve, reject);
       };
       script.onerror = () => reject(new Error(`${script.src} konnte nicht geladen werden.`));

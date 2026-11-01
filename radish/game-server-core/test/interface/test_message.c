@@ -814,13 +814,14 @@ void test_message_packt_das_siegfeld(void)
 }
 
 ///
-/// Das Gelaende eines Feldes geht mit: MV mit Vorzeichen, CV und unbegehbar.
+/// Das Gelaende eines Feldes geht mit: MV mit Vorzeichen, CV, unbegehbar und
+/// sichtblockierend.
 ///
 void test_message_packt_das_gelaende(void)
 {
     const RAD_Tile_t tiles[2] = {
         { .x = 0, .y = 0, .type = RAD_TILE_TYPE_FOREST, .unit = RAD_UNIT_NONE,
-          .terrain = { .movement_modifier = -1, .cover = 2, .impassable = false } },
+          .terrain = { .movement_modifier = -1, .cover = 2, .impassable = false, .blocks_sight = true } },
         { .x = 1, .y = 0, .type = RAD_TILE_TYPE_WATER_DEEP, .unit = RAD_UNIT_NONE,
           .terrain = { .movement_modifier = 0, .cover = 0, .impassable = true } }
     };
@@ -834,6 +835,8 @@ void test_message_packt_das_gelaende(void)
     TEST_ASSERT_EQUAL_INT(-1, wald->movement_modifier);
     TEST_ASSERT_EQUAL_UINT32(2, wald->cover);
     TEST_ASSERT_FALSE(wald->impassable);
+    TEST_ASSERT_TRUE(wald->blocks_sight);
     TEST_ASSERT_TRUE(message->event->game->tiles->tiles[1]->impassable);
+    TEST_ASSERT_FALSE(message->event->game->tiles->tiles[1]->blocks_sight);
     net_server_message__free_unpacked(message, NULL);
 }

@@ -332,30 +332,27 @@ void test_weltdefinition_aus_datei(void)
     TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldHeight(game));
 
+    // Nur Wiese und Wald.
     RAD_Tile_t tile;
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 5, 5, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_SHALLOW, tile.type);
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 7, 7, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_WATER_DEEP, tile.type);
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 2, 1, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FORTIFICATION, tile.type);
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 4, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_ROAD, tile.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 6, 2, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FOREST, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 15, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
 
     // Ohne "heights": alles auf 0.
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 0, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FOREST, tile.type);
     TEST_ASSERT_EQUAL_INT(0, tile.z);
-    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 15, &tile));
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, tile.type);
 
-    // Die beiden Siegfelder, punktsymmetrisch, je eine Stadt.
+    // Die beiden Siegfelder, punktsymmetrisch, je eine Wiese.
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 7, 1, &tile));
     TEST_ASSERT_TRUE(tile.victory);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_CITY, tile.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 8, 14, &tile));
     TEST_ASSERT_TRUE(tile.victory);
-    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_CITY, tile.type);
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 8, 1, &tile));
     TEST_ASSERT_FALSE(tile.victory);
 

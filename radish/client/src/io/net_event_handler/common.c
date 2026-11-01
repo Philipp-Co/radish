@@ -21,9 +21,10 @@ void RAD_IoNetPrintDiscoverAnswerPrefix(const RAD_IoNetEventHandlerContext_t *co
 
 void RAD_IoNetPrintTile(const RAD_NetTile_t *tile)
 {
-    printf("Feld (%u, %u) Typ=%s z=%u MV=%d CV=%u%s Figur=",
+    printf("Feld (%u, %u) Typ=%s z=%u MV=%d CV=%u%s%s Figur=",
         (unsigned)tile->x, (unsigned)tile->y, RAD_NetTileTypeText(tile->type), (unsigned)tile->z,
-        (int)tile->movement_modifier, (unsigned)tile->cover, tile->impassable ? " unbegehbar" : "");
+        (int)tile->movement_modifier, (unsigned)tile->cover, tile->impassable ? " unbegehbar" : "",
+        tile->blocks_sight ? " sichtblockierend" : "");
 
     // -1 ist RAD_NET_ENTITY_NONE; jede andere Zahl ist eine Figur, auch die 0.
     if(tile->entity_id == RAD_NET_ENTITY_NONE)
@@ -67,7 +68,8 @@ void RAD_IoNetApplyTile(RAD_IoNetEventHandlerContext_t *context, const RAD_NetTi
     const RAD_ClientTerrain_t terrain = {
         .movement_modifier = tile->movement_modifier,
         .cover = (tile->cover > (uint32_t)INT32_MAX) ? INT32_MAX : (int32_t)tile->cover,
-        .impassable = tile->impassable
+        .impassable = tile->impassable,
+        .blocks_sight = tile->blocks_sight
     };
     RAD_ClientWorldApplyTile(context->world, position, RAD_IoNetTileTypeToClient(tile->type), tile->entity_id, tile->victory, terrain);
 }

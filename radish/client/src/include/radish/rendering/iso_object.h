@@ -33,31 +33,6 @@ typedef enum
 ///
 #define RAD_ISO_UNIT_DEPTH RAD_ISO_DEPTH_MID
 
-///
-/// Zeichnet eine Dekoration auf ein Feld, dessen Raute bei (screen_x, screen_y)
-/// beginnt -- Kamera und Ebene schon eingerechnet, wie bei RAD_RenderIsoEntity.
-/// "user_argument" ist das aus RAD_IsoDecoration_t.
-///
-typedef void (*RAD_IsoDecorationRender_t)(SDL_Renderer *renderer, const void *user_argument,
-                                          int32_t screen_x, int32_t screen_y);
-
-///
-/// Etwas, das auf einem Feld hinter oder vor der Einheit gezeichnet wird
-/// (RAD_IsoObject_t.background, .foreground). Das Iso-Objekt weiss nicht, was es
-/// ist: es ruft nur "render" mit "user_argument" auf. "render" NULL heisst:
-/// nichts.
-///
-/// **Gehoert dem, der sie setzt.** Das Iso-Objekt gibt nichts frei;
-/// "user_argument" muss gueltig bleiben, solange die Dekoration gesetzt ist.
-///
-typedef struct
-{
-    RAD_IsoDecorationRender_t render;
-    const void *user_argument;
-} RAD_IsoDecoration_t;
-
-#define RAD_ISO_DECORATION_NONE ((RAD_IsoDecoration_t){ .render = NULL, .user_argument = NULL })
-
 
 typedef struct
 {
@@ -92,21 +67,24 @@ typedef struct
     /// Raute. NULL heisst: der Wuerfel in background_color/front_color wie
     /// bisher. Fokus und Siegfeld faerben das Bild ein.
     ///
-    /// **Gehoert dem, der es setzt** (wie die Dekorationen): das Iso-Objekt gibt
-    /// nichts frei. Gesetzt bei jedem RAD_IsoMapApplyTile vom Typ des Feldes
-    /// (rendering/iso_tile.h, rendering/iso_tile_images.h); RAD_CreateIsoObject
-    /// setzt NULL.
+    /// **Gehoert dem, der es setzt**: das Iso-Objekt gibt nichts frei. Gesetzt
+    /// bei jedem RAD_IsoMapApplyTile vom Typ des Feldes (rendering/iso_tile.h,
+    /// rendering/iso_tile_images.h); RAD_CreateIsoObject setzt NULL.
     ///
     SDL_Texture *image;
 
     ///
-    /// Die Dekorationen des Feldes: "background" nach dem Wuerfel und vor den
-    /// Figuren, "foreground" nach ihnen. Beide gehoeren dem Typ des Feldes und
-    /// werden bei jedem RAD_IsoMapApplyTile neu gesetzt (rendering/iso_tile.h);
-    /// RAD_CreateIsoObject setzt RAD_ISO_DECORATION_NONE.
+    /// Was auf dem Feld steht, etwa Gras oder Wald: gezeichnet nach dem Boden
+    /// (image oder Wuerfel) und vor den Figuren, im selben Rahmen wie image,
+    /// aber um overlay_offset_y nach unten verschoben (negativ: nach oben) --
+    /// die Bilder stehen nicht alle auf der Oberseite ihres Rahmens. NULL fuer
+    /// nichts. Fokus und Siegfeld faerben es ein wie image.
     ///
-    RAD_IsoDecoration_t background;
-    RAD_IsoDecoration_t foreground;
+    /// Gehoert wie image dem, der es setzt; gesetzt vom Typ des Feldes,
+    /// RAD_CreateIsoObject setzt NULL und 0.
+    ///
+    SDL_Texture *overlay;
+    int32_t overlay_offset_y;
 
     ///
     /// Die Figuren auf dem Feld, eine je Tiefe (RAD_IsoDepth_t); NULL fuer
