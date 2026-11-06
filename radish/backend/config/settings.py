@@ -15,6 +15,8 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
+from .database import database
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -137,20 +139,13 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Postgres statt sqlite (siehe docker-compose.yaml, Services "backend" +
-# "backend-db"). Alle Werte per Umgebungsvariable ueberschreibbar; die
-# Defaults passen zum "backend-db"-Service, der von aussen (ausserhalb von
-# Docker, z.B. fuer ein lokales `manage.py`) unter localhost:5433 erreichbar
-# ist -- deshalb DJANGO_DB_HOST default "localhost", nicht "backend-db"
-# (das ist nur der Servicename im Docker-Netzwerk selbst).
+# Verbindungsdaten aus der Umgebung, siehe config/database.py -- dort auch
+# fuer den Migrator (config/settings_migrate.py). Das Schema aendert das
+# Backend nicht selbst: das erledigt vorher der Container "backend-migrate"
+# (siehe docker-compose.yaml), das Backend prueft beim Start nur noch (siehe
+# docker/backend/entrypoint.sh).
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DJANGO_DB_NAME', 'radish'),
-        'USER': os.environ.get('DJANGO_DB_USER', 'radish'),
-        'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', 'radish'),
-        'HOST': os.environ.get('DJANGO_DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DJANGO_DB_PORT', '5433'),
+    'default': database(
         # Connection-Pool von psycopg 3 statt einer neuen Verbindung je
         # Anfrage: ohne ihn baut Django fuer jede Anfrage eine Verbindung auf
         # (gemessen etwa 7 ms, scram-sha-256) und schliesst sie danach wieder.
@@ -160,14 +155,14 @@ DATABASES = {
         # Ein Backend-Prozess mit wenigen gleichzeitigen Anfragen: 2 Verbindungen
         # stehen bereit, bis zu 10 gleichzeitig. Ist der Pool erschoepft, wartet
         # eine Anfrage hoechstens 10 s auf eine freie Verbindung.
-        'OPTIONS': {
+        OPTIONS={
             'pool': {
                 'min_size': 2,
                 'max_size': 10,
                 'timeout': 10,
             },
         },
-    }
+    ),
 }
 
 
@@ -217,6 +212,45 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Logging
+# https://docs.djangoproject.com/en/5.2/topics/logging/
+#
+# Django richtet von sich aus nur die "django.*"-Logger ein. Ohne den Block
+# hier landeten Meldungen der eigenen App (logging.getLogger(__name__) in
+# api/*) beim Fallback-Handler von Python, der nur WARNING und hoeher
+# ausgibt -- logger.info() waere still. Ausgabe auf stdout, damit sie unter
+# daphne in `docker logs` auftaucht (PYTHONUNBUFFERED=1 im Dockerfile).
+# Eigener Handler mit propagate=False statt eines Root-Handlers, sonst
+# kaemen die "django.*"-Meldungen im DEBUG-Modus doppelt.
+#
+#   DJANGO_LOG_LEVEL=DEBUG   auch die Meldungen pro UDP-Datagramm und
+#                            Client-Nachricht (api/consumers.py)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "{asctime} {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "default",
+        },
+    },
+    "loggers": {
+        "api": {
+            "handlers": ["console"],
+            "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper(),
+            "propagate": False,
+        },
+    },
+}
 
 
 # Keycloak (OpenID Connect, Authorization Code Flow, serverseitig)

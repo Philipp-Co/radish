@@ -78,7 +78,7 @@ static RAD_UnitId_t einheit(RAD_UserId_t owner, bool can_capture, int32_t x, int
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, owner, &values, &id));
     if(x >= 0)
     {
-        TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, id, x, y));
+        TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, id, x, y, NULL));
     }
     return id;
 }
@@ -267,7 +267,7 @@ void test_victory_ohne_einheiten_verliert_man(void)
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DESTROYED, RAD_WorldUnitById(&game->world, erste)->state);
 
     // Die Reserve zaehlt: erst aufstellen, dann zerstoeren.
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, zweite, 6, 5));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, zweite, 6, 5, NULL));
     RAD_GameDestroyUnit(game, zweite);
 
     TEST_ASSERT_TRUE(RAD_GameIsFinished(game));

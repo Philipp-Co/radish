@@ -151,7 +151,7 @@ void test_world_tile_entfernen_scheitert_unter_einer_figur(void)
     RAD_CreateWorld(&world, events, units);
     RAD_InitWorld(&world);
 
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 2, 2, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     RAD_TileEreignisse_t gezaehlt;
@@ -169,7 +169,7 @@ void test_world_tile_entfernen_scheitert_unter_einer_figur(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, RAD_WorldTileAt(&world, 2, 2)->type);
 
     // Ohne Figur geht es: die Pruefung haengt an ihr und nicht am Feld.
-    RAD_WorldRemoveUnit(&world, id);
+    RAD_WorldRemoveUnit(&world, id, NULL);
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&world, 2, 2));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.removed);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
@@ -380,7 +380,7 @@ void test_world_groesse_laesst_sich_setzen(void)
     // nicht hin.
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_GROUND, world.tiles[1][2].type);
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_VOID, world.tiles[1][3].type);
-    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 3, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&world, RAD_UNIT_TYPE_PLAYER, 3, 0, NULL));
     TEST_ASSERT_FALSE(RAD_WorldAddTile(&world, 0, 2, 0, RAD_TILE_TYPE_WATER_SHALLOW));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&world));
 

@@ -158,6 +158,13 @@ void RAD_DestroyView(RAD_RootView_t **view);
 void RAD_UpdateView(RAD_RootView_t *view);
 
 ///
+/// Ob sie gerade abspielt, was ein Ereignis vom Server ausgeloest hat -- solange,
+/// sollte das naechste warten (io/net_inbox.h). Gefragt wird die IsoMapView
+/// (RAD_IsoMapViewIsBusy); die uebrigen Views spielen nichts ab.
+///
+bool RAD_ViewIsBusy(const RAD_RootView_t *view);
+
+///
 /// Setzt (true) oder ruecksetzt (false), ob TerrainInfoView bzw. UnitInfoView
 /// sichtbar sind. Die UnitInfoView braucht dazu noch ein ausgewaehltes Feld mit
 /// Einheit (siehe oben).

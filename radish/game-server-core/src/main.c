@@ -150,6 +150,37 @@ typedef struct
     const char *game_finished_command;
 } RAD_ServerTurnTarget_t;
 
+///
+/// Wer verbunden ist: je Spieler der Zucchini-Code, unter dem er zu erreichen
+/// ist. Mit dem Nebel des Krieges geht nicht mehr alles an alle -- was ein
+/// Spieler erfahren darf, sagt das Spiel ueber seine Ereignisse je Spieler
+/// (RAD_EventManagerSubscribeToUnitEventsOf), und hierhin schickt der Server es.
+///
+/// **Eingetragen wird, wer schreibt** (connect_player in handle_message), mit
+/// jeder Nachricht neu: ein Beitritt ist im Protokoll nicht vorgesehen, und nach
+/// einem Neuaufbau der Verbindung kommt derselbe Spieler unter einem neuen Code.
+/// Je Eintrag haelt der Event-Manager ein Abo, dessen user_argument der Eintrag
+/// selbst ist -- deshalb eine Tabelle fester Adresse und kein Wert auf dem
+/// Stapel.
+///
+/// Mit einem neuen Spiel (RAD_ControlResetGame) entsteht ein neuer Event-Manager
+/// ohne Abos, und die Codes vergibt das Backend je Spiel neu: die Tabelle wird
+/// geleert (forget_connections), und wer weiterspielt, steht mit seiner naechsten
+/// Nachricht wieder darin.
+///
+#define RAD_SERVER_MAX_CONNECTIONS RAD_EVENT_MAX_RECIPIENTS
+
+typedef struct
+{
+    /// RAD_USER_NONE fuer einen freien Platz.
+    RAD_UserId_t user;
+    uint64_t code;
+    ZUC_Api_t api;
+} RAD_ServerConnection_t;
+
+/// Statisch und damit genullt: RAD_USER_NONE ist 0, jeder Platz ist frei.
+static RAD_ServerConnection_t connections[RAD_SERVER_MAX_CONNECTIONS];
+
 static void handle_signal(int signum)
 {
     (void)signum;
@@ -395,8 +426,10 @@ static void log_unit_path(const RAD_Path_t *path)
 /// "target" ist der Zucchini-Code des Empfaengers, ZUC_MESSAGE_BROADCAST fuer
 /// jeden Client. **An einen geht, was nur der Anfragende braucht** -- die Antwort
 /// auf sein Kommando oder seine Discover-Anfrage; der Code ist der, den
-/// ZUC_ApiReceive als Absender geliefert hat. **An alle geht, was sich am Spiel
-/// geaendert hat** -- die Ereignisse, der Zugwechsel, das Ende. Ob ein Code noch
+/// ZUC_ApiReceive als Absender geliefert hat. **An einen Spieler geht, was nur er
+/// sehen darf** -- die Ereignisse der Einheiten und ihr neuer Stand, unter dem
+/// Code aus "connections". **An alle geht, was alle wissen** -- der Zugwechsel,
+/// die Runde, das Ende. Ob ein Code noch
 /// erreichbar ist, weiss erst zucchini_server; eine Nachricht an einen
 /// unbekannten verwirft es mit einer Zeile im eigenen Log, hier gilt sie als
 /// abgeschickt.
@@ -443,7 +476,7 @@ static void send_packed(ZUC_Api_t api, uint64_t target, RAD_NetCodecResult_t res
     // Nur ob an alle oder an einen, nicht an wen: der Code ist das Geheimnis, mit
     // dem das Backend Nachrichten durch zucchini_server bringt (message.h), und
     // gehoert nicht ins Log.
-    printf("-> %s%s, %u Bytes\n", label, (target == ZUC_MESSAGE_BROADCAST) ? "" : " (an Anfragenden)", message_size);
+    printf("-> %s%s, %u Bytes\n", label, (target == ZUC_MESSAGE_BROADCAST) ? "" : " (an einen)", message_size);
 }
 
 ///
@@ -468,7 +501,8 @@ static void send_packed(ZUC_Api_t api, uint64_t target, RAD_NetCodecResult_t res
 /// Ausschnitt ist, was ein Client geschickt hat. Die Felder selbst liest
 /// RAD_ControlTileAt, das die Grenzen noch einmal prueft.
 ///
-static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, uint64_t target, const RAD_DiscoverRequest_t *request)
+static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, uint64_t target, RAD_UserId_t user,
+                                const RAD_DiscoverRequest_t *request)
 {
     const uint64_t width = (uint64_t)RAD_ControlWorldWidth(control);
     const uint64_t height = (uint64_t)RAD_ControlWorldHeight(control);
@@ -491,7 +525,9 @@ static void send_discover_tiles(RAD_Control_t control, ZUC_Api_t api, uint64_t t
         for(uint64_t x = x_begin; (x < x_end) && !stalled; ++x)
         {
             RAD_Tile_t tile;
-            if(!RAD_ControlTileAt(control, (int32_t)x, (int32_t)y, &tile))
+            // Wie "user" es kennen darf: eine Einheit, die er nicht sieht, steht
+            // nicht darin (RAD_ControlTileAtFor) -- das Gelaende sieht jeder.
+            if(!RAD_ControlTileAtFor(control, user, (int32_t)x, (int32_t)y, &tile))
             {
                 failed++;
                 continue;
@@ -580,7 +616,8 @@ static void send_round(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
 /// Bei einer ganzen Welt ist das eine Nachricht je Feld -- an alle verschickt,
 /// liefe jeder Beitritt einmal durch jeden Client.
 ///
-static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, uint64_t target, const RAD_DiscoverRequest_t *request)
+static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, uint64_t target, RAD_UserId_t user,
+                                 const RAD_DiscoverRequest_t *request)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
@@ -629,7 +666,7 @@ static void send_discover_events(RAD_Control_t control, ZUC_Api_t api, uint64_t 
         send_packed(api, target, result, message, message_size, "deploy_zone");
     }
 
-    send_discover_tiles(control, api, target, request);
+    send_discover_tiles(control, api, target, user, request);
 }
 
 ///
@@ -662,13 +699,14 @@ static void send_reserve_units(RAD_Control_t control, ZUC_Api_t api, uint64_t ta
 }
 
 ///
-/// Jede Einheit, die einem Spieler gehoert, als eigene Nachricht, in der
-/// Reihenfolge ihrer Ids -- gleich ob sie in der Reserve oder auf dem Feld steht
-/// (protobuf/discover.proto). Gehoert keine einem Spieler, geht nichts hinaus.
-/// Als Antwort auf eine Einheiten-Anfrage an den Anfragenden, nach einem
-/// Zugwechsel an alle (on_turn_changed).
+/// Jede Einheit, die einem Spieler gehoert und die "user" kennen darf, als
+/// eigene Nachricht an "target", in der Reihenfolge ihrer Ids: seine eigenen,
+/// gleich ob in der Reserve oder auf dem Feld, und fremde auf dem Feld in seiner
+/// Sicht (RAD_ControlUnitAtFor). Als Antwort auf eine Einheiten-Anfrage an den
+/// Anfragenden, nach einem Zugwechsel an jeden verbundenen Spieler
+/// (on_turn_changed).
 ///
-static void send_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
+static void send_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target, RAD_UserId_t user)
 {
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     int32_t sent = 0;
@@ -676,7 +714,8 @@ static void send_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
     for(int32_t i = 0; i < RAD_ControlNumberOfUnits(control); ++i)
     {
         RAD_Unit_t unit;
-        if(!RAD_ControlUnitAt(control, i, &unit) || (unit.owner == RAD_USER_NONE))
+        // Nur, was "user" kennen darf: seine eigenen, und fremde in seiner Sicht.
+        if(!RAD_ControlUnitAtFor(control, user, i, &unit) || (unit.owner == RAD_USER_NONE))
         {
             continue;
         }
@@ -692,9 +731,10 @@ static void send_units(RAD_Control_t control, ZUC_Api_t api, uint64_t target)
 }
 
 ///
-/// Eine einzelne Einheit mit ihrem jetzigen Stand an jeden Client
-/// (NetUnitEvent) -- nach einem Zug oder Angriff, damit die Clients sehen, was
-/// sie in diesem Zug schon getan hat (NetUnit.moved, attacked). Gibt es sie
+/// Eine einzelne Einheit mit ihrem jetzigen Stand (NetUnitEvent) an jeden
+/// verbundenen Spieler, der sie kennen darf -- ihren Besitzer und wer ihr Feld
+/// sieht (RAD_ControlUnitAtFor). Nach einem Zug oder Angriff, damit sie sehen,
+/// was sie in diesem Zug schon getan hat (NetUnit.moved, attacked). Gibt es sie
 /// nicht, geht nichts hinaus.
 ///
 static void send_unit(RAD_Control_t control, ZUC_Api_t api, RAD_UnitId_t id)
@@ -707,18 +747,29 @@ static void send_unit(RAD_Control_t control, ZUC_Api_t api, RAD_UnitId_t id)
             continue;
         }
 
-        uint8_t message[RAD_SERVER_MESSAGE_SIZE];
-        uint16_t message_size = 0;
-        const RAD_NetCodecResult_t result =
-            RAD_SerializeUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
-        send_packed(api, ZUC_MESSAGE_BROADCAST, result, message, message_size, "unit");
+        // An jeden, der sie kennen darf -- den Besitzer und wer sie sieht.
+        for(int32_t c = 0; c < RAD_SERVER_MAX_CONNECTIONS; ++c)
+        {
+            const RAD_ServerConnection_t *connection = &connections[c];
+            if((connection->user == RAD_USER_NONE)
+               || !RAD_ControlUnitAtFor(control, connection->user, i, &unit))
+            {
+                continue;
+            }
+
+            uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+            uint16_t message_size = 0;
+            const RAD_NetCodecResult_t result =
+                RAD_SerializeUnitEventToMessage(&unit, message, (uint16_t)sizeof(message), &message_size);
+            send_packed(api, connection->code, result, message, message_size, "unit");
+        }
         return;
     }
 }
 
 ///
-/// Die Einheit, die auf (x, y) steht, mit ihrem jetzigen Stand an jeden Client
-/// (NetUnitEvent) -- nach einem Angriff fuer die getroffene, damit die Clients
+/// Die Einheit, die auf (x, y) steht, mit ihrem jetzigen Stand an jeden, der sie
+/// kennen darf (send_unit) -- nach einem Angriff fuer die getroffene, damit sie
 /// sehen, was ihr an Mitgliedern und Lebenspunkten bleibt. Steht dort keine
 /// (mehr), geht nichts hinaus: eine zerstoerte hat das Spiel schon gemeldet.
 ///
@@ -737,77 +788,112 @@ static void send_unit_at(RAD_Control_t control, ZUC_Api_t api, int32_t x, int32_
 }
 
 ///
-/// Die Einheiten-Ereignisse des Spiels (RAD_EventsUnitChangedCallback_t).
-/// "user_argument" ist ein Zeiger auf die Zucchini-Api von main -- auf die
-/// Variable und nicht ihren Wert, denn abonniert wird schon beim Anlegen des
-/// Spiels, und die Api entsteht erst danach. Solange sie NULL ist, geht nichts
-/// hinaus; beim Laden der Welt wird ohnehin keine Figur aufgestellt.
+/// Die Einheiten-Ereignisse des Spiels, zweimal abonniert
+/// (RAD_EventsUnitChangedCallback_t, event_manager.h):
 ///
-/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus: das Ereignis geht
-/// also vor der Antwort auf das Kommando hinaus, und wie alles an jeden Client.
+///   ohne Empfaenger   log_unit_*: jedes Ereignis genau einmal, ungefiltert --
+///                     nur ins Log, denn es zeigt, was kein Spieler sehen darf
+///   je Spieler        player_unit_*: was das Spiel diesem Spieler meldet, an
+///                     seinen Code; "user_argument" ist sein Eintrag in
+///                     "connections" (connect_player)
 ///
-static void on_unit_deployed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus: ein Ereignis geht
+/// also vor der Antwort auf das Kommando hinaus.
+///
+
+static void log_unit_deployed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
-    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
-    if(api == NULL)
+    (void)user_argument;
+    printf("Einheit %d steht auf (%d,%d)\n", (int)unit->id, (int)x, (int)y);
+}
+
+static void log_unit_destroyed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    (void)user_argument;
+    printf("Einheit %d auf (%d,%d) zerstoert\n", (int)unit->id, (int)x, (int)y);
+}
+
+static void log_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
+{
+    (void)user_argument;
+    if((unit == NULL) || (path == NULL) || (path->number_of_steps < 2))
     {
-        printf("Einheit %d auf (%d,%d) -- noch keine Verbindung, nicht gemeldet\n",
-               (int)unit->id, (int)x, (int)y);
+        printf("Zug ohne Bewegung (%d)\n", (int)result);
         return;
     }
+    printf("Einheit %d gezogen, %d Felder\n", (int)unit->id, (int)path->number_of_steps);
+}
 
+static void log_unit_attacked(void *user_argument, const RAD_AttackResult_t *result)
+{
+    (void)user_argument;
+    printf("Einheit %d greift (%d,%d) an: %d Schuesse, %d Treffer, %d durch, %d Schaden, %d gefallen%s\n",
+           (int)result->attacker, (int)result->x, (int)result->y,
+           (int)result->shots, (int)result->hits, (int)result->penetrations,
+           (int)result->wounds, (int)result->members_killed,
+           result->target_destroyed ? ", Ziel zerstoert" : "");
+}
+
+static void log_unit_sighted(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    (void)user_argument;
+    printf("Einheit %d auf (%d,%d) kommt in Sicht\n", (int)unit->id, (int)x, (int)y);
+}
+
+static void log_unit_lost(void *user_argument, RAD_UnitId_t unit, int32_t x, int32_t y)
+{
+    (void)user_argument;
+    printf("Einheit %d, zuletzt auf (%d,%d), aus der Sicht\n", (int)unit, (int)x, (int)y);
+}
+
+///
+/// Packt mit "serialize" und schickt an den Spieler hinter "user_argument" --
+/// das gemeinsame Ende der player_unit_*. Ohne Api geht nichts hinaus.
+///
+static void send_to_player(void *user_argument, RAD_NetCodecResult_t result,
+                           const uint8_t *message, uint16_t message_size, const char *label)
+{
+    const RAD_ServerConnection_t *connection = (const RAD_ServerConnection_t *)user_argument;
+    if((connection->api == NULL) || (connection->user == RAD_USER_NONE))
+    {
+        return;
+    }
+    send_packed(connection->api, connection->code, result, message, message_size, label);
+}
+
+/// Eine Einheit steht auf dem Feld, aufgestellt oder angelegt: NetUnitDeployedEvent.
+static void player_unit_deployed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
     const RAD_NetCodecResult_t result =
         RAD_SerializeUnitDeployedEventToMessage(unit, x, y, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, ZUC_MESSAGE_BROADCAST, result, message, message_size, "unit_deployed");
+    send_to_player(user_argument, result, message, message_size, "unit_deployed");
 }
 
 ///
-/// Eine Einheit ist zerstoert und vom Feld (RAD_OnUnitDestroyed_t): als
-/// NetUnitDestroyedEvent an jeden Client -- "user_argument" wie bei
-/// on_unit_deployed. Im Kampf geschieht das mitten im Angriff, also vor dessen
-/// Meldung (on_unit_attacked).
+/// Eine Einheit ist zerstoert und vom Feld: NetUnitDestroyedEvent. Im Kampf
+/// geschieht das mitten im Angriff, also vor dessen Meldung.
 ///
-static void on_unit_destroyed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+static void player_unit_destroyed(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
 {
-    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
-    if(api == NULL)
-    {
-        printf("Einheit %d auf (%d,%d) zerstoert -- noch keine Verbindung, nicht gemeldet\n",
-               (int)unit->id, (int)x, (int)y);
-        return;
-    }
-
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
-    const RAD_NetCodecResult_t packed =
+    const RAD_NetCodecResult_t result =
         RAD_SerializeUnitDestroyedEventToMessage(unit->id, x, y, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_destroyed");
+    send_to_player(user_argument, result, message, message_size, "unit_destroyed");
 }
 
 ///
-/// Ein Zug (RAD_OnUnitMoved_t): der Weg, den die Einheit wirklich gegangen ist,
-/// als NetUnitMovedEvent an jeden Client -- "user_argument" wie bei
-/// on_unit_deployed. Nur wenn sie wenigstens ein Feld weit kam: ein Zug, der
-/// nicht losging, meldet das Spiel mit leerem Weg, und ein abgelehnter ohne
-/// Einheit (NULL).
+/// Ein Zug: der Weg, den dieser Spieler davon sah -- der Besitzer den ganzen,
+/// ein anderer, was in seiner Sicht lag (NetUnitMovedEvent). Ein Zug, der nicht
+/// losging, kommt mit leerem Weg und geht nicht hinaus.
 ///
-/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus, also vor dem
-/// neuen Stand der Einheit (send_unit) und vor der Antwort auf das Kommando.
-///
-static void on_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
+static void player_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
+    (void)result;
     if((unit == NULL) || (path == NULL) || (path->number_of_steps < 2))
     {
-        printf("Zug ohne Bewegung (%d) -- nicht gemeldet\n", (int)result);
-        return;
-    }
-
-    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
-    if(api == NULL)
-    {
-        printf("Einheit %d gezogen -- noch keine Verbindung, nicht gemeldet\n", (int)unit->id);
         return;
     }
 
@@ -815,44 +901,110 @@ static void on_unit_moved(void *user_argument, const RAD_Unit_t *unit, const RAD
     uint16_t message_size = 0;
     const RAD_NetCodecResult_t packed =
         RAD_SerializeUnitMovedEventToMessage(unit->id, path, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_moved");
+    send_to_player(user_argument, packed, message, message_size, "unit_moved");
 }
 
 ///
-/// Ein Angriff (RAD_OnUnitAttacked_t): wer, wohin und was er bewirkt hat, als
-/// NetUnitAttackedEvent an jeden Client -- "user_argument" wie bei
-/// on_unit_deployed. Das Spiel meldet nur angenommene Angriffe, und erst nach dem
-/// Kampf.
+/// Ein Angriff: wer, wohin und was er bewirkt hat (NetUnitAttackedEvent) -- ohne
+/// Schuetzen, wenn dieser Spieler ihn nicht sieht.
 ///
-/// Gemeldet wird synchron aus RAD_ControlExecuteCommand heraus, also vor dem
-/// neuen Stand der beiden Einheiten (send_unit, send_unit_at) und vor der
-/// Antwort auf das Kommando.
-///
-static void on_unit_attacked(void *user_argument, const RAD_AttackResult_t *result)
+static void player_unit_attacked(void *user_argument, const RAD_AttackResult_t *result)
 {
-    printf("Einheit %d greift (%d,%d) an: %d Schuesse, %d Treffer, %d durch, %d Schaden, %d gefallen%s\n",
-           (int)result->attacker, (int)result->x, (int)result->y,
-           (int)result->shots, (int)result->hits, (int)result->penetrations,
-           (int)result->wounds, (int)result->members_killed,
-           result->target_destroyed ? ", Ziel zerstoert" : "");
-
-    const ZUC_Api_t api = *(const ZUC_Api_t *)user_argument;
-    if(api == NULL)
-    {
-        printf("   noch keine Verbindung, nicht gemeldet\n");
-        return;
-    }
-
     uint8_t message[RAD_SERVER_MESSAGE_SIZE];
     uint16_t message_size = 0;
     const RAD_NetCodecResult_t packed =
         RAD_SerializeUnitAttackedEventToMessage(result, message, (uint16_t)sizeof(message), &message_size);
-    send_packed(api, ZUC_MESSAGE_BROADCAST, packed, message, message_size, "unit_attacked");
+    send_to_player(user_argument, packed, message, message_size, "unit_attacked");
+}
+
+/// Eine fremde Einheit kommt diesem Spieler in die Sicht: NetUnitSightedEvent.
+static void player_unit_sighted(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t result =
+        RAD_SerializeUnitSightedEventToMessage(unit, x, y, message, (uint16_t)sizeof(message), &message_size);
+    send_to_player(user_argument, result, message, message_size, "unit_sighted");
+}
+
+/// Eine fremde Einheit verschwindet aus seiner Sicht: NetUnitLostEvent.
+static void player_unit_lost(void *user_argument, RAD_UnitId_t unit, int32_t x, int32_t y)
+{
+    uint8_t message[RAD_SERVER_MESSAGE_SIZE];
+    uint16_t message_size = 0;
+    const RAD_NetCodecResult_t result =
+        RAD_SerializeUnitLostEventToMessage(unit, x, y, message, (uint16_t)sizeof(message), &message_size);
+    send_to_player(user_argument, result, message, message_size, "unit_lost");
+}
+
+///
+/// Traegt "user" mit "code" in die Verbindungen ein (siehe "connections" oben)
+/// und abonniert beim ersten Mal seine Ereignisse am Event-Manager des Spiels.
+/// Steht er schon darin, wird nur der Code fortgeschrieben. Ist die Tabelle
+/// voll oder "user" RAD_USER_NONE, bleibt er draussen und bekommt keine
+/// Ereignisse -- im Log steht es.
+///
+static void connect_player(RAD_EventManager_t *events, ZUC_Api_t api, RAD_UserId_t user, uint64_t code)
+{
+    if(user == RAD_USER_NONE)
+    {
+        return;
+    }
+
+    RAD_ServerConnection_t *free_slot = NULL;
+    for(int32_t i = 0; i < RAD_SERVER_MAX_CONNECTIONS; ++i)
+    {
+        if(connections[i].user == user)
+        {
+            connections[i].code = code;
+            connections[i].api = api;
+            return;
+        }
+        if((free_slot == NULL) && (connections[i].user == RAD_USER_NONE))
+        {
+            free_slot = &connections[i];
+        }
+    }
+
+    if(free_slot == NULL)
+    {
+        printf("   0x%" PRIx64 " nicht verbunden -- schon %d Spieler\n", user, RAD_SERVER_MAX_CONNECTIONS);
+        return;
+    }
+
+    *free_slot = (RAD_ServerConnection_t){ .user = user, .code = code, .api = api };
+    if(!RAD_EventManagerSubscribeToUnitEventsOf(events, user, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = free_slot,
+        .spawned = player_unit_deployed,
+        .destroyed = player_unit_destroyed,
+        .moved = player_unit_moved,
+        .attacked = player_unit_attacked,
+        .sighted = player_unit_sighted,
+        .lost = player_unit_lost
+    }))
+    {
+        printf("   0x%" PRIx64 " nicht abonniert\n", user);
+        *free_slot = (RAD_ServerConnection_t){ .user = RAD_USER_NONE };
+        return;
+    }
+    printf("   0x%" PRIx64 " verbunden\n", user);
+}
+
+///
+/// Leert die Verbindungen -- mit einem neuen Spiel, dessen Event-Manager keine
+/// Abos mehr kennt (siehe "connections" oben).
+///
+static void forget_connections(void)
+{
+    for(int32_t i = 0; i < RAD_SERVER_MAX_CONNECTIONS; ++i)
+    {
+        connections[i] = (RAD_ServerConnection_t){ .user = RAD_USER_NONE };
+    }
 }
 
 ///
 /// Der Zugwechsel des Spiels (RAD_OnTurnChanged_t): wer jetzt dran ist, an jeden
-/// Client, und danach alle Einheiten neu (send_units) -- mit dem Zug hat das
+/// Client, und danach je Spieler die Einheiten neu, die er kennen darf (send_units) -- mit dem Zug hat das
 /// Spiel vergessen, was sie getan haben (NetUnit.deployed, moved, attacked).
 /// "user_argument" ist ein RAD_ServerTurnTarget_t; solange die Api NULL ist,
 /// geht nichts hinaus, solange die Steuerung NULL ist, keine Einheiten.
@@ -978,7 +1130,14 @@ static void on_turn_changed(void *user_argument, RAD_UserId_t current_user)
     if(control != NULL)
     {
         send_round(control, api, ZUC_MESSAGE_BROADCAST);
-        send_units(control, api, ZUC_MESSAGE_BROADCAST);
+        // Die Einheiten je Spieler: jeder nur, was er kennen darf.
+        for(int32_t c = 0; c < RAD_SERVER_MAX_CONNECTIONS; ++c)
+        {
+            if(connections[c].user != RAD_USER_NONE)
+            {
+                send_units(control, api, connections[c].code, connections[c].user);
+            }
+        }
     }
 }
 
@@ -988,7 +1147,8 @@ static void on_turn_changed(void *user_argument, RAD_UserId_t current_user)
 /// der Absender im Spiel ist, sagt er nicht: das steht in den ersten 8 Byte der
 /// Nachricht (RAD_ParseSenderFromMessage).
 ///
-static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source, const uint8_t *raw, uint16_t raw_size)
+static void handle_message(RAD_Control_t control, ZUC_Api_t api, RAD_EventManager_t *events,
+                           uint64_t source, const uint8_t *raw, uint16_t raw_size)
 {
     // Zuerst der Absender: die ersten 8 Byte setzt das Backend, nicht der Client
     // (RAD_ParseSenderFromMessage). Was danach kommt, ist die NetUserRequest.
@@ -1002,6 +1162,10 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source
         return;
     }
 
+    // Wer schreibt, ist unter "source" zu erreichen -- mit jeder Nachricht neu,
+    // auch einer Discover-Anfrage, die meist die erste ist (connect_player).
+    connect_player(events, api, sender, source);
+
     // Erst als Discover-Anfrage lesen, dann als Kommando: eine Nachricht, die
     // keine Discover-Anfrage ist, liefert UNEXPECTED_MESSAGE und geht den
     // bisherigen Weg. Beantwortet wird sie mit drei Spiel-Ereignissen und den
@@ -1012,7 +1176,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source
     {
         printf("<- discover      (%" PRIu32 ",%" PRIu32 ") %" PRIu32 "x%" PRIu32 "\n",
                discover.x, discover.y, discover.w, discover.h);
-        send_discover_events(control, api, source, &discover);
+        send_discover_events(control, api, source, sender, &discover);
         return;
     }
 
@@ -1029,7 +1193,7 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source
     if(RAD_ParseDiscoverUnitsFromMessage(data, size) == RAD_NET_CODEC_OK)
     {
         printf("<- discover_units\n");
-        send_units(control, api, source);
+        send_units(control, api, source, sender);
         return;
     }
 
@@ -1079,8 +1243,8 @@ static void handle_message(RAD_Control_t control, ZUC_Api_t api, uint64_t source
     printf("   %s (%d Mitspieler)\n", description, RAD_ControlNumberOfPlayers(control));
 
     // Hat eine Einheit gezogen oder angegriffen, geht ihr neuer Stand vor der
-    // Antwort hinaus, wie beim Aufstellen (on_unit_deployed): die Clients sehen
-    // daran, was sie in diesem Zug noch darf. Nach einem Angriff dazu die
+    // Antwort hinaus, wie beim Aufstellen (player_unit_deployed): wer sie kennen
+    // darf, sieht daran, was sie in diesem Zug noch darf. Nach einem Angriff dazu die
     // getroffene, mit dem, was ihr geblieben ist.
     if(success && (command.header.type == RAD_COMMAND_TYPE_MOVE_UNIT))
     {
@@ -1152,9 +1316,10 @@ int main(int argc, char **argv)
     // beide gehen zusammen weg. Was das heisst, weiss der Loader
     // (RAD_ControlGame_t) -- main traegt das Paar weiter und gibt es zurueck.
     //
-    // Die Api steht schon hier, angelegt wird sie erst unten: die Einheiten-
-    // Ereignisse bekommen einen Zeiger auf diese Variable (on_unit_deployed).
-    // Ebenso die Steuerung fuer den Zugwechsel (on_turn_changed).
+    // Die Api steht schon hier, angelegt wird sie erst unten: der Zugwechsel und
+    // das Spielende bekommen einen Zeiger auf diese Variable (on_turn_changed),
+    // ebenso auf die Steuerung. Die Ereignisse der Einheiten gehen je Spieler
+    // hinaus und bekommen die Api mit seinem Eintrag (connect_player).
     ZUC_Api_t api = NULL;
     RAD_Control_t control = NULL;
     const char *game_finished_command = path_from_environment(RAD_SERVER_GAME_FINISHED_COMMAND_VARIABLE);
@@ -1170,12 +1335,16 @@ int main(int argc, char **argv)
             .removed = RAD_OnTileRemovedFromGame,
             .changed = RAD_OnTileStateChanged
         },
+        // Ohne Empfaenger nur ins Log: an die Spieler gehen die Ereignisse je
+        // Spieler (connect_player).
         .unit_changed = {
-            .user_argument = &api,
-            .spawned = on_unit_deployed,
-            .destroyed = on_unit_destroyed,
-            .moved = on_unit_moved,
-            .attacked = on_unit_attacked
+            .user_argument = NULL,
+            .spawned = log_unit_deployed,
+            .destroyed = log_unit_destroyed,
+            .moved = log_unit_moved,
+            .attacked = log_unit_attacked,
+            .sighted = log_unit_sighted,
+            .lost = log_unit_lost
         },
         .turn_changed = {
             .user_argument = (void *)&turn_target,
@@ -1246,7 +1415,7 @@ int main(int argc, char **argv)
         while(0 == ZUC_ApiReceive(api, &source, message, &size))
         {
             const uint64_t start = RAD_MessageTimingNow();
-            handle_message(control, api, source, message, size);
+            handle_message(control, api, loaded.event_manager, source, message, size);
             RAD_MessageTimingAdd(&timing, RAD_MessageTimingNow() - start);
         }
 
@@ -1261,6 +1430,8 @@ int main(int argc, char **argv)
             game_start_changed = 0;
             if(game_start_path != NULL && access(game_start_path, F_OK) == 0)
             {
+                // Der neue Event-Manager kennt keine Abos, und die Codes sind neu.
+                forget_connections();
                 if(!RAD_ControlResetGame(&loaded, &control, world_path, &event_callbacks))
                 {
                     printf("Ohne Spiel geht es nicht weiter -- Abbruch.\n");

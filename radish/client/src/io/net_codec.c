@@ -20,6 +20,8 @@ const char* RAD_NetCodecResultText(RAD_NetCodecResult_t result)
         case RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL:          return "Puffer zu klein fuer die gepackte Nachricht";
         case RAD_NET_CODEC_ERROR_DECODE_FAILED:             return "Bytes liessen sich nicht als NetServerMessage lesen";
         case RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE:        return "NetServerMessage ist strukturell nicht das, was ihr Zweig behauptet";
+        case RAD_NET_CODEC_ERROR_OUT_OF_MEMORY:             return "kein Speicher fuer die Kopie der Nachricht";
+        case RAD_NET_CODEC_ERROR_INBOX_EMPTY:               return "keine Nachricht in der Inbox";
         default:                                            return "unbekanntes Ergebnis";
     }
 }
@@ -607,6 +609,51 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             return RAD_NET_CODEC_OK;
         }
 
+        case NET_GAME_EVENT__EVENT_UNIT_SIGHTED:
+        {
+            const NetUnitSightedEvent *unit_sighted = game_event->unit_sighted;
+            if((unit_sighted == NULL) || (unit_sighted->unit == NULL))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            // Wie beim Aufstellen: ein Feld, das in keine Position passt, gibt es
+            // in keiner Welt des Clients.
+            if((unit_sighted->x > INT16_MAX) || (unit_sighted->y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            RAD_NetUnitSighted_t sighted;
+            const RAD_NetCodecResult_t result = RAD_NetFillUnit(&sighted.unit, unit_sighted->unit);
+            if(result != RAD_NET_CODEC_OK)
+            {
+                return result;
+            }
+            sighted.position.x = (int16_t)unit_sighted->x;
+            sighted.position.y = (int16_t)unit_sighted->y;
+
+            RAD_NetEventManagerPublishUnitSighted(events, &sighted);
+            return RAD_NET_CODEC_OK;
+        }
+
+        case NET_GAME_EVENT__EVENT_UNIT_LOST:
+        {
+            const NetUnitLostEvent *unit_lost = game_event->unit_lost;
+            // Wie bei der Zerstoerung: ein Feld, das in keine Position passt, gibt es nicht.
+            if((unit_lost == NULL) || (unit_lost->x > INT16_MAX) || (unit_lost->y > INT16_MAX))
+            {
+                return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
+            }
+
+            const RAD_NetUnitLost_t lost = {
+                .entity = (RAD_NetEntityId_t)unit_lost->unit_id,
+                .position = { .x = (int16_t)unit_lost->x, .y = (int16_t)unit_lost->y }
+            };
+            RAD_NetEventManagerPublishUnitLost(events, &lost);
+            return RAD_NET_CODEC_OK;
+        }
+
         case NET_GAME_EVENT__EVENT_UNIT:
         {
             if((game_event->unit == NULL) || (game_event->unit->unit == NULL))
@@ -668,6 +715,7 @@ static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *u
     out->owner = (RAD_NetUserId_t)unit->owner_id;
     RAD_NetCopyName(out->name, unit->name);
     out->movement = unit->movement;
+    out->sight_range = unit->sight_range;
     out->transport_capacity = unit->transport_capacity;
     out->can_capture = unit->can_capture;
     out->deployed = unit->deployed;
@@ -748,6 +796,8 @@ static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile)
         case NET_TILE_TYPE__TILE_TYPE_CITY:          out->type = RAD_NET_TILE_TYPE_CITY;           break;
         case NET_TILE_TYPE__TILE_TYPE_ROAD:          out->type = RAD_NET_TILE_TYPE_ROAD;           break;
         case NET_TILE_TYPE__TILE_TYPE_FORTIFICATION: out->type = RAD_NET_TILE_TYPE_FORTIFICATION;  break;
+        case NET_TILE_TYPE__TILE_TYPE_DRAGONS_TEETH: out->type = RAD_NET_TILE_TYPE_DRAGONS_TEETH;  break;
+        case NET_TILE_TYPE__TILE_TYPE_HIGH_GRASS:    out->type = RAD_NET_TILE_TYPE_HIGH_GRASS;     break;
         case NET_TILE_TYPE__TILE_TYPE_UNKNOWN:
         default:                                     out->type = RAD_NET_TILE_TYPE_UNKNOWN;        break;
     }
@@ -856,10 +906,23 @@ static RAD_NetCodecResult_t RAD_NetDispatchEvent(RAD_NetEventManager_t *events, 
     }
 }
 
-RAD_NetCodecResult_t RAD_NetDispatchServerMessage(RAD_NetEventManager_t *events,
-                                                   const uint8_t *data,
-                                                   size_t length)
+RAD_NetCodecResult_t RAD_NetEnqueueServerMessage(RAD_IoNetInbox_t *inbox,
+                                                  const uint8_t *data,
+                                                  size_t length)
 {
+    return RAD_IoNetInboxPush(inbox, data, length) ? RAD_NET_CODEC_OK : RAD_NET_CODEC_ERROR_OUT_OF_MEMORY;
+}
+
+RAD_NetCodecResult_t RAD_NetDispatchServerMessage(RAD_NetEventManager_t *events,
+                                                   RAD_IoNetInbox_t *inbox)
+{
+    size_t length = 0;
+    const uint8_t *data = RAD_IoNetInboxFront(inbox, &length);
+    if(data == NULL)
+    {
+        return RAD_NET_CODEC_ERROR_INBOX_EMPTY;
+    }
+
     // NULL als Allocator: protobuf-c greift dann auf malloc/free zurueck
     // (protobuf-c.h). Eigene Allokatoren braeuchte es erst, wenn der Client
     // eigene Speicherverwaltung mitbringt -- das tut er an keiner anderen
@@ -867,6 +930,8 @@ RAD_NetCodecResult_t RAD_NetDispatchServerMessage(RAD_NetEventManager_t *events,
     NetServerMessage *message = net_server_message__unpack(NULL, length, data);
     if(message == NULL)
     {
+        // Auch eine unlesbare Nachricht kommt heraus -- sonst stuende sie fuer immer vorne.
+        RAD_IoNetInboxPop(inbox);
         return RAD_NET_CODEC_ERROR_DECODE_FAILED;
     }
 
@@ -892,6 +957,7 @@ RAD_NetCodecResult_t RAD_NetDispatchServerMessage(RAD_NetEventManager_t *events,
     // RAD_NetDispatchCommandResponse) -- danach wird nichts davon mehr
     // gebraucht.
     net_server_message__free_unpacked(message, NULL);
+    RAD_IoNetInboxPop(inbox);
 
     return result;
 }

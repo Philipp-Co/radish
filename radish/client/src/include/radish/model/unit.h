@@ -110,6 +110,10 @@ typedef struct
     /// Bewegungsreichweite in Feldern.
     int16_t movement;
 
+    /// Wie weit sie sieht, in Feldern waagerecht plus senkrecht -- daran rechnet
+    /// der Client die eigene Sicht nach (control/visibility.h).
+    int16_t sight_range;
+
     ///
     /// Was sie im laufenden Zug schon getan hat, wie der Server es meldet: in
     /// diesem Zug aufgestellt -- dann darf sie weder ziehen noch angreifen --,

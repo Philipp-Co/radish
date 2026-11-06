@@ -78,7 +78,9 @@ typedef enum
     RAD_TILE_TYPE_WATER_DEEP,       // '=' tiefes Wasser
     RAD_TILE_TYPE_CITY,             // 'H' Stadt
     RAD_TILE_TYPE_ROAD,             // '+' Strasse
-    RAD_TILE_TYPE_FORTIFICATION     // '*' befestigte Stellung
+    RAD_TILE_TYPE_FORTIFICATION,    // '*' befestigte Stellung
+    RAD_TILE_TYPE_DRAGONS_TEETH,    // '#' Drachenzaehne
+    RAD_TILE_TYPE_HIGH_GRASS        // ';' hohes Gras
 } RAD_TileType_t;
 
 ///
@@ -86,7 +88,7 @@ typedef enum
 /// Eintrag hat (RAD_Terrain_t, model/tile/tile.h). Kein letzter Wert in der
 /// Aufzaehlung: ein switch ohne default muesste ihn sonst auffuehren.
 ///
-#define RAD_NUMBER_OF_TILE_TYPES (RAD_TILE_TYPE_FORTIFICATION + 1)
+#define RAD_NUMBER_OF_TILE_TYPES (RAD_TILE_TYPE_HIGH_GRASS + 1)
 
 ///
 /// Die drei Strukturen, die nur Namen bleiben: angekuendigt, definiert je einmal

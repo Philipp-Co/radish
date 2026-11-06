@@ -1,6 +1,7 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
 #include <radish/game/control/commands.h>
+#include <radish/game/control/visibility.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -118,7 +119,14 @@ void RAD_GameHandleDeployCommand(RAD_Game_t *game, RAD_UserId_t user, const RAD_
     RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, deploy->unit);
     unit->turn.deployed = 1;
 
-    if(!RAD_WorldDeployUnit(&game->world, deploy->unit, deploy->x, deploy->y))
+    // Wer davon erfaehrt, entscheidet sich hier und nicht in der Welt: der
+    // Besitzer und jeder, der das Feld sieht (control/visibility.h). Gerechnet
+    // vor dem Aufstellen, denn gemeldet wird dabei -- es kommt aufs Gleiche
+    // heraus: das Zielfeld selbst versperrt keine Sicht auf sich.
+    RAD_Recipients_t recipients;
+    RAD_GameRecipientsForTile(game, user, deploy->x, deploy->y, &recipients);
+
+    if(!RAD_WorldDeployUnit(&game->world, deploy->unit, deploy->x, deploy->y, &recipients))
     {
         unit->turn.deployed = 0;
         return;

@@ -222,6 +222,7 @@ class UnitTypeSerializer(serializers.ModelSerializer):
             "transport_capacity",
             "can_capture_objectives",
             "movement",
+            "sight_range",
             "profiles",
         ]
 
@@ -668,6 +669,7 @@ class AdminUnitTypeSerializer(_CatalogAdminSerializer):
             "transport_capacity",
             "can_capture_objectives",
             "movement",
+            "sight_range",
             "in_use",
             "profiles",
         ]

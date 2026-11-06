@@ -28,6 +28,8 @@ void test_move_regel_kosten_des_gelaendes(void);
 void test_move_regel_nennt_jeden_grund(void);
 void test_move_regel_strasse_kostet_eins(void);
 void test_move_kommando_zu_weit_bewegt_nicht(void);
+void test_move_meldet_dem_besitzer(void);
+void test_move_beobachter_sieht_einen_teil_des_weges(void);
 void test_deploy_nicht_auf_unbegehbares_feld(void);
 
 void test_attack_fabrik_fuellt_das_kommando(void);
@@ -50,6 +52,9 @@ void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void);
 void test_kampf_trifft_auch_eigene_einheiten(void);
 void test_kampf_derselbe_seed_derselbe_kampf(void);
 void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void);
+void test_kampf_zerstoerung_meldet_dem_besitzer(void);
+void test_kampf_angriff_meldet_beiden_besitzern(void);
+void test_kampf_wer_sieht_erfaehrt_mehr(void);
 void test_sicht_gelaende_versperrt_was_dahinter_liegt(void);
 void test_sicht_einheiten_versperren(void);
 void test_sicht_die_linie_geht_von_mitte_zu_mitte(void);
@@ -105,6 +110,8 @@ void test_deploy_kommando_stellt_die_einheit_auf(void);
 void test_deploy_kommando_fuer_fremde_einheit_aendert_nichts(void);
 void test_deploy_nur_in_der_eigenen_zone(void);
 void test_deploy_kommando_ausserhalb_der_zone_aendert_nichts(void);
+void test_deploy_meldet_dem_besitzer(void);
+void test_deploy_meldet_wer_das_feld_sieht(void);
 
 void test_players_beitritt_legt_einen_spieler_an(void);
 void test_players_ohne_benutzer_kein_spieler(void);
@@ -123,6 +130,15 @@ void test_zugwechsel_abgeben_meldet_den_naechsten(void);
 void test_zugwechsel_allein_abgeben_meldet_ihn_erneut(void);
 void test_zugwechsel_austritt_meldet_nur_eine_aenderung(void);
 
+
+void test_sicht_eigener_zug_deckt_eine_stehende_einheit_auf(void);
+void test_sicht_eigener_zug_verliert_eine_stehende_einheit(void);
+void test_sicht_fremder_zug_hinein(void);
+void test_sicht_fremder_zug_hinaus(void);
+void test_sicht_zerstoerung_meldet_kein_aus_der_sicht(void);
+void test_sicht_aufstellen_meldet_kein_in_sicht(void);
+void test_sicht_lesen_je_spieler(void);
+void test_sicht_vom_rand_hinaus_faehrt_in_den_nebel(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -149,6 +165,8 @@ int main(void)
     RUN_TEST(test_move_regel_nennt_jeden_grund);
     RUN_TEST(test_move_regel_strasse_kostet_eins);
     RUN_TEST(test_move_kommando_zu_weit_bewegt_nicht);
+    RUN_TEST(test_move_meldet_dem_besitzer);
+    RUN_TEST(test_move_beobachter_sieht_einen_teil_des_weges);
     RUN_TEST(test_deploy_nicht_auf_unbegehbares_feld);
 
     RUN_TEST(test_attack_fabrik_fuellt_das_kommando);
@@ -171,6 +189,9 @@ int main(void)
     RUN_TEST(test_kampf_trifft_auch_eigene_einheiten);
     RUN_TEST(test_kampf_derselbe_seed_derselbe_kampf);
     RUN_TEST(test_kampf_deckung_des_zielfeldes_erschwert_den_treffer);
+    RUN_TEST(test_kampf_zerstoerung_meldet_dem_besitzer);
+    RUN_TEST(test_kampf_angriff_meldet_beiden_besitzern);
+    RUN_TEST(test_kampf_wer_sieht_erfaehrt_mehr);
     RUN_TEST(test_sicht_gelaende_versperrt_was_dahinter_liegt);
     RUN_TEST(test_sicht_einheiten_versperren);
     RUN_TEST(test_sicht_die_linie_geht_von_mitte_zu_mitte);
@@ -226,6 +247,8 @@ int main(void)
     RUN_TEST(test_deploy_kommando_fuer_fremde_einheit_aendert_nichts);
     RUN_TEST(test_deploy_nur_in_der_eigenen_zone);
     RUN_TEST(test_deploy_kommando_ausserhalb_der_zone_aendert_nichts);
+    RUN_TEST(test_deploy_meldet_dem_besitzer);
+    RUN_TEST(test_deploy_meldet_wer_das_feld_sieht);
 
     RUN_TEST(test_players_beitritt_legt_einen_spieler_an);
     RUN_TEST(test_players_ohne_benutzer_kein_spieler);
@@ -243,6 +266,15 @@ int main(void)
     RUN_TEST(test_zugwechsel_abgeben_meldet_den_naechsten);
     RUN_TEST(test_zugwechsel_allein_abgeben_meldet_ihn_erneut);
     RUN_TEST(test_zugwechsel_austritt_meldet_nur_eine_aenderung);
+
+    RUN_TEST(test_sicht_eigener_zug_deckt_eine_stehende_einheit_auf);
+    RUN_TEST(test_sicht_eigener_zug_verliert_eine_stehende_einheit);
+    RUN_TEST(test_sicht_fremder_zug_hinein);
+    RUN_TEST(test_sicht_fremder_zug_hinaus);
+    RUN_TEST(test_sicht_zerstoerung_meldet_kein_aus_der_sicht);
+    RUN_TEST(test_sicht_aufstellen_meldet_kein_in_sicht);
+    RUN_TEST(test_sicht_lesen_je_spieler);
+    RUN_TEST(test_sicht_vom_rand_hinaus_faehrt_in_den_nebel);
 
     return UNITY_END();
 }

@@ -1,0 +1,192 @@
+[
+{
+  "model": "api.species",
+  "pk": 1,
+  "fields": {
+    "name": "Amis"
+  }
+},
+{
+  "model": "api.unittype",
+  "pk": 1,
+  "fields": {
+    "species": 1,
+    "name": "Kampfpanzer",
+    "min_entities": 1,
+    "max_entities": 1,
+    "max_heavy_weapons": null,
+    "max_super_heavy_weapons": 1,
+    "transport_capacity": 0,
+    "can_capture_objectives": false,
+    "movement": 5,
+    "sight_range": 8
+  }
+},
+{
+  "model": "api.entityprofile",
+  "pk": 1,
+  "fields": {
+    "unit_type": 1,
+    "name": "Kampfpanzer",
+    "health": 3,
+    "armor": 6,
+    "toughness": 4,
+    "strength": 0,
+    "accuracy": 5,
+    "equipment_slots": 0,
+    "weapon_slots": 0,
+    "heavy_weapon_slots": 0,
+    "super_heavy_weapon_slots": 1,
+    "cost": 200,
+    "min_count": 1,
+    "max_count": 1
+  }
+},
+{
+  "model": "api.weapon",
+  "pk": 1,
+  "fields": {
+    "species": 1,
+    "name": "120mm Geschütz",
+    "weapon_class": "super_heavy",
+    "shots": 1,
+    "strength": 8,
+    "min_range": 3,
+    "max_range": 8,
+    "armor_penetration": 5,
+    "cost": 100
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 1,
+  "fields": {
+    "code": "void",
+    "movement_modifier": 0,
+    "cover": 0,
+    "impassable": true,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 2,
+  "fields": {
+    "code": "ground",
+    "movement_modifier": 0,
+    "cover": 1,
+    "impassable": false,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 3,
+  "fields": {
+    "code": "water_shallow",
+    "movement_modifier": -1,
+    "cover": 0,
+    "impassable": false,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 4,
+  "fields": {
+    "code": "mud",
+    "movement_modifier": -1,
+    "cover": 0,
+    "impassable": false,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 5,
+  "fields": {
+    "code": "meadow",
+    "movement_modifier": 0,
+    "cover": 0,
+    "impassable": false,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 6,
+  "fields": {
+    "code": "forest",
+    "movement_modifier": -1,
+    "cover": 2,
+    "impassable": true,
+    "blocks_sight": true
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 7,
+  "fields": {
+    "code": "water_deep",
+    "movement_modifier": 0,
+    "cover": 0,
+    "impassable": true,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 8,
+  "fields": {
+    "code": "city",
+    "movement_modifier": 0,
+    "cover": 2,
+    "impassable": false,
+    "blocks_sight": true
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 9,
+  "fields": {
+    "code": "road",
+    "movement_modifier": 1,
+    "cover": 0,
+    "impassable": false,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 10,
+  "fields": {
+    "code": "fortification",
+    "movement_modifier": -1,
+    "cover": 3,
+    "impassable": false,
+    "blocks_sight": true
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 11,
+  "fields": {
+    "code": "dragons_teeth",
+    "movement_modifier": 0,
+    "cover": 0,
+    "impassable": true,
+    "blocks_sight": false
+  }
+},
+{
+  "model": "api.terraintype",
+  "pk": 12,
+  "fields": {
+    "code": "high_grass",
+    "movement_modifier": 0,
+    "cover": 1,
+    "impassable": false,
+    "blocks_sight": true
+  }
+}
+]

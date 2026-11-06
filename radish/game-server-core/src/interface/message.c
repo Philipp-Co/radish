@@ -369,6 +369,7 @@ static void RAD_NetUnitFromUnit(const RAD_Unit_t *unit, RAD_NetUnitStorage_t *st
     net_unit->deployed = unit->turn.deployed;
     net_unit->moved = unit->turn.moved;
     net_unit->attacked = unit->turn.attacked;
+    net_unit->sight_range = (uint32_t)unit->sight_range;
 
     const size_t number_of_members = RAD_NetClampCount(unit->number_of_members, RAD_UNIT_MAX_MEMBERS);
     for(size_t m = 0; m < number_of_members; ++m)
@@ -490,6 +491,8 @@ RAD_NetCodecResult_t RAD_SerializeUnitAttackedEventToMessage(const RAD_AttackRes
                                                               uint16_t *out_size)
 {
     NetUnitAttackedEvent unit_attacked = NET_UNIT_ATTACKED_EVENT__INIT;
+    // Ein unbekannter Schuetze (RAD_UNIT_NONE) geht als 4294967295 hinaus, -1 als
+    // uint32 -- so steht es in game.proto, und zurueck gewandelt ist es wieder -1.
     unit_attacked.unit_id = (uint32_t)result->attacker;
     unit_attacked.x = (uint32_t)result->x;
     unit_attacked.y = (uint32_t)result->y;
@@ -527,6 +530,47 @@ RAD_NetCodecResult_t RAD_SerializeUnitDestroyedEventToMessage(RAD_UnitId_t unit,
     NetGameEvent game_event = NET_GAME_EVENT__INIT;
     game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_DESTROYED;
     game_event.unit_destroyed = &unit_destroyed;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitSightedEventToMessage(const RAD_Unit_t *unit,
+                                                             int32_t x,
+                                                             int32_t y,
+                                                             uint8_t *out_message,
+                                                             uint16_t capacity,
+                                                             uint16_t *out_size)
+{
+    RAD_NetUnitStorage_t storage;
+    RAD_NetUnitFromUnit(unit, &storage);
+
+    NetUnitSightedEvent unit_sighted = NET_UNIT_SIGHTED_EVENT__INIT;
+    unit_sighted.unit = &storage.unit;
+    unit_sighted.x = (uint32_t)x;
+    unit_sighted.y = (uint32_t)y;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_SIGHTED;
+    game_event.unit_sighted = &unit_sighted;
+
+    return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+}
+
+RAD_NetCodecResult_t RAD_SerializeUnitLostEventToMessage(RAD_UnitId_t unit,
+                                                          int32_t x,
+                                                          int32_t y,
+                                                          uint8_t *out_message,
+                                                          uint16_t capacity,
+                                                          uint16_t *out_size)
+{
+    NetUnitLostEvent unit_lost = NET_UNIT_LOST_EVENT__INIT;
+    unit_lost.unit_id = (uint32_t)unit;
+    unit_lost.x = (uint32_t)x;
+    unit_lost.y = (uint32_t)y;
+
+    NetGameEvent game_event = NET_GAME_EVENT__INIT;
+    game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_LOST;
+    game_event.unit_lost = &unit_lost;
 
     return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
 }
@@ -703,6 +747,8 @@ static NetTileType RAD_NetTileTypeFromTileType(RAD_TileType_t type)
         case RAD_TILE_TYPE_CITY:          return NET_TILE_TYPE__TILE_TYPE_CITY;
         case RAD_TILE_TYPE_ROAD:          return NET_TILE_TYPE__TILE_TYPE_ROAD;
         case RAD_TILE_TYPE_FORTIFICATION: return NET_TILE_TYPE__TILE_TYPE_FORTIFICATION;
+        case RAD_TILE_TYPE_DRAGONS_TEETH: return NET_TILE_TYPE__TILE_TYPE_DRAGONS_TEETH;
+        case RAD_TILE_TYPE_HIGH_GRASS:    return NET_TILE_TYPE__TILE_TYPE_HIGH_GRASS;
     }
 
     // Ein Wert ausserhalb der Aufzaehlung -- auf der Strecke ist das "unbekannt".

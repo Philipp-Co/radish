@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <radish/game/model/model.h>
+#include <radish/game/user.h>
 
 ///
 /// Ein Feld des Rasters.
@@ -171,5 +172,16 @@ int32_t RAD_GameWorldHeight(const RAD_Game_t *game);
 /// geprueftes false keinen halben Stand hinterlaesst.
 ///
 bool RAD_GameTileAt(const RAD_Game_t *game, int16_t x, int16_t y, RAD_Tile_t *output);
+
+///
+/// Das Feld, wie "user" es kennen darf: wie RAD_GameTileAt, aber steht darauf
+/// eine Einheit, die er nicht sieht, ist RAD_Tile_t.unit RAD_UNIT_NONE. Das
+/// Gelaende sieht jeder; was auf dem Feld steht, nur wer es sieht -- seine
+/// eigenen Einheiten immer. Wer was sieht, ist eine Regel des Spiels und steht
+/// privat in control/visibility.h; heraus kommt nur das Ergebnis.
+///
+/// Die Stelle wie bei RAD_GameTileAt per assert; false fuer NULL.
+///
+bool RAD_GameTileAtFor(const RAD_Game_t *game, RAD_UserId_t user, int16_t x, int16_t y, RAD_Tile_t *output);
 
 #endif

@@ -4,6 +4,7 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
 #include <radish/game/control/commands.h>
+#include <radish/game/control/visibility.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -77,6 +78,16 @@ void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
         return;
     }
 
+    // Die Sicht vorher, damit danach gemeldet werden kann, was jemandem neu in
+    // die Sicht kam oder aus ihr verschwand -- auch, was sich selbst nicht
+    // bewegt hat (control/visibility.h). Das Kommando meldet zuerst sein eigenes
+    // Ereignis, die Sicht folgt: ein Zug kann so eine Einheit nennen, die der
+    // Empfaenger erst mit dem "in Sicht" danach kennenlernt -- die Einheit kommt
+    // mit beiden ganz mit. Erst sammeln und dann in anderer Reihenfolge melden
+    // hiesse, Zeiger auf Einheiten und Wege ueber das Kommando hinaus zu halten.
+    RAD_SightSnapshot_t before;
+    RAD_GameTakeSightSnapshot(game, &before);
+
     switch(command->header.type)
     {
         case RAD_COMMAND_TYPE_MOVE_UNIT:
@@ -94,4 +105,9 @@ void RAD_GameExecuteCommand(RAD_Game_t *game, RAD_Command_t *command)
         default:
             break;
     }
+
+    const bool moved = (command->header.type == RAD_COMMAND_TYPE_MOVE_UNIT);
+    RAD_GameNotifySightChanges(game, &before,
+                               moved ? command->command.move_unit.unit : RAD_UNIT_NONE,
+                               moved ? &command->command.move_unit.path : NULL);
 }

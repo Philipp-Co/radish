@@ -840,3 +840,86 @@ void test_message_packt_das_gelaende(void)
     TEST_ASSERT_FALSE(message->event->game->tiles->tiles[1]->blocks_sight);
     net_server_message__free_unpacked(message, NULL);
 }
+
+///
+/// Eine Einheit kommt in Sicht (NetUnitSightedEvent): ganz, mit ihrer Sichtweite,
+/// und dem Feld, auf dem sie steht.
+///
+void test_message_packt_eine_einheit_in_sicht(void)
+{
+    RAD_Unit_t unit;
+    memset(&unit, 0, sizeof(unit));
+    unit.id = 6;
+    unit.owner = 0x0815;
+    unit.state = RAD_UNIT_STATE_DEPLOYED;
+    strcpy(unit.name, "Spaeher");
+    unit.number_of_members = 1;
+    unit.sight_range = 255;
+
+    uint8_t buffer[1024];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitSightedEventToMessage(&unit, 4, 9, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetGameEvent *game_event = message->event->game;
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_UNIT_SIGHTED, game_event->event_case);
+    TEST_ASSERT_EQUAL_UINT32(4, game_event->unit_sighted->x);
+    TEST_ASSERT_EQUAL_UINT32(9, game_event->unit_sighted->y);
+    TEST_ASSERT_EQUAL_UINT32(6, game_event->unit_sighted->unit->unit_id);
+    TEST_ASSERT_EQUAL_UINT64(0x0815, game_event->unit_sighted->unit->owner_id);
+    TEST_ASSERT_EQUAL_STRING("Spaeher", game_event->unit_sighted->unit->name);
+    TEST_ASSERT_EQUAL_UINT32(255, game_event->unit_sighted->unit->sight_range);
+    net_server_message__free_unpacked(message, NULL);
+
+    uint8_t klein[8];
+    size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL,
+        RAD_SerializeUnitSightedEventToMessage(&unit, 4, 9, klein, sizeof(klein), &size));
+    TEST_ASSERT_EQUAL_UINT16(0, size);
+}
+
+///
+/// Eine Einheit verschwindet aus der Sicht (NetUnitLostEvent): ihre Id und das
+/// Feld, auf dem sie zuletzt zu sehen war.
+///
+void test_message_packt_eine_einheit_aus_der_sicht(void)
+{
+    uint8_t buffer[64];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitLostEventToMessage(6, 3, 2, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetGameEvent *game_event = message->event->game;
+    TEST_ASSERT_EQUAL_INT(NET_GAME_EVENT__EVENT_UNIT_LOST, game_event->event_case);
+    TEST_ASSERT_EQUAL_UINT32(6, game_event->unit_lost->unit_id);
+    TEST_ASSERT_EQUAL_UINT32(3, game_event->unit_lost->x);
+    TEST_ASSERT_EQUAL_UINT32(2, game_event->unit_lost->y);
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Ein Angriff, dessen Schuetzen der Empfaenger nicht sieht: die Id ist
+/// RAD_UNIT_NONE als uint32 -- zurueck gewandelt wieder -1 (game.proto).
+///
+void test_message_packt_einen_angriff_ohne_schuetzen(void)
+{
+    const RAD_AttackResult_t result = { .attacker = RAD_UNIT_NONE, .target = 9, .x = 4, .y = 6, .shots = 3 };
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitAttackedEventToMessage(&result, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetUnitAttackedEvent *angriff = message->event->game->unit_attacked;
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, angriff->unit_id);
+    TEST_ASSERT_EQUAL_INT32(RAD_UNIT_NONE, (int32_t)angriff->unit_id);
+    TEST_ASSERT_TRUE(angriff->has_target);
+    TEST_ASSERT_EQUAL_UINT32(9, angriff->target_id);
+    net_server_message__free_unpacked(message, NULL);
+}

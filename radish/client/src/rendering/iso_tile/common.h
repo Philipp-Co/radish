@@ -18,6 +18,8 @@ void RAD_IsoTileInitWaterDeep(RAD_IsoObject_t *object);
 void RAD_IsoTileInitCity(RAD_IsoObject_t *object);
 void RAD_IsoTileInitRoad(RAD_IsoObject_t *object);
 void RAD_IsoTileInitFortification(RAD_IsoObject_t *object);
+void RAD_IsoTileInitDragonsTeeth(RAD_IsoObject_t *object);
+void RAD_IsoTileInitHighGrass(RAD_IsoObject_t *object);
 void RAD_IsoTileInitUnknown(RAD_IsoObject_t *object);
 
 #endif

@@ -201,6 +201,8 @@ typedef struct
     RAD_NetUserId_t owner;
     char name[RAD_NET_UNIT_NAME_MAX];
     uint32_t movement;
+    /// Wie weit sie sieht, in Feldern waagerecht plus senkrecht (NetUnit.sight_range).
+    uint32_t sight_range;
     uint32_t transport_capacity;
     bool can_capture;
     RAD_NetUnitMember_t members[RAD_NET_UNIT_MEMBERS_MAX];
@@ -291,6 +293,28 @@ typedef struct
     RAD_NetEntityId_t entity;
     RAD_NetPosition_t position;
 } RAD_NetUnitDestroyed_t;
+
+///
+/// Eine fremde Einheit ist in die Sicht gekommen (game.proto
+/// NetUnitSightedEvent): ganz, wie beim Aufstellen, und das Feld, auf dem sie
+/// steht. Der Client kennt sie womoeglich noch nicht.
+///
+typedef struct
+{
+    RAD_NetUnit_t unit;
+    RAD_NetPosition_t position;
+} RAD_NetUnitSighted_t;
+
+///
+/// Eine fremde Einheit ist aus der Sicht verschwunden (game.proto
+/// NetUnitLostEvent): ihre Id und das Feld, auf dem sie zuletzt zu sehen war.
+/// Zerstoert ist sie nicht -- der Client nimmt sie vom Feld und behaelt sie.
+///
+typedef struct
+{
+    RAD_NetEntityId_t entity;
+    RAD_NetPosition_t position;
+} RAD_NetUnitLost_t;
 
 ///
 /// Wie viele Mitspieler ein Spielende hoechstens mit Punkten nennt; was der Server
@@ -407,7 +431,9 @@ typedef enum
     RAD_NET_TILE_TYPE_WATER_DEEP,
     RAD_NET_TILE_TYPE_CITY,
     RAD_NET_TILE_TYPE_ROAD,
-    RAD_NET_TILE_TYPE_FORTIFICATION
+    RAD_NET_TILE_TYPE_FORTIFICATION,
+    RAD_NET_TILE_TYPE_DRAGONS_TEETH,
+    RAD_NET_TILE_TYPE_HIGH_GRASS
 } RAD_NetTileType_t;
 
 ///

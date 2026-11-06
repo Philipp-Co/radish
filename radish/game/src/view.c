@@ -1,5 +1,6 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
+#include <radish/game/control/visibility.h>
 #include <stddef.h>
 #include <assert.h>
 
@@ -95,5 +96,41 @@ bool RAD_GameUnitAt(const RAD_Game_t *game, int32_t index, RAD_Unit_t *output)
         return false;
     }
     *output = *unit;
+    return true;
+}
+
+///
+/// Die Leseseite fuer einen Spieler: dasselbe, aber nur, was er sehen darf. Wer
+/// was sieht, entscheidet control/visibility.c; hier wird nur weggelassen.
+///
+bool RAD_GameTileAtFor(const RAD_Game_t *game, RAD_UserId_t user, int16_t x, int16_t y, RAD_Tile_t *output)
+{
+    RAD_Tile_t tile;
+    if((output == NULL) || !RAD_GameTileAt(game, x, y, &tile))
+    {
+        return false;
+    }
+
+    if((tile.unit != RAD_UNIT_NONE) && !RAD_GameIsUnitVisible(game, user, tile.unit))
+    {
+        tile.unit = RAD_UNIT_NONE;
+    }
+    *output = tile;
+    return true;
+}
+
+bool RAD_GameUnitAtFor(const RAD_Game_t *game, RAD_UserId_t user, int32_t index, RAD_Unit_t *output)
+{
+    RAD_Unit_t unit;
+    if((output == NULL) || !RAD_GameUnitAt(game, index, &unit))
+    {
+        return false;
+    }
+
+    if(!RAD_GameIsUnitVisible(game, user, unit.id))
+    {
+        return false;
+    }
+    *output = unit;
     return true;
 }

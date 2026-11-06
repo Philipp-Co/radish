@@ -442,3 +442,40 @@ void test_nach_dem_ende_nimmt_die_steuerung_nichts_mehr_an(void)
 
     abbauen();
 }
+
+///
+/// Lesen fuer einen Spieler (RAD_ControlUnitAtFor, RAD_ControlTileAtFor): die
+/// eigenen Einheiten immer, fremde nur in Sicht -- und die Einheiten des Spielstarts
+/// sehen nichts (Sichtweite 0, und in der Reserve ohnehin).
+///
+void test_steuerung_liest_je_spieler(void)
+{
+    aufbauen();
+
+    const RAD_Command_t command = aufstellen(host, eigene, 2, 3);
+    TEST_ASSERT_EQUAL_UINT32(RAD_CONTROL_OK, RAD_ControlExecuteCommand(control, &command).value);
+
+    RAD_Unit_t unit;
+    TEST_ASSERT_TRUE(RAD_ControlUnitAtFor(control, host, 0, &unit));
+    TEST_ASSERT_EQUAL_INT(eigene, unit.id);
+    TEST_ASSERT_FALSE(RAD_ControlUnitAtFor(control, host, 1, &unit));
+    TEST_ASSERT_FALSE(RAD_ControlUnitAtFor(control, gast, 0, &unit));
+    TEST_ASSERT_TRUE(RAD_ControlUnitAtFor(control, gast, 1, &unit));
+    TEST_ASSERT_EQUAL_INT(fremde, unit.id);
+    TEST_ASSERT_FALSE(RAD_ControlUnitAtFor(control, host, 2, &unit));
+
+    RAD_Tile_t tile;
+    TEST_ASSERT_TRUE(RAD_ControlTileAtFor(control, host, 2, 3, &tile));
+    TEST_ASSERT_EQUAL_INT(eigene, tile.unit);
+    TEST_ASSERT_TRUE(RAD_ControlTileAtFor(control, gast, 2, 3, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, tile.unit);
+    TEST_ASSERT_EQUAL_INT(2, tile.x);
+    TEST_ASSERT_EQUAL_INT(3, tile.y);
+
+    // Eine Stelle von aussen ausserhalb der Welt: false, wie bei RAD_ControlTileAt.
+    TEST_ASSERT_FALSE(RAD_ControlTileAtFor(control, host, -1, 0, &tile));
+    TEST_ASSERT_FALSE(RAD_ControlTileAtFor(control, host, 0, RAD_ControlWorldHeight(control), &tile));
+    TEST_ASSERT_FALSE(RAD_ControlTileAtFor(control, host, 0, 0, NULL));
+
+    abbauen();
+}

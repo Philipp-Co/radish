@@ -18,6 +18,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra)
 endif()
 
+# Release mit -O2 statt CMakes Vorgabe -O3, fuer Host- und Wasm-Build. Hier und
+# nicht in client/ oder game-server-core/: dieselbe Stufe gilt auch fuer game/
+# und protobuf/. Unter Emscripten setzt CMake die Flags auch beim Linken, und
+# emcc minifiziert client.js ab -O2 trotzdem.
+string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
 # Vor add_subdirectory(game): radish_game bindet die Serialisierung ein und
 # braucht jsmn::jsmn beim Konfigurieren seines Ziels.
 include(cmake/jsmn.cmake)

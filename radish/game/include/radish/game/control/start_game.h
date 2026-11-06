@@ -35,8 +35,9 @@
 /// wirkt im Spiel nicht.
 ///
 /// **Was das Schema verlangt, verlangt auch der Leser.** Ein fehlender
-/// Pflichtschluessel, ein leerer Name, ein Wert ausserhalb 0..32767 oder eine
-/// unbekannte Waffenklasse ist RAD_GAME_START_ERROR_SCHEMA. Was das Schema
+/// Pflichtschluessel, ein leerer Name, ein Wert ausserhalb 0..32767 (die
+/// Sichtweite: 0..255) oder eine unbekannte Waffenklasse ist
+/// RAD_GAME_START_ERROR_SCHEMA. Was das Schema
 /// erlaubt, die festen Felder des Spiels aber nicht halten koennen, ist
 /// RAD_GAME_START_ERROR_LIMIT -- abgelehnt wird dann die ganze Datei, nichts
 /// wird gekuerzt.
@@ -117,7 +118,8 @@ typedef enum
     /// Spieler, ein leerer oder zu langer Name, eine Kennung, die nicht genau
     /// RAD_GAME_START_IDENTIFIER_LENGTH Zeichen hat, eine Armee ohne
     /// Einheiten, eine Einheit ohne Entitaeten, ein fehlender Pflichtschluessel,
-    /// ein Wert vom falschen Typ oder ausserhalb 0..32767 (MV: -32768..32767),
+    /// ein Wert vom falschen Typ oder ausserhalb 0..32767 (MV: -32768..32767,
+    /// Sichtweite: 0..255),
     /// eine unbekannte Waffenklasse, ein Gelaende, das fehlt, doppelt vorkommt
     /// oder unbekannt ist.
     ///

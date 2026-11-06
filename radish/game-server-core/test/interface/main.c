@@ -31,6 +31,9 @@ void test_message_packt_die_runde(void);
 void test_message_packt_das_ende(void);
 void test_message_packt_das_siegfeld(void);
 void test_message_packt_das_gelaende(void);
+void test_message_packt_eine_einheit_in_sicht(void);
+void test_message_packt_eine_einheit_aus_der_sicht(void);
+void test_message_packt_einen_angriff_ohne_schuetzen(void);
 
 
 void test_report_sieger_und_verlierer_als_kennung(void);
@@ -72,6 +75,9 @@ int main(void)
     RUN_TEST(test_message_packt_das_ende);
     RUN_TEST(test_message_packt_das_siegfeld);
     RUN_TEST(test_message_packt_das_gelaende);
+    RUN_TEST(test_message_packt_eine_einheit_in_sicht);
+    RUN_TEST(test_message_packt_eine_einheit_aus_der_sicht);
+    RUN_TEST(test_message_packt_einen_angriff_ohne_schuetzen);
 
 
     RUN_TEST(test_report_sieger_und_verlierer_als_kennung);

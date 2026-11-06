@@ -3,6 +3,7 @@
 #include <radish/game/control/commands.h>
 #include <radish/game/control/unit_turn.h>
 #include <radish/game/control/dice.h>
+#include <radish/game/control/visibility.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -44,7 +45,6 @@
 
 static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y);
 static bool RAD_GameWeaponReaches(const RAD_Weapon_t *weapon, int32_t distance);
-static int32_t RAD_GameDistance(const RAD_Unit_t *unit, int32_t x, int32_t y);
 static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y);
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
                              int32_t cover, RAD_Unit_t *target, RAD_AttackResult_t *result);
@@ -135,6 +135,33 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
         .y = attack->y
     };
 
+    // Wer davon erfaehrt, entscheidet sich hier und nicht in der Welt -- und
+    // vor dem Kampf: faellt das Ziel, saehe danach mancher durch sein Feld, der
+    // es beim Schuss nicht tat. Zwei Listen:
+    //
+    //   ganz          der Besitzer der angreifenden Einheit und jeder, der ihr
+    //                 Feld sieht -- sie wissen, wer geschossen hat
+    //   ohne Schuetze der Besitzer der getroffenen Einheit und jeder, der das
+    //                 Zielfeld sieht, aber nicht den Schuetzen -- sie erfahren,
+    //                 was ankam, nicht woher (RAD_AttackResult_t.attacker leer)
+    //
+    // Wer nur den Schuetzen sieht, bekommt das ganze Ergebnis, auch das Ziel.
+    // Eine bekannte Luecke: er erfaehrt so, was auf einem Feld stand, das er
+    // nicht sieht.
+    RAD_Recipients_t whole;
+    RAD_GameRecipientsForTile(game, unit->owner, unit->x, unit->y, &whole);
+    RAD_Recipients_t at_target;
+    RAD_GameRecipientsForTile(game, (target != NULL) ? target->owner : RAD_USER_NONE,
+                              attack->x, attack->y, &at_target);
+    RAD_Recipients_t anonymous = { .number_of_users = 0, .variant = true };
+    for(int32_t i = 0; i < at_target.number_of_users; ++i)
+    {
+        if(!RAD_RecipientsContains(&whole, at_target.users[i]))
+        {
+            RAD_RecipientsAdd(&anonymous, at_target.users[i]);
+        }
+    }
+
     // Eine Einheit ohne Mitglieder kommt aus keiner Armee (RAD_WorldAddReserveUnit
     // verlangt eins), wohl aber aus RAD_WorldSpawnUnit. Auf sie wird nicht
     // geschossen -- es gaebe kein Mitglied, das ein Treffer waehlen koennte.
@@ -175,8 +202,17 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
     }
 
     // Gemeldet nach dem Kampf: ein Abonnent soll sie schon als eine sehen, die
-    // angegriffen hat, und das Ziel mit dem, was davon uebrig ist.
-    RAD_EventManagerPublishUnitAttacked(game->event_manager, &result);
+    // angegriffen hat, und das Ziel mit dem, was davon uebrig ist -- an die
+    // beiden Listen von oben, ohne Schuetzen an die zweite. Der Abonnent ohne
+    // Empfaenger bekommt es genau einmal, ganz; die zweite ist eine weitere
+    // Fassung und geht nur an ihre Liste (RAD_Recipients_t.variant).
+    RAD_WorldNotifyUnitAttacked(&game->world, &result, &whole);
+    if(anonymous.number_of_users > 0)
+    {
+        RAD_AttackResult_t without_attacker = result;
+        without_attacker.attacker = RAD_UNIT_NONE;
+        RAD_WorldNotifyUnitAttacked(&game->world, &without_attacker, &anonymous);
+    }
 }
 
 ///
@@ -345,12 +381,4 @@ static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y
 {
     const RAD_Tile_t *tile = &game->world.tiles[y][x];
     return tile->terrain.blocks_sight || (tile->unit != RAD_UNIT_NONE);
-}
-
-/// Felder waagerecht plus senkrecht von "unit" bis (x, y).
-static int32_t RAD_GameDistance(const RAD_Unit_t *unit, int32_t x, int32_t y)
-{
-    const int32_t dx = x - unit->x;
-    const int32_t dy = y - unit->y;
-    return ((dx < 0) ? -dx : dx) + ((dy < 0) ? -dy : dy);
 }

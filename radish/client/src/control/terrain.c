@@ -15,6 +15,8 @@ const char* RAD_ControlTerrainName(const RAD_ClientTile_t *tile)
         case RAD_CLIENT_TILE_TYPE_CITY:          return "Stadt";
         case RAD_CLIENT_TILE_TYPE_ROAD:          return "Strasse";
         case RAD_CLIENT_TILE_TYPE_FORTIFICATION: return "Befestigte Stellung";
+        case RAD_CLIENT_TILE_TYPE_DRAGONS_TEETH: return "Drachenzaehne";
+        case RAD_CLIENT_TILE_TYPE_HIGH_GRASS:    return "Hohes Gras";
         case RAD_CLIENT_TILE_TYPE_UNKNOWN:       return "Unbekannt";
     }
     return "Unbekannt";

@@ -10,6 +10,7 @@
           {
             "typ": "Trupp",
             "bewegung": 6,
+            "sichtweite": 4,
             "transportkapazitaet": 0,
             "kann_ziele_einnehmen": true,
             "entitaeten": [
@@ -80,6 +81,7 @@
           {
             "typ": "Transporter",
             "bewegung": 12,
+            "sichtweite": 4,
             "transportkapazitaet": 2,
             "kann_ziele_einnehmen": false,
             "entitaeten": [
@@ -108,6 +110,7 @@
           {
             "typ": "Trupp",
             "bewegung": 6,
+            "sichtweite": 4,
             "transportkapazitaet": 0,
             "kann_ziele_einnehmen": true,
             "entitaeten": [
@@ -178,6 +181,7 @@
           {
             "typ": "Transporter",
             "bewegung": 12,
+            "sichtweite": 4,
             "transportkapazitaet": 2,
             "kann_ziele_einnehmen": false,
             "entitaeten": [

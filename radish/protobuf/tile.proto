@@ -20,6 +20,8 @@ enum NetTileType
     TILE_TYPE_CITY = 8;
     TILE_TYPE_ROAD = 9;
     TILE_TYPE_FORTIFICATION = 10;
+    TILE_TYPE_DRAGONS_TEETH = 11;
+    TILE_TYPE_HIGH_GRASS = 12;
 }
 
 message NetTile

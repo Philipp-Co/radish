@@ -18,5 +18,7 @@ void RAD_IsoTileInitForest(RAD_IsoObject_t *object)
     object->background_color = RAD_ISO_TILE_FOREST_TOP_COLOR;
     object->image = RAD_IsoTileImage(RAD_ISO_TILE_IMAGE_GRASS);
     object->overlay = RAD_IsoTileImage(RAD_ISO_TILE_IMAGE_FOREST);
+    object->overlay_offset_x = 0;
     object->overlay_offset_y = RAD_ISO_TILE_FOREST_OFFSET_Y;
+    object->overlay_front = NULL;
 }

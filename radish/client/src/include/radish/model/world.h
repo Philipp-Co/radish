@@ -156,7 +156,8 @@ typedef enum
     RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED,
     RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED,
     RAD_CLIENT_WORLD_EVENT_UNIT_MOVED,
-    RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED
+    RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED,
+    RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED
 } RAD_ClientWorldEvent_t;
 
 ///
@@ -174,6 +175,10 @@ typedef enum
 /// "unit_attacked" meldet, dass eine Einheit das Feld "target" angegriffen hat
 /// (RAD_ClientWorldReportAttack). Die Welt aendert dabei nichts.
 ///
+/// "attack_rejected" meldet, dass der Server einen eigenen Angriff der Einheit
+/// "unit" abgelehnt hat (RAD_ClientWorldReportAttackRejected). Die Welt aendert
+/// dabei ebenso nichts.
+///
 typedef struct
 {
     void *user_argument;
@@ -184,6 +189,7 @@ typedef struct
                        const RAD_ClientPosition_t *steps, size_t count);
     void (*unit_attacked)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                           RAD_ClientPosition_t target);
+    void (*attack_rejected)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
 } RAD_ClientWorldObserver_t;
 
 ///
@@ -239,9 +245,16 @@ const RAD_ClientTile_t* RAD_ClientWorldTileAt(const RAD_ClientWorld_t *world, in
 /// (RAD_ClientTileSetUnit). Die Felder dazwischen prueft die Welt nicht, sie
 /// reicht sie nur weiter.
 ///
-/// Unter zwei Feldern, mit Start oder Ziel ausserhalb der Welt oder wenn die
-/// Einheit nicht auf steps[0] steht, geschieht nichts, und es wird nichts
-/// gemeldet.
+/// **Der Weg eines Beobachters** (Nebel des Krieges) ist nur der Teil, den er
+/// sah, und faengt womoeglich dort an, wo die Einheit gerade erst in seine Sicht
+/// kam. Steht auf steps[0] keine Einheit, kennt die Welt sie aber und steht sie
+/// auf keinem Feld -- sie war schon einmal zu sehen --, wird sie dort hingestellt
+/// und zieht von da. Steht sie noch auf einem anderen Feld, wird sie von dort
+/// genommen. Felder dazwischen koennen fehlen; der Weg springt dann.
+///
+/// Unter zwei Feldern, mit Start oder Ziel ausserhalb der Welt, oder wenn die
+/// Einheit weder auf steps[0] steht noch dorthin gestellt werden kann, geschieht
+/// nichts, und es wird nichts gemeldet.
 ///
 void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                                const RAD_ClientPosition_t *steps, size_t count);
@@ -254,6 +267,13 @@ void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit
 /// sie nicht.
 ///
 void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit, RAD_ClientPosition_t target);
+
+///
+/// Meldet "attack_rejected": der Server hat einen eigenen Angriff der Einheit
+/// "unit" abgelehnt. Nur fuer die Beobachter -- etwa, damit ein Turm, der schon
+/// auf dem Ziel steht, zurueckdreht (view/iso_map_view.h).
+///
+void RAD_ClientWorldReportAttackRejected(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
 
 ///
 /// Uebernimmt "unit" in das Repository und ihre Id in die Reserve ihres
@@ -318,6 +338,29 @@ bool RAD_ClientWorldRemoveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, 
 /// keine Reserve die Einheit hat -- dann bleibt alles, wie es war.
 ///
 bool RAD_ClientWorldDeployUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position);
+
+///
+/// Eine fremde Einheit ist in Sicht gekommen (io/net_event_handler/
+/// unit_sighted.c): sie kommt in das Repository -- eine bekannte wird ersetzt
+/// --, aus jeder Reserve heraus, von jedem anderen Feld herunter und auf das
+/// Feld "position". Die Felder melden "changed".
+///
+/// false, wenn der Besitzer RAD_CLIENT_PLAYER_NONE ist, das Repository voll,
+/// das Feld unbekannt oder von einer anderen Einheit besetzt -- im letzten Fall
+/// steht sie danach im Repository, aber auf keinem Feld.
+///
+bool RAD_ClientWorldShowUnit(RAD_ClientWorld_t *world, const RAD_ClientUnit_t *unit, RAD_ClientPosition_t position);
+
+///
+/// Eine fremde Einheit ist aus der Sicht verschwunden (io/net_event_handler/
+/// unit_lost.c): sie kommt vom Feld, auf dem sie steht -- meist "position", der
+/// Stelle, an der sie zuletzt zu sehen war --, bleibt aber im Repository. Sie ist
+/// nicht zerstoert; kommt sie wieder in Sicht, ist sie bekannt. Das Feld meldet
+/// "changed".
+///
+/// false, wenn die Welt sie nicht kennt oder sie auf keinem Feld steht.
+///
+bool RAD_ClientWorldHideUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position);
 
 ///
 /// Die Reserve von "owner", oder NULL, wenn keine ihm gehoert. Der Zeiger gilt,

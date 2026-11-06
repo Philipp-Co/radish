@@ -16,7 +16,13 @@ typedef struct
     int32_t spawned;
     int32_t destroyed;
     int32_t moved;
+    int32_t attacked;
+    int32_t sighted;
+    int32_t lost;
 
+    bool moved_with_unit;
+    RAD_Path_t last_path;
+    int32_t last_result;
     RAD_UnitId_t last_unit;
     int32_t last_x;
     int32_t last_y;
@@ -42,32 +48,57 @@ static void zaehle_destroyed(void *user_argument, const RAD_Unit_t *unit, int32_
 
 static void zaehle_moved(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result)
 {
-    (void)unit;
-    (void)path;
-    (void)result;
     RAD_UnitEreignisse_t *gezaehlt = user_argument;
     gezaehlt->moved++;
+    gezaehlt->moved_with_unit = (unit != NULL);
+    gezaehlt->last_path = *path;
+    gezaehlt->last_result = result;
 }
 
-/// Angriffe gehen diese Tests nichts an; die Gruppe braucht trotzdem alle Zeiger.
-static void ohne_angriff(void *user_argument, const RAD_AttackResult_t *result)
+static void zaehle_attacked(void *user_argument, const RAD_AttackResult_t *result)
 {
-    (void)user_argument;
-    (void)result;
+    RAD_UnitEreignisse_t *gezaehlt = user_argument;
+    gezaehlt->attacked++;
+    gezaehlt->last_unit = result->attacker;
 }
 
-static void abonniere_einheiten_ereignisse(RAD_EventManager_t *events, RAD_UnitEreignisse_t *gezaehlt)
+static void zaehle_sighted(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    RAD_UnitEreignisse_t *gezaehlt = user_argument;
+    gezaehlt->sighted++;
+    gezaehlt->last_unit = unit->id;
+    gezaehlt->last_x = x;
+    gezaehlt->last_y = y;
+}
+
+static void zaehle_lost(void *user_argument, RAD_UnitId_t unit, int32_t x, int32_t y)
+{
+    RAD_UnitEreignisse_t *gezaehlt = user_argument;
+    gezaehlt->lost++;
+    gezaehlt->last_unit = unit;
+    gezaehlt->last_x = x;
+    gezaehlt->last_y = y;
+}
+
+static RAD_EventsUnitChangedCallback_t zaehler(RAD_UnitEreignisse_t *gezaehlt)
 {
     memset(gezaehlt, 0, sizeof(*gezaehlt));
     gezaehlt->last_unit = RAD_UNIT_NONE;
 
-    RAD_EventManagerSubscribeToUnitEvents(events, (RAD_EventsUnitChangedCallback_t){
+    return (RAD_EventsUnitChangedCallback_t){
         .user_argument = gezaehlt,
         .spawned = zaehle_spawned,
         .destroyed = zaehle_destroyed,
         .moved = zaehle_moved,
-        .attacked = ohne_angriff
-    });
+        .attacked = zaehle_attacked,
+        .sighted = zaehle_sighted,
+        .lost = zaehle_lost
+    };
+}
+
+static void abonniere_einheiten_ereignisse(RAD_EventManager_t *events, RAD_UnitEreignisse_t *gezaehlt)
+{
+    RAD_EventManagerSubscribeToUnitEvents(events, zaehler(gezaehlt));
 }
 
 ///
@@ -237,7 +268,7 @@ void test_world_reserve_lehnt_ab_wenn_der_pool_voll_ist(void)
         TEST_ASSERT_EQUAL_INT(i, RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE));
     }
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE));
-    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 0, 0));
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 0, 0, NULL));
 
     TEST_ASSERT_EQUAL_INT(RAD_MAX_UNITS, RAD_UnitPoolNumberOfUnits(welt.units));
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
@@ -255,7 +286,7 @@ void test_world_einheit_aus_der_reserve_aufstellen(void)
     RAD_UnitEreignisse_t gezaehlt;
     abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
 
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 3, 4));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 3, 4, NULL));
 
     const RAD_Unit_t *unit = RAD_WorldUnitById(&welt.world, id);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DEPLOYED, unit->state);
@@ -284,28 +315,28 @@ void test_world_aufstellen_wird_abgelehnt(void)
 
     const RAD_Unit_t values = trupp();
     const RAD_UnitId_t id = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
-    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 1, 1);
+    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 1, 1, NULL);
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&welt.world, 2, 2));
 
     RAD_UnitEreignisse_t gezaehlt;
     abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
 
     // Das Feld taugt nicht: besetzt, ausserhalb, ohne Gelaende.
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 1, 1));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, -1, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, welt.world.width, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 2, 2));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 1, 1, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, -1, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, welt.world.width, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 2, 2, NULL));
 
     // Die Einheit taugt nicht: es gibt sie nicht, oder sie steht nicht in der
     // Reserve -- schon auf dem Feld, oder zerstoert.
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, RAD_UNIT_NONE, 0, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, RAD_MAX_UNITS, 0, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id + 10, 0, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, im_weg, 0, 0));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, RAD_UNIT_NONE, 0, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, RAD_MAX_UNITS, 0, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id + 10, 0, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, im_weg, 0, 0, NULL));
 
     const RAD_UnitId_t zerstoert = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
-    RAD_WorldRemoveUnit(&welt.world, zerstoert);
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, zerstoert, 0, 0));
+    RAD_WorldRemoveUnit(&welt.world, zerstoert, NULL);
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, zerstoert, 0, 0, NULL));
 
     // Abgelehnt heisst: nichts geschrieben und nichts gemeldet.
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_RESERVE, RAD_WorldUnitById(&welt.world, id)->state);
@@ -315,8 +346,8 @@ void test_world_aufstellen_wird_abgelehnt(void)
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
 
     // Und zweimal aufstellen geht nicht: beim zweiten Mal steht sie schon.
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0));
-    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 3, 3));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldDeployUnit(&welt.world, id, 3, 3, NULL));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.spawned);
 
     abbauen();
@@ -333,17 +364,17 @@ void test_world_nur_einheiten_auf_dem_feld_ziehen(void)
     abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
 
     // Aus der Reserve laesst sich nicht ziehen -- es gibt kein Feld, von dem aus.
-    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, 1, 0));
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, 1, 0, NULL));
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&welt.world, 1, 0)->unit);
     TEST_ASSERT_EQUAL_INT(0, gezaehlt.moved);
 
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0));
-    TEST_ASSERT_TRUE(RAD_WorldMoveUnit(&welt.world, id, 1, 0));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0, NULL));
+    TEST_ASSERT_TRUE(RAD_WorldMoveUnit(&welt.world, id, 1, 0, NULL));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.moved);
 
     // Und aus dem Grab auch nicht.
-    RAD_WorldRemoveUnit(&welt.world, id);
-    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, 2, 0));
+    RAD_WorldRemoveUnit(&welt.world, id, NULL);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, 2, 0, NULL));
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.moved);
 
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
@@ -358,13 +389,13 @@ void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void)
     const RAD_Unit_t values = trupp();
     const RAD_UnitId_t auf_dem_feld = RAD_WorldAddReserveUnit(&welt.world, &values, 0x1234ull);
     const RAD_UnitId_t in_reserve = RAD_WorldAddReserveUnit(&welt.world, &values, 0x1234ull);
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, auf_dem_feld, 2, 3));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, auf_dem_feld, 2, 3, NULL));
 
     RAD_UnitEreignisse_t gezaehlt;
     abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
 
     // Vom Feld: das Feld wird frei, gemeldet wird mit dem Feld, auf dem sie stand.
-    RAD_WorldRemoveUnit(&welt.world, auf_dem_feld);
+    RAD_WorldRemoveUnit(&welt.world, auf_dem_feld, NULL);
 
     const RAD_Unit_t *unit = RAD_WorldUnitById(&welt.world, auf_dem_feld);
     TEST_ASSERT_NOT_NULL(unit);
@@ -380,17 +411,17 @@ void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void)
     TEST_ASSERT_EQUAL_INT(3, gezaehlt.last_y);
 
     // Noch einmal entfernen tut nichts.
-    RAD_WorldRemoveUnit(&welt.world, auf_dem_feld);
+    RAD_WorldRemoveUnit(&welt.world, auf_dem_feld, NULL);
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.destroyed);
 
     // Aus der Reserve: zerstoert, aber still -- auf dem Feld war sie nie.
-    RAD_WorldRemoveUnit(&welt.world, in_reserve);
+    RAD_WorldRemoveUnit(&welt.world, in_reserve, NULL);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_STATE_DESTROYED, RAD_WorldUnitById(&welt.world, in_reserve)->state);
     TEST_ASSERT_EQUAL_INT(1, gezaehlt.destroyed);
 
     // Beide Slots bleiben belegt; die naechste Einheit bekommt eine neue Id.
     TEST_ASSERT_EQUAL_INT(2, RAD_UnitPoolNumberOfUnits(welt.units));
-    const RAD_UnitId_t neu = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 2, 3);
+    const RAD_UnitId_t neu = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 2, 3, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, neu);
     TEST_ASSERT_NOT_EQUAL(auf_dem_feld, neu);
     TEST_ASSERT_NOT_EQUAL(in_reserve, neu);
@@ -406,7 +437,7 @@ void test_world_konsistenz_kennt_die_zustaende(void)
 
     const RAD_Unit_t values = trupp();
     const RAD_UnitId_t reserve = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
-    const RAD_UnitId_t feld = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 1, 1);
+    const RAD_UnitId_t feld = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 1, 1, NULL);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
 
     // Eine Einheit in der Reserve mit einer Position.
@@ -428,6 +459,174 @@ void test_world_konsistenz_kennt_die_zustaende(void)
     // Mehr Mitglieder, als Platz ist.
     unit->number_of_members = RAD_UNIT_MAX_MEMBERS + 1;
     TEST_ASSERT_FALSE(RAD_WorldIsConsistent(&welt.world));
+
+    abbauen();
+}
+
+/// Ein Weg aus "n" Feldern.
+static RAD_Path_t weg(const int16_t felder[][2], int32_t n)
+{
+    RAD_Path_t path = { .number_of_steps = (int8_t)n };
+    for(int32_t i = 0; i < n; ++i)
+    {
+        path.steps_to[i].x = felder[i][0];
+        path.steps_to[i].y = felder[i][1];
+    }
+    return path;
+}
+
+///
+/// Ein Zug ueber mehrere Felder: die Einheit steht danach am Ende, und gemeldet
+/// wird der ganze Weg -- an den Abonnenten ohne Empfaenger und an die Spieler der
+/// Liste, nicht an andere.
+///
+void test_world_zug_ueber_einen_weg(void)
+{
+    aufbauen();
+    const RAD_Unit_t values = trupp();
+    const RAD_UnitId_t id = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0, NULL));
+
+    RAD_UnitEreignisse_t gezaehlt, von_anna, von_bert;
+    abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
+    RAD_EventManagerSubscribeToUnitEventsOf(welt.events, 0xA, zaehler(&von_anna));
+    RAD_EventManagerSubscribeToUnitEventsOf(welt.events, 0xB, zaehler(&von_bert));
+    RAD_Recipients_t nur_anna = {0};
+    RAD_RecipientsAdd(&nur_anna, 0xA);
+
+    const int16_t felder[][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 } };
+    const RAD_Path_t path = weg(felder, 3);
+    TEST_ASSERT_TRUE(RAD_WorldMoveUnitAlong(&welt.world, id, &path, &nur_anna));
+
+    const RAD_Unit_t *unit = RAD_WorldUnitById(&welt.world, id);
+    TEST_ASSERT_EQUAL_INT(1, unit->x);
+    TEST_ASSERT_EQUAL_INT(1, unit->y);
+    TEST_ASSERT_EQUAL_INT(id, RAD_WorldTileAt(&welt.world, 1, 1)->unit);
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&welt.world, 0, 0)->unit);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
+
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.moved);
+    TEST_ASSERT_EQUAL_INT(3, gezaehlt.last_path.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.last_result);
+    TEST_ASSERT_EQUAL_INT(1, von_anna.moved);
+    TEST_ASSERT_EQUAL_INT(0, von_bert.moved);
+
+    // Ueber ein Feld ist derselbe Zug, mit der Liste genauso.
+    TEST_ASSERT_TRUE(RAD_WorldMoveUnit(&welt.world, id, 2, 1, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(2, von_anna.moved);
+    TEST_ASSERT_EQUAL_INT(2, von_anna.last_path.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(0, von_bert.moved);
+
+    abbauen();
+}
+
+///
+/// Die Welt prueft nur die Enden: wo die Einheit steht, und ob das Ziel frei und
+/// in der Welt ist. Abgelehnt wird ohne Aenderung und ohne Meldung.
+///
+void test_world_zug_ueber_einen_weg_wird_abgelehnt(void)
+{
+    aufbauen();
+    const RAD_Unit_t values = trupp();
+    const RAD_UnitId_t id = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
+    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 2, 0, NULL);
+
+    RAD_UnitEreignisse_t gezaehlt;
+    abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
+
+    const int16_t los[][2] = { { 0, 0 }, { 1, 0 } };
+    const RAD_Path_t path = weg(los, 2);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, &path, NULL));
+
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&welt.world, id, 0, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, NULL, NULL));
+
+    const int16_t nur_standort[][2] = { { 0, 0 } };
+    const RAD_Path_t kurz = weg(nur_standort, 1);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, &kurz, NULL));
+
+    const int16_t falscher_start[][2] = { { 1, 0 }, { 1, 1 } };
+    const RAD_Path_t falsch = weg(falscher_start, 2);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, &falsch, NULL));
+
+    const int16_t besetzt[][2] = { { 0, 0 }, { 1, 0 }, { 2, 0 } };
+    const RAD_Path_t auf_besetzt = weg(besetzt, 3);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, &auf_besetzt, NULL));
+
+    const int16_t draussen[][2] = { { 0, 0 }, { -1, 0 } };
+    const RAD_Path_t hinaus = weg(draussen, 2);
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnitAlong(&welt.world, id, &hinaus, NULL));
+
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, -1, 0, NULL));
+    TEST_ASSERT_FALSE(RAD_WorldMoveUnit(&welt.world, id, 0x10000, 0, NULL));
+
+    const RAD_Unit_t *unit = RAD_WorldUnitById(&welt.world, id);
+    TEST_ASSERT_EQUAL_INT(0, unit->x);
+    TEST_ASSERT_EQUAL_INT(0, unit->y);
+    TEST_ASSERT_EQUAL_INT(im_weg, RAD_WorldTileAt(&welt.world, 2, 0)->unit);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
+    TEST_ASSERT_EQUAL_INT(0, gezaehlt.moved);
+
+    abbauen();
+}
+
+///
+/// Melden, ohne zu aendern: Zug, Angriff, in Sicht, aus der Sicht. Die Welt
+/// bleibt, wie sie ist; gemeldet wird an den Abonnenten ohne Empfaenger und an
+/// die Liste.
+///
+void test_world_meldet_ohne_zu_aendern(void)
+{
+    aufbauen();
+    const RAD_Unit_t values = trupp();
+    const RAD_UnitId_t wartend = RAD_WorldAddReserveUnit(&welt.world, &values, RAD_USER_NONE);
+    const RAD_UnitId_t steht = RAD_WorldSpawnUnit(&welt.world, RAD_UNIT_TYPE_NPC, 3, 4, NULL);
+
+    RAD_UnitEreignisse_t gezaehlt, von_anna;
+    abonniere_einheiten_ereignisse(welt.events, &gezaehlt);
+    RAD_EventManagerSubscribeToUnitEventsOf(welt.events, 0xA, zaehler(&von_anna));
+    RAD_Recipients_t nur_anna = {0};
+    RAD_RecipientsAdd(&nur_anna, 0xA);
+
+    // Ein Zug, der nichts geaendert hat -- auch ohne Einheit, die geht als NULL.
+    const RAD_Path_t leer = { .number_of_steps = 0 };
+    TEST_ASSERT_TRUE(RAD_WorldNotifyUnitMoved(&welt.world, steht, &leer, -1, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(1, von_anna.moved);
+    TEST_ASSERT_TRUE(von_anna.moved_with_unit);
+    TEST_ASSERT_EQUAL_INT(-1, von_anna.last_result);
+    TEST_ASSERT_TRUE(RAD_WorldNotifyUnitMoved(&welt.world, 42, &leer, -1, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(2, von_anna.moved);
+    TEST_ASSERT_FALSE(von_anna.moved_with_unit);
+    TEST_ASSERT_FALSE(RAD_WorldNotifyUnitMoved(&welt.world, steht, NULL, 0, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(2, gezaehlt.moved);
+
+    const RAD_AttackResult_t angriff = { .attacker = steht, .target = RAD_UNIT_NONE, .x = 3, .y = 5 };
+    TEST_ASSERT_TRUE(RAD_WorldNotifyUnitAttacked(&welt.world, &angriff, &nur_anna));
+    TEST_ASSERT_FALSE(RAD_WorldNotifyUnitAttacked(&welt.world, NULL, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(1, von_anna.attacked);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.attacked);
+
+    // In Sicht kommt nur, was auf dem Feld steht -- mit seinem Feld.
+    TEST_ASSERT_FALSE(RAD_WorldNotifyUnitSighted(&welt.world, wartend, &nur_anna));
+    TEST_ASSERT_FALSE(RAD_WorldNotifyUnitSighted(&welt.world, 42, &nur_anna));
+    TEST_ASSERT_TRUE(RAD_WorldNotifyUnitSighted(&welt.world, steht, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(1, von_anna.sighted);
+    TEST_ASSERT_EQUAL_INT(steht, von_anna.last_unit);
+    TEST_ASSERT_EQUAL_INT(3, von_anna.last_x);
+    TEST_ASSERT_EQUAL_INT(4, von_anna.last_y);
+
+    // Aus der Sicht mit der Stelle, die der Aufrufer nennt.
+    TEST_ASSERT_FALSE(RAD_WorldNotifyUnitLost(&welt.world, 42, 1, 1, &nur_anna));
+    TEST_ASSERT_TRUE(RAD_WorldNotifyUnitLost(&welt.world, wartend, 7, 8, &nur_anna));
+    TEST_ASSERT_EQUAL_INT(1, von_anna.lost);
+    TEST_ASSERT_EQUAL_INT(wartend, von_anna.last_unit);
+    TEST_ASSERT_EQUAL_INT(7, von_anna.last_x);
+    TEST_ASSERT_EQUAL_INT(8, von_anna.last_y);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.sighted);
+    TEST_ASSERT_EQUAL_INT(1, gezaehlt.lost);
+
+    TEST_ASSERT_EQUAL_INT(3, RAD_WorldUnitById(&welt.world, steht)->x);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&welt.world));
 
     abbauen();
 }

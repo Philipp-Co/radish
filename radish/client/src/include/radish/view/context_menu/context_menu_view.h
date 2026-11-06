@@ -124,8 +124,10 @@
 /// control/attack_unit.h), ein Klick auf Schliessen verwirft es.
 ///
 /// **Zielen laesst sie den Aufrufer** (RAD_ContextMenuViewSetAiming): steht das
-/// Ziel, "aim"; bestaetigt der Spieler, "fire"; verlaesst sie die Bestaetigung
-/// anders -- Schliessen, Abbruch, Spielende --, "release".
+/// Ziel, "aim"; verlaesst sie die Bestaetigung anders als mit Attack --
+/// Schliessen, Abbruch, Spielende --, "release". Bestaetigt der Spieler, bleibt
+/// der Turm auf dem Ziel: feuern laesst ihn erst der Server ("unit_attacked",
+/// model/world.h).
 ///
 /// **Den Weg markiert sie auf der Karte**, solange er zusammengeklickt wird
 /// und auf die Bestaetigung wartet (ENTITY_MOVE,
@@ -190,7 +192,6 @@ typedef struct
 {
     void *user_argument;
     void (*aim)(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
-    void (*fire)(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
     void (*release)(void *user_argument, RAD_NetEntityId_t unit);
 } RAD_ContextMenuViewAiming_t;
 

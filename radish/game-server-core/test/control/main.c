@@ -18,6 +18,7 @@ void test_deploy_ueber_die_steuerung_stellt_auf(void);
 void test_deploy_ueber_die_steuerung_nennt_den_grund(void);
 void test_deploy_steuerung_zeigt_die_einheiten(void);
 void test_deploy_meldet_die_aufgestellte_einheit(void);
+void test_steuerung_liest_je_spieler(void);
 void test_ziehen_und_angreifen_ueber_die_steuerung_nennt_den_grund(void);
 void test_nach_dem_ende_nimmt_die_steuerung_nichts_mehr_an(void);
 
@@ -49,6 +50,7 @@ int main(void)
     RUN_TEST(test_deploy_ueber_die_steuerung_nennt_den_grund);
     RUN_TEST(test_deploy_steuerung_zeigt_die_einheiten);
     RUN_TEST(test_deploy_meldet_die_aufgestellte_einheit);
+    RUN_TEST(test_steuerung_liest_je_spieler);
     RUN_TEST(test_ziehen_und_angreifen_ueber_die_steuerung_nennt_den_grund);
     RUN_TEST(test_nach_dem_ende_nimmt_die_steuerung_nichts_mehr_an);
 

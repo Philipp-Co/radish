@@ -349,6 +349,7 @@ Fünf Programme, eines je Modul unter `radish/game/src/`:
 | `control_command` | den Codec und die Nutzlast je Kommandoart |
 | `control_events` | den Event-Manager: abonnieren und veröffentlichen |
 | `control_execute` | die Kommando-Fabriken |
+| `control_visibility` | die Sicht: welche Felder und Einheiten ein Spieler sieht (`control/visibility.c`, privat) |
 
 Schlägt etwas fehl, zeigt CTest von sich aus nur den Namen; die Ausgabe von Unity
 bekommt man mit:

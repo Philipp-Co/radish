@@ -52,6 +52,7 @@ def _army_document(army):
             {
                 "typ": unit.unit_type.name,
                 "bewegung": unit.unit_type.movement,
+                "sichtweite": unit.unit_type.sight_range,
                 "transportkapazitaet": unit.unit_type.transport_capacity,
                 "kann_ziele_einnehmen": unit.unit_type.can_capture_objectives,
                 "entitaeten": [
@@ -100,9 +101,9 @@ def _player_document(player, army):
 def _terrain_document():
     """
     Jeder Tile-Typ mit seinen Werten, so wie der Admin sie gepflegt hat. Das
-    Spiel verlangt jeden Typ genau einmal; fehlt einer in der Tabelle (die
-    Migration legt alle an), ist das ein Fehler hier und kein Spiel, das die
-    Instanz still ablehnt.
+    Spiel verlangt jeden Typ genau einmal; fehlt einer in der Tabelle (der
+    Dump api/fixtures/seed.json bringt alle mit), ist das ein Fehler hier
+    und kein Spiel, das die Instanz still ablehnt.
     """
     terrain = list(TerrainType.objects.all())
     missing = set(TerrainCode.values) - {entry.code for entry in terrain}

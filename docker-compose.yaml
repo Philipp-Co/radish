@@ -26,13 +26,17 @@ services:
       KEYCLOAK_REDIRECT_URI: "http://localhost:8000/api/login/callback/"
       KEYCLOAK_POST_LOGOUT_REDIRECT_URI: "http://localhost:8000/"
       # Postgres statt sqlite (siehe Service "backend-db" unten und
-      # settings.py) -- backend-db ist der Servicename im Docker-Netzwerk,
-      # von aussen (z.B. lokales manage.py) unter localhost:5433 erreichbar.
+      # config/database.py) -- backend-db ist der Servicename im
+      # Docker-Netzwerk, von aussen (z.B. lokales manage.py) unter
+      # localhost:5433 erreichbar. Als radish_app: darf Daten lesen und
+      # schreiben, aber das Schema nicht aendern -- das tut nur
+      # "backend-migrate" (siehe docker/backend-db/init/01-roles.sh). Das
+      # Passwort wie RADISH_DB_APP_PASSWORD bei "backend-db".
       DJANGO_DB_HOST: "backend-db"
       DJANGO_DB_PORT: "5432"
       DJANGO_DB_NAME: "radish"
-      DJANGO_DB_USER: "radish"
-      DJANGO_DB_PASSWORD: "radish"
+      DJANGO_DB_USER: "radish_app"
+      DJANGO_DB_PASSWORD: "radish-app-dev"
       # Das Image laeuft im Produktionsmodus (DJANGO_DEBUG=0, siehe
       # docker/backend/Dockerfile) und verlangt einen eigenen Schluessel.
       # Wie KEYCLOAK_CLIENT_SECRET oben nur ein Wert fuer die lokale
@@ -40,26 +44,84 @@ services:
       DJANGO_SECRET_KEY: "radish-backend-dev-django-secret-key-nicht-produktiv-verwenden"
     ports:
       - "8000:8000"
+    # Erst nach dem Migrator: das Backend migriert nicht selbst und bricht
+    # ab, wenn Migrationen fehlen (siehe docker/backend/entrypoint.sh).
     depends_on:
-      - keycloak
-      - backend-db
+      keycloak:
+        condition: service_started
+      backend-migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # Bringt das Schema der Backend-Datenbank auf den Stand der Migrationen
+  # (`migrate`), fuellt je nach RADISH_DB_SEED die Inhalte ein und endet --
+  # bei jedem `docker compose up` vor "backend".
+  # Eigenes, kleines Image mit nur dem, was migrate braucht (siehe
+  # docker/backend-migrate/Dockerfile, radish/backend/config/
+  # settings_migrate.py). Bauen mit derselben Revision wie "backend", sonst
+  # passen Migrationen und Code nicht zusammen.
+  backend-migrate:
+    build:
+      context: .
+      dockerfile: docker/backend-migrate/Dockerfile
+    image: radish-backend-migrate:alpine
+    environment:
+      # Als radish_owner: der einzige Benutzer, der das Schema aendern darf
+      # (siehe docker/backend-db/init/01-roles.sh). Das Passwort wie
+      # RADISH_DB_OWNER_PASSWORD bei "backend-db".
+      DJANGO_DB_HOST: "backend-db"
+      DJANGO_DB_PORT: "5432"
+      DJANGO_DB_NAME: "radish"
+      DJANGO_DB_USER: "radish_owner"
+      DJANGO_DB_PASSWORD: "radish-owner-dev"
+      # Kataloge aus radish/backend/api/fixtures/seed.json (Spezies,
+      # Einheitentypen, Waffen, Ausruestung, Gelaende -- keine Benutzer,
+      # Spieler oder Armeen): "if-empty" laedt nur in eine
+      # neue Datenbank und laesst eine gepflegte in Ruhe, "always" setzt
+      # jedes Mal auf den Stand des Dumps zurueck, "never" laedt nie (siehe
+      # radish/backend/api/management/commands/seed.py).
+      RADISH_DB_SEED: "if-empty"
+    depends_on:
+      backend-db:
+        condition: service_healthy
+    # Laeuft einmal; schlaegt er fehl, startet "backend" gar nicht erst.
+    restart: "no"
 
   # Postgres fuer das Django-Backend (siehe Service "backend" oben) --
   # ersetzt die bisherige sqlite-Datei. Eigene Instanz statt Mitbenutzung
   # von keycloak-db: Backend und Keycloak sollen unabhaengig voneinander
   # zurueckgesetzt/skaliert werden koennen, und ein DB-Schema-Fehler im
   # einen darf nie den jeweils anderen Dienst gefaehrden.
+  #
+  # POSTGRES_USER ist Admin der Datenbank, fuer lokale Entwicklung und Tests
+  # (lokales manage.py, siehe radish/backend/config/database.py). Die
+  # Container melden sich mit eigenen Benutzern an, die
+  # docker/backend-db/init/01-roles.sh beim ersten Start anlegt -- nur auf
+  # einem leeren Volume, nach Aenderungen daran also
+  # `docker compose down -v`. Die Passwoerter sind wie POSTGRES_PASSWORD nur
+  # Werte fuer die lokale Entwicklung -- produktiv durch geheime ersetzen,
+  # passend zu DJANGO_DB_PASSWORD bei "backend" und "backend-migrate".
   backend-db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: radish
       POSTGRES_USER: radish
       POSTGRES_PASSWORD: radish
+      RADISH_DB_OWNER_PASSWORD: "radish-owner-dev"
+      RADISH_DB_APP_PASSWORD: "radish-app-dev"
     volumes:
       - backend-postgres-data:/var/lib/postgresql/data
+      - ./docker/backend-db/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5433:5432"
+    # Fuer "backend-migrate". Ueber TCP statt den Socket: waehrend der
+    # Initialisierung (Init-Skripte) lauscht Postgres nur am Socket, so
+    # gilt die Datenbank erst danach als bereit.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "radish", "-d", "radish"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
   # Django-Backend unter radish/game-server/ (frueher game-server-admin):

@@ -12,6 +12,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void);
 void test_spielstart_uebergeht_unbekannte_schluessel(void);
 void test_spielstart_liest_das_gelaende(void);
 void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void);
+void test_spielstart_sichtweite_bis_255(void);
 void test_spielstart_lehnt_fehlerhafte_dateien_ab(void);
 void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void);
 void test_spielstart_fehler_laesst_stand_unberuehrt(void);
@@ -43,6 +44,7 @@ int main(void)
     RUN_TEST(test_spielstart_uebergeht_unbekannte_schluessel);
     RUN_TEST(test_spielstart_liest_das_gelaende);
     RUN_TEST(test_spielstart_lehnt_fehlerhaftes_gelaende_ab);
+    RUN_TEST(test_spielstart_sichtweite_bis_255);
     RUN_TEST(test_spielstart_lehnt_fehlerhafte_dateien_ab);
     RUN_TEST(test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann);
     RUN_TEST(test_spielstart_fehler_laesst_stand_unberuehrt);

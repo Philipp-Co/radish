@@ -28,7 +28,7 @@
       "items": { "$ref": "#/$defs/terrainRow" }
     },
     "victory_tiles": {
-      "description": "Optional: die Siegfelder -- die Felder, die die Spieler halten muessen, um zu gewinnen (RAD_GameScore). Fehlt das Feld, gibt es keine. Loader: jedes Feld liegt in der Welt, ist Land -- nicht '_', '~' oder '=' -- und kommt nur einmal vor.",
+      "description": "Optional: die Siegfelder -- die Felder, die die Spieler halten muessen, um zu gewinnen (RAD_GameScore). Fehlt das Feld, gibt es keine. Loader: jedes Feld liegt in der Welt, ist Land -- nicht '_', '~', '=' oder '#' -- und kommt nur einmal vor.",
       "type": "array",
       "items": { "$ref": "#/$defs/position" }
     },
@@ -51,10 +51,10 @@
       }
     },
     "terrainRow": {
-      "description": "Eine Zeile Gelaende. '_' kein Gelaende (RAD_TILE_TYPE_VOID), '.' Boden (RAD_TILE_TYPE_GROUND), '~' seichtes Wasser (RAD_TILE_TYPE_WATER_SHALLOW), ',' matschiger Boden (RAD_TILE_TYPE_MUD), ':' Wiese (RAD_TILE_TYPE_MEADOW), '^' Wald (RAD_TILE_TYPE_FOREST), '=' tiefes Wasser (RAD_TILE_TYPE_WATER_DEEP), 'H' Stadt (RAD_TILE_TYPE_CITY), '+' Strasse (RAD_TILE_TYPE_ROAD), '*' befestigte Stellung (RAD_TILE_TYPE_FORTIFICATION). Ein neuer Tile-Typ braucht hier ein neues Zeichen.",
+      "description": "Eine Zeile Gelaende. '_' kein Gelaende (RAD_TILE_TYPE_VOID), '.' Boden (RAD_TILE_TYPE_GROUND), '~' seichtes Wasser (RAD_TILE_TYPE_WATER_SHALLOW), ',' matschiger Boden (RAD_TILE_TYPE_MUD), ':' Wiese (RAD_TILE_TYPE_MEADOW), '^' Wald (RAD_TILE_TYPE_FOREST), '=' tiefes Wasser (RAD_TILE_TYPE_WATER_DEEP), 'H' Stadt (RAD_TILE_TYPE_CITY), '+' Strasse (RAD_TILE_TYPE_ROAD), '*' befestigte Stellung (RAD_TILE_TYPE_FORTIFICATION), '#' Drachenzaehne (RAD_TILE_TYPE_DRAGONS_TEETH), ';' hohes Gras (RAD_TILE_TYPE_HIGH_GRASS). Ein neuer Tile-Typ braucht hier ein neues Zeichen.",
       "type": "string",
       "minLength": 1,
-      "pattern": "^[_.~,:^=H+*]+$"
+      "pattern": "^[_.~,:^=H+*#;]+$"
     },
     "heightRow": {
       "description": "Eine Zeile Hoehen, eine Ziffer je Feld.",

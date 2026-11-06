@@ -15,6 +15,13 @@
 #define RAD_ISO_OBJECT_VICTORY_COLOR ((SDL_Color){ 230, 180, 40, 255 })
 
 ///
+/// Wie hell ein Feld im Nebel bleibt (RAD_IsoObject_t.light), von 255: das
+/// Gelaende bleibt erkennbar, aber sichtbar dunkler als das, was die eigenen
+/// Einheiten sehen.
+///
+#define RAD_ISO_OBJECT_FOG_LIGHT 110
+
+///
 /// Die Tiefen, in denen ein Iso-Objekt Figuren traegt (RAD_IsoObject_t.entities),
 /// je hoechstens eine. Gezeichnet in dieser Reihenfolge nach dem Boden: der
 /// Hintergrund steht auf dem Boden hinter der Mitte, der Vordergrund davor.
@@ -52,6 +59,14 @@ typedef struct
     /// Fokus geht vor.
     ///
     bool victory;
+    ///
+    /// Wie hell das Feld gezeichnet wird, von 255: jede Farbe wird damit
+    /// malgenommen, auch die eines Siegfeldes; der Fokus geht vor und bleibt
+    /// hell. 255 ist sichtbar, RAD_ISO_OBJECT_FOG_LIGHT liegt im Nebel -- und
+    /// dazwischen ein Feld, das gerade in den Nebel faellt oder aus ihm kommt:
+    /// die IsoMapView blendet je Bild ein Stueck weiter (view/iso_map_view.c).
+    ///
+    uint8_t light;
     int32_t layer;
 
     ///
@@ -76,15 +91,31 @@ typedef struct
     ///
     /// Was auf dem Feld steht, etwa Gras oder Wald: gezeichnet nach dem Boden
     /// (image oder Wuerfel) und vor den Figuren, im selben Rahmen wie image,
-    /// aber um overlay_offset_y nach unten verschoben (negativ: nach oben) --
-    /// die Bilder stehen nicht alle auf der Oberseite ihres Rahmens. NULL fuer
+    /// aber um overlay_offset_x nach rechts (negativ: nach links) und um
+    /// overlay_offset_y nach unten verschoben (negativ: nach oben) -- die
+    /// Bilder stehen nicht alle auf der Oberseite ihres Rahmens. NULL fuer
     /// nichts. Fokus und Siegfeld faerben es ein wie image.
     ///
     /// Gehoert wie image dem, der es setzt; gesetzt vom Typ des Feldes,
-    /// RAD_CreateIsoObject setzt NULL und 0.
+    /// RAD_CreateIsoObject setzt NULL und je 0.
     ///
     SDL_Texture *overlay;
+    int32_t overlay_offset_x;
     int32_t overlay_offset_y;
+
+    ///
+    /// Was vor den Figuren steht, etwa der vordere Teil von hohem Gras: wie
+    /// overlay, aber nach den Figuren gezeichnet, damit eine Figur zwischen
+    /// overlay und overlay_front steht. Im selben Rahmen und mit demselben
+    /// Versatz wie overlay. NULL fuer nichts.
+    ///
+    /// Gilt nur fuer Figuren auf dem Feld (entities[]): eine Figur in der
+    /// Zeichenliste (RAD_IsoMapAddEntity), etwa eine in Bewegung, wird nach
+    /// dem ganzen Feld gezeichnet und steht vor overlay_front.
+    ///
+    /// Gehoert wie overlay dem, der es setzt; RAD_CreateIsoObject setzt NULL.
+    ///
+    SDL_Texture *overlay_front;
 
     ///
     /// Die Figuren auf dem Feld, eine je Tiefe (RAD_IsoDepth_t); NULL fuer

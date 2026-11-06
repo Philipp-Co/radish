@@ -11,6 +11,7 @@ ein validiertes JWT mit "realm_access.roles" verhaelt.
 
 import asyncio
 import base64
+import io
 import json
 import unittest
 from unittest import mock
@@ -61,6 +62,39 @@ PLAYER_TOKEN = {"realm_access": {"roles": ["Player"]}}
 # (siehe docker/keycloak/realm-radish.json, User "radish-admin").
 ADMIN_TOKEN = {"realm_access": {"roles": ["Radish-Admin"]}}
 SERVER_TOKEN = {"realm_access": {"roles": ["Technischer-User-Server"]}}
+
+# Fester Katalog fuer die Tests: die Spezies "Menschen" und je TerrainCode
+# eine Zeile. Die Migrationen enthalten nur das Schema, und der Dump
+# api/fixtures/seed.json aendert sich mit jeder Pflege der Daten -- die Tests
+# sollen davon nicht abhaengen. Die Werte sind die, mit denen das Gelaende
+# frueher angelegt wurde.
+TEST_TERRAIN = [
+    # code, movement_modifier, cover, impassable, blocks_sight
+    ("void", 0, 0, True, False),
+    ("ground", 0, 1, False, False),
+    ("water_shallow", -1, 0, False, False),
+    ("mud", -1, 0, False, False),
+    ("meadow", 0, 0, False, False),
+    ("forest", -1, 2, False, True),
+    ("water_deep", 0, 0, True, False),
+    ("city", 0, 2, False, True),
+    ("road", 1, 0, False, False),
+    ("fortification", -1, 3, False, True),
+    ("dragons_teeth", 0, 0, True, False),
+    ("high_grass", 0, 1, False, True),
+]
+
+
+def create_test_catalog():
+    Species.objects.create(name="Menschen")
+    for code, movement_modifier, cover, impassable, blocks_sight in TEST_TERRAIN:
+        TerrainType.objects.create(
+            code=code,
+            movement_modifier=movement_modifier,
+            cover=cover,
+            impassable=impassable,
+            blocks_sight=blocks_sight,
+        )
 
 
 class ServerListTests(APITestCase):
@@ -199,10 +233,11 @@ class AdminTerrainTests(APITestCase):
     """
     admin_views.AdminTerrainTypeListView/DetailView: die Werte der Tile-Typen,
     nur mit "Radish-Admin", aenderbar, aber nicht anzulegen oder zu loeschen.
-    Die Zeilen legt die Migration an.
+    Die Zeilen kommen aus create_test_catalog().
     """
 
     def setUp(self):
+        create_test_catalog()
         self.admin_user = User.objects.create(username="radish-admin-user")
         self.client.force_authenticate(user=self.admin_user, token=ADMIN_TOKEN)
 
@@ -220,7 +255,12 @@ class AdminTerrainTests(APITestCase):
         )
         self.assertTrue(next(e for e in terrain if e["code"] == "water_deep")["impassable"])
         self.assertEqual(
-            [e["code"] for e in terrain if e["blocks_sight"]], ["forest", "city", "fortification"]
+            next(e for e in terrain if e["code"] == "dragons_teeth"),
+            {"code": "dragons_teeth", "label": "Drachenzaehne", "movement_modifier": 0, "cover": 0,
+             "impassable": True, "blocks_sight": False},
+        )
+        self.assertEqual(
+            [e["code"] for e in terrain if e["blocks_sight"]], ["forest", "city", "fortification", "high_grass"]
         )
 
     def test_player_role_is_not_sufficient(self):
@@ -274,12 +314,13 @@ class AdminTerrainTests(APITestCase):
 class ArmyTestCase(APITestCase):
     """
     Gemeinsamer Katalog fuer die Armee-Tests: die Spezies "Menschen" (aus
-    der Daten-Migration 0009) mit einem Trupp aus Soldaten und genau einem
+    create_test_catalog()) mit einem Trupp aus Soldaten und genau einem
     Anfuehrer, dazu eine zweite Spezies, deren Eintraege in einer Armee der
     Menschen nichts verloren haben.
     """
 
     def setUp(self):
+        create_test_catalog()
         self.user = User.objects.create(username="army-user")
         self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
 
@@ -291,6 +332,7 @@ class ArmyTestCase(APITestCase):
             max_entities=10,
             can_capture_objectives=True,
             movement=6,
+            sight_range=4,
         )
         self.soldier = EntityProfile.objects.create(
             unit_type=self.squad, name="Soldat", health=1, armor=3, toughness=3, strength=3, accuracy=4,
@@ -302,7 +344,7 @@ class ArmyTestCase(APITestCase):
             cost=20, min_count=1, max_count=1,
         )
         self.scout_team = UnitType.objects.create(
-            species=self.humans, name="Spaeher", min_entities=1, max_entities=3, movement=8
+            species=self.humans, name="Spaeher", min_entities=1, max_entities=3, movement=8, sight_range=10
         )
         self.scout = EntityProfile.objects.create(
             unit_type=self.scout_team, name="Spaeher", health=1, armor=2, toughness=3, strength=3, accuracy=3,
@@ -310,7 +352,7 @@ class ArmyTestCase(APITestCase):
         )
         self.truck_type = UnitType.objects.create(
             species=self.humans, name="Transporter", min_entities=1, max_entities=1,
-            transport_capacity=2, movement=12,
+            transport_capacity=2, movement=12, sight_range=3,
         )
         self.truck = EntityProfile.objects.create(
             unit_type=self.truck_type, name="Lastwagen", health=8, armor=5, toughness=3, strength=5, accuracy=5,
@@ -394,6 +436,7 @@ class ArmyCrudTests(ArmyTestCase):
         self.assertEqual(squad["transport_capacity"], 0)
         self.assertTrue(squad["can_capture_objectives"])
         self.assertEqual((squad["movement"], truck["movement"]), (6, 12))
+        self.assertEqual((squad["sight_range"], truck["sight_range"]), (4, 3))
         self.assertFalse(truck["can_capture_objectives"])
         self.assertEqual(humans["equipment"][0]["name"], "Medipack")
 
@@ -819,7 +862,7 @@ class CatalogAdminTests(ArmyTestCase):
         response = self.client.post(
             "/api/admin/catalog/unit-types/",
             {"species_id": self.humans.id, "name": "Garde", "min_entities": 1,
-             "max_entities": 5, "movement": 6},
+             "max_entities": 5, "movement": 6, "sight_range": 4},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -999,7 +1042,7 @@ class CatalogAdminTests(ArmyTestCase):
         response = self.client.put(
             f"/api/admin/catalog/unit-types/{self.squad.id}/",
             {"species_id": self.humans.id, "name": "Grosser Trupp", "min_entities": 2,
-             "max_entities": 10, "max_heavy_weapons": 2, "movement": 5},
+             "max_entities": 10, "max_heavy_weapons": 2, "movement": 5, "sight_range": 4},
             format="json",
         )
 
@@ -1012,7 +1055,7 @@ class CatalogAdminTests(ArmyTestCase):
         response = self.client.post(
             "/api/admin/catalog/unit-types/",
             {"species_id": self.humans.id, "name": "Kaputt", "min_entities": 5, "max_entities": 2,
-             "movement": 6},
+             "movement": 6, "sight_range": 4},
             format="json",
         )
 
@@ -1021,7 +1064,8 @@ class CatalogAdminTests(ArmyTestCase):
     def test_unit_type_rejects_more_than_ten_entities(self):
         response = self.client.post(
             "/api/admin/catalog/unit-types/",
-            {"species_id": self.humans.id, "name": "Horde", "max_entities": 11, "movement": 6},
+            {"species_id": self.humans.id, "name": "Horde", "max_entities": 11, "movement": 6,
+             "sight_range": 4},
             format="json",
         )
 
@@ -1085,7 +1129,7 @@ class CatalogAdminTests(ArmyTestCase):
     def test_unit_type_can_capture_objectives(self):
         url = "/api/admin/catalog/unit-types/"
         payload = {"species_id": self.humans.id, "name": "Besatzer", "min_entities": 1,
-                   "max_entities": 5, "movement": 6}
+                   "max_entities": 5, "movement": 6, "sight_range": 4}
 
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -1109,11 +1153,37 @@ class CatalogAdminTests(ArmyTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("movement", response.data)
 
+    def test_unit_type_requires_sight_range(self):
+        response = self.client.post(
+            "/api/admin/catalog/unit-types/",
+            {"species_id": self.humans.id, "name": "Ohne", "min_entities": 1, "max_entities": 3,
+             "movement": 6},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("sight_range", response.data)
+
+    def test_unit_type_sight_range_fits_a_byte(self):
+        # Im Spiel ist die Sichtweite ein Byte (RAD_Unit_t.sight_range): 255
+        # geht noch, 256 nimmt schon der Katalog nicht an.
+        url = "/api/admin/catalog/unit-types/"
+        payload = {"species_id": self.humans.id, "name": "Weitblick", "min_entities": 1,
+                   "max_entities": 3, "movement": 6}
+
+        response = self.client.post(url, dict(payload, sight_range=256), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("sight_range", response.data)
+
+        response = self.client.post(url, dict(payload, sight_range=255), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["sight_range"], 255)
+
     def test_unit_limits_default_to_none(self):
         response = self.client.post(
             "/api/admin/catalog/unit-types/",
             {"species_id": self.humans.id, "name": "Neu", "min_entities": 1, "max_entities": 3,
-             "movement": 6},
+             "movement": 6, "sight_range": 4},
             format="json",
         )
 
@@ -1697,7 +1767,8 @@ class InstanceClientTests(GameTestCase):
         self.assertEqual((army["name"], army["spezies"]), ("Erste Kompanie", "Menschen"))
         unit = army["einheiten"][0]
         self.assertEqual(
-            (unit["typ"], unit["bewegung"], unit["kann_ziele_einnehmen"]), ("Trupp", 6, True)
+            (unit["typ"], unit["bewegung"], unit["sichtweite"], unit["kann_ziele_einnehmen"]),
+            ("Trupp", 6, 4, True),
         )
         leader = next(e for e in unit["entitaeten"] if e["profil"] == "Anfuehrer")
         self.assertEqual(
@@ -1814,6 +1885,78 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(framed[:8], bytes.fromhex("00000000000000ab"))
         self.assertEqual(framed[8:16], bytes.fromhex("614233784b397051"))
         self.assertEqual(framed[16:], b"\x0a\x02")
+
+
+class MigratorSettingsTests(unittest.TestCase):
+    """config/settings_migrate.py: der Migrator kennt jede App mit Migrationen."""
+
+    def test_every_app_with_migrations_is_migrated(self):
+        from django.apps import AppConfig, apps
+        from django.db.migrations.loader import MigrationLoader
+
+        from config import settings_migrate
+
+        migrated = {AppConfig.create(entry).label for entry in settings_migrate.INSTALLED_APPS}
+        # Ohne Verbindung: nur die Migrationsdateien der installierten Apps.
+        with_migrations = MigrationLoader(None).migrated_apps
+
+        # Sonst legt der Migrator die Tabellen dieser Apps nie an, und das
+        # Backend bricht beim Start ab (docker/backend/entrypoint.sh).
+        self.assertEqual(with_migrations - migrated, set())
+        # Umgekehrt keine App, die das Backend gar nicht hat.
+        self.assertLessEqual(migrated, {a.label for a in apps.get_app_configs()})
+
+
+class SeedCommandTests(APITestCase):
+    """management/commands/seed.py: wann der Dump api/fixtures/seed.json geladen wird."""
+
+    def seed(self, mode):
+        from django.core.management import call_command
+
+        call_command("seed", mode=mode, stdout=io.StringIO(), verbosity=0)
+
+    def fixture_count(self, label):
+        from .management.commands.seed import FIXTURE
+
+        with FIXTURE.open(encoding="utf-8") as f:
+            return sum(1 for entry in json.load(f) if entry["model"] == label)
+
+    def test_dump_brings_every_terrain_type(self):
+        # Sonst scheitert in einer frisch befuellten Datenbank jeder Spielstart
+        # (instance_client._terrain_document).
+        self.seed("always")
+
+        self.assertEqual(list(TerrainType.objects.values_list("code", flat=True)), TerrainCode.values)
+
+    def test_if_empty_loads_into_a_new_database(self):
+        self.seed("if-empty")
+
+        self.assertEqual(TerrainType.objects.count(), self.fixture_count("api.terraintype"))
+        self.assertEqual(Species.objects.count(), self.fixture_count("api.species"))
+
+    def test_if_empty_leaves_existing_content_alone(self):
+        Species.objects.create(name="Gepflegt")
+
+        self.seed("if-empty")
+
+        self.assertEqual(list(Species.objects.values_list("name", flat=True)), ["Gepflegt"])
+        self.assertEqual(TerrainType.objects.count(), 0)
+
+    def test_never_loads_nothing(self):
+        self.seed("never")
+
+        self.assertEqual(TerrainType.objects.count(), 0)
+
+    def test_always_overwrites_with_the_dump(self):
+        self.seed("always")
+        forest = TerrainType.objects.get(code="forest")
+        dumped_cover = forest.cover
+        forest.cover = dumped_cover + 1
+        forest.save()
+
+        self.seed("always")
+
+        self.assertEqual(TerrainType.objects.get(code="forest").cover, dumped_cover)
 
 
 class ConsumerTests(TransactionTestCase):

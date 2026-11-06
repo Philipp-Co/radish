@@ -32,6 +32,7 @@ bereits umgesetzt.
 """
 
 import asyncio
+import logging
 from base64 import b64decode, b64encode
 from datetime import datetime
 from json import loads, dumps
@@ -42,6 +43,8 @@ from django.db.models import Q
 
 from . import access
 from .models import Game, GameStatus, Player
+
+logger = logging.getLogger(__name__)
 
 PING_INTERVAL_SECONDS = 10
 
@@ -64,7 +67,7 @@ class _UdpProtocol(asyncio.DatagramProtocol):
         # deshalb ueber create_task statt eines direkten await. Laeuft
         # trotzdem ohne Thread-Uebergabe, weil derselbe Event-Loop sowohl
         # dieses Protocol als auch den Consumer bedient.
-        print(f'Received data from {addr}: {data}')
+        logger.debug("Received data from %s: %s", addr, data)
         asyncio.create_task(
             self.consumer.send(
                 text_data=dumps(
@@ -77,7 +80,7 @@ class _UdpProtocol(asyncio.DatagramProtocol):
         )
 
     def error_received(self, exc):
-        print(f"UDP-Fehler: {exc}")
+        logger.error("UDP-Fehler: %s", exc)
 
 
 class EchoConsumer(AsyncWebsocketConsumer):
@@ -91,7 +94,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # bevor Auth/Player/Spiel geprueft sind, damit auch abgelehnte
         # Verbindungsversuche (4401/4404/4409 unten) mit Adresse auftauchen.
         client_address = self.scope.get("client")
-        print(f"WebSocket-Verbindungsversuch von {client_address}: {self.scope['user']}")
+        logger.info("WebSocket-Verbindungsversuch von %s: %s", client_address, self.scope["user"])
         if not self.scope["user"].is_authenticated:
             # 4401 statt eines Standard-Codes (4000-4999 sind laut RFC 6455
             # frei fuer Anwendungen) -- angelehnt an HTTP 401, damit der
@@ -127,7 +130,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # hat keinen, und mit ihm ist dann nicht zu reden.
         zucchini_code = game.zucchini_code_for(self.player)
         if not zucchini_code:
-            print(f"Spiel '{game.name}' ohne Zugangscode fuer {self.player.identifier}")
+            logger.warning("Spiel '%s' ohne Zugangscode fuer %s", game.name, self.player.identifier)
             await self.close(code=4409)
             return
         self.zucchini_code = zucchini_code
@@ -191,17 +194,19 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # bytes_data bliebe nur fuer eine aeltere Client-Version relevant
         # und wird deshalb nicht mehr interpretiert, nur geloggt.
         if text_data is None:
-            print(f"Nachricht ohne text_data verworfen (bytes_data={bytes_data!r}): {self.scope['user']}")
+            logger.warning(
+                "Nachricht ohne text_data verworfen (bytes_data=%r): %s", bytes_data, self.scope["user"]
+            )
             return
 
         try:
             message = loads(text_data)
         except (TypeError, ValueError):
-            print(f"Nachricht ist kein gueltiges JSON: {text_data!r}")
+            logger.warning("Nachricht ist kein gueltiges JSON: %r", text_data)
             return
 
         if not isinstance(message, dict):
-            print(f"Nachricht ist kein JSON-Objekt: {message!r}")
+            logger.warning("Nachricht ist kein JSON-Objekt: %r", message)
             return
 
         message_type = message.get("type")
@@ -211,13 +216,13 @@ class EchoConsumer(AsyncWebsocketConsumer):
             # (siehe game-socket.service.ts, startHeartbeat()). Nur zur
             # Kenntnisnahme geloggt, nicht an den Spielserver
             # weitergereicht, der koennte mit dem JSON nichts anfangen.
-            print(f"Nachricht vom Client ({message_type}): {message}")
+            logger.debug("Nachricht vom Client (%s): %s", message_type, message)
             return
 
         try:
             payload = b64decode(message["data"])
         except (KeyError, TypeError, ValueError):
-            print(f"'command'-Nachricht ohne gueltiges Base64-'data': {message!r}")
+            logger.warning("'command'-Nachricht ohne gueltiges Base64-'data': %r", message)
             return
 
         # sendto() statt send(): das ist die Methode des UDP-Transports
@@ -244,7 +249,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # Matchmaking-Status), gehoert hierhin group_discard(...) -- sonst
         # bleibt der Kanalname in der Gruppe haengen, obwohl niemand mehr
         # zuhoert.
-        print(f"disconnect: {self.scope['user']} (code={close_code})")
+        logger.info("disconnect: %s (code=%s)", self.scope["user"], close_code)
         if getattr(self, "_ping_task", None) is not None:
             self._ping_task.cancel()
         if getattr(self, "transport", None) is not None:

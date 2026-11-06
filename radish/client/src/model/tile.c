@@ -64,6 +64,8 @@ const char* RAD_ClientTileTypeText(RAD_ClientTileType_t type)
         case RAD_CLIENT_TILE_TYPE_CITY:          return "city";
         case RAD_CLIENT_TILE_TYPE_ROAD:          return "road";
         case RAD_CLIENT_TILE_TYPE_FORTIFICATION: return "fortification";
+        case RAD_CLIENT_TILE_TYPE_DRAGONS_TEETH: return "dragons_teeth";
+        case RAD_CLIENT_TILE_TYPE_HIGH_GRASS:    return "high_grass";
         case RAD_CLIENT_TILE_TYPE_UNKNOWN:       return "unbekannt";
     }
     return "unbekannt";

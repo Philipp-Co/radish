@@ -56,6 +56,7 @@ export const CATALOG_MODELS: CatalogModel[] = [
     fields: [
       { key: 'name', label: 'Name', type: 'text' },
       { key: 'movement', label: 'Bewegung', type: 'number', hint: 'Bewegungsradius in Feldern.' },
+      { key: 'sight_range', label: 'Sichtweite', type: 'number', hint: 'Wie weit die Einheit sieht, in Feldern (0–255).' },
       { key: 'min_entities', label: 'Min. Entitäten', type: 'number' },
       { key: 'max_entities', label: 'Max. Entitäten', type: 'number' },
       {
@@ -82,6 +83,7 @@ export const CATALOG_MODELS: CatalogModel[] = [
       min_entities: 1,
       max_entities: 10,
       movement: null,
+      sight_range: null,
       max_heavy_weapons: null,
       max_super_heavy_weapons: null,
       transport_capacity: 0,

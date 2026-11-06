@@ -41,6 +41,7 @@ import {
       <h3>
         {{ index + 1 }}. {{ type.name }}
         <span class="muted transport">Bewegung {{ type.movement }} Felder</span>
+        <span class="muted transport">Sicht {{ type.sight_range }} Felder</span>
         @if (type.transport_capacity > 0) {
           <span class="muted transport">
             transportiert bis zu {{ type.transport_capacity }}

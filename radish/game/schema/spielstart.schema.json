@@ -15,10 +15,10 @@
       "items": { "$ref": "#/$defs/spieler" }
     },
     "gelaende": {
-      "description": "Was jeder Tile-Typ fuer das Spiel bedeutet, aus dem Katalog des Backends (TerrainType): jeder Typ genau einmal -- zehn Eintraege, und jeder Typ kommt vor.",
+      "description": "Was jeder Tile-Typ fuer das Spiel bedeutet, aus dem Katalog des Backends (TerrainType): jeder Typ genau einmal -- zwoelf Eintraege, und jeder Typ kommt vor.",
       "type": "array",
-      "minItems": 10,
-      "maxItems": 10,
+      "minItems": 12,
+      "maxItems": 12,
       "items": { "$ref": "#/$defs/terrain" },
       "allOf": [
         { "contains": { "properties": { "typ": { "const": "void" } } } },
@@ -30,7 +30,9 @@
         { "contains": { "properties": { "typ": { "const": "water_deep" } } } },
         { "contains": { "properties": { "typ": { "const": "city" } } } },
         { "contains": { "properties": { "typ": { "const": "road" } } } },
-        { "contains": { "properties": { "typ": { "const": "fortification" } } } }
+        { "contains": { "properties": { "typ": { "const": "fortification" } } } },
+        { "contains": { "properties": { "typ": { "const": "dragons_teeth" } } } },
+        { "contains": { "properties": { "typ": { "const": "high_grass" } } } }
       ]
     }
   },
@@ -71,7 +73,7 @@
     "einheit": {
       "description": "Eine Einheit: die Werte ihres Einheitentyps und ihre Entitaeten.",
       "type": "object",
-      "required": ["typ", "bewegung", "transportkapazitaet", "kann_ziele_einnehmen", "entitaeten"],
+      "required": ["typ", "bewegung", "sichtweite", "transportkapazitaet", "kann_ziele_einnehmen", "entitaeten"],
       "additionalProperties": false,
       "properties": {
         "typ": {
@@ -82,6 +84,12 @@
         "bewegung": {
           "description": "Bewegungsradius in Feldern.",
           "$ref": "#/$defs/wert"
+        },
+        "sichtweite": {
+          "description": "Wie weit die Einheit sieht, in Feldern waagerecht plus senkrecht; 0 = nur das eigene Feld. Hoechstens 255, im Spiel ein Byte (RAD_Unit_t.sight_range) -- deshalb nicht \"wert\".",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
         },
         "transportkapazitaet": {
           "description": "Wie viele andere Einheiten sie transportieren kann (0 = kein Transporter).",
@@ -164,7 +172,7 @@
       "properties": {
         "typ": {
           "description": "Der Tile-Typ (TerrainType.code im Backend, RAD_TileType_t im Spiel).",
-          "enum": ["void", "ground", "water_shallow", "mud", "meadow", "forest", "water_deep", "city", "road", "fortification"]
+          "enum": ["void", "ground", "water_shallow", "mud", "meadow", "forest", "water_deep", "city", "road", "fortification", "dragons_teeth", "high_grass"]
         },
         "bewegung": {
           "description": "MV: um wie viele Felder das Feld die Bewegungsreichweite aendert. Betreten kostet 1 - MV, mindestens 1.",

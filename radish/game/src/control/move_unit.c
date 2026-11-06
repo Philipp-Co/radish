@@ -2,6 +2,7 @@
 #include <radish/game/model/game.h>
 #include <radish/game/control/commands.h>
 #include <radish/game/control/unit_turn.h>
+#include <radish/game/control/visibility.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -139,6 +140,36 @@ bool RAD_GameUnitCanMove(const RAD_Game_t *game, RAD_UnitId_t unit)
     return RAD_GameCheckMoveUnit(game, unit) == RAD_GAME_OK;
 }
 
+///
+/// Ein gelungener Zug fuer die, die nicht ihn besitzen: jeder andere Mitspieler
+/// bekommt den Teil des Weges, den er sieht, mit je einem Randfeld davor und
+/// danach (RAD_GameObservedPartOfPath), als eigene Fassung -- so faehrt eine
+/// Einheit sichtbar in den Nebel hinein oder aus ihm heraus. Bleibt weniger als
+/// zwei Felder, sieht er gar nichts davon und bekommt nichts. Ob die Einheit
+/// dabei in seine Sicht kam oder aus ihr verschwand, ist eine andere Meldung.
+///
+static void RAD_GameNotifyObservers(RAD_Game_t *game, const RAD_Unit_t *unit, const RAD_Path_t *path)
+{
+    for(int32_t i = 0; i < RAD_GameNumberOfPlayers(game); ++i)
+    {
+        const RAD_UserId_t observer = RAD_GamePlayerAt(game, i);
+        if(observer == unit->owner)
+        {
+            continue;
+        }
+
+        RAD_Path_t seen;
+        if(RAD_GameObservedPartOfPath(game, observer, path, &seen) < 2)
+        {
+            continue;
+        }
+
+        RAD_Recipients_t only_observer = { .number_of_users = 0, .variant = true };
+        RAD_RecipientsAdd(&only_observer, observer);
+        RAD_WorldNotifyUnitMoved(&game->world, unit->id, &seen, 0, &only_observer);
+    }
+}
+
 void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *move)
 {
     int32_t result = -1;
@@ -152,11 +183,19 @@ void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *move)
         .number_of_steps = 0
     };
     RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, move->unit);
+    //
+    // Wer davon erfaehrt, entscheidet sich hier und nicht in der Welt. Den ganzen
+    // Weg -- und einen abgelehnten Zug -- bekommt nur der Besitzer; wer ihm sonst
+    // zusieht, bekommt nach dem Zug, was er davon sah (RAD_GameNotifyObservers).
+    // Ohne Einheit bleibt die Liste leer.
+    //
+    RAD_Recipients_t recipients = {0};
     if(NULL == unit)
     {
         printf("Entity with Id %i does not exist!\n", move->unit);
         goto end;
     }
+    RAD_RecipientsAdd(&recipients, unit->owner);
     //
     // Nur was auf dem Feld steht, kann ziehen -- eine Einheit in der Reserve oder
     // eine zerstoerte hat keine Position --, und nur einmal je Zug, nicht im Zug
@@ -235,26 +274,31 @@ void RAD_GameHandleMoveCommand(RAD_Game_t *game, RAD_CommandMoveUnit_t *move)
     }
 
     //
-    // Jetzt erst schreiben.
-    // 
-    game->world.tiles[unit->y][unit->x].unit = RAD_UNIT_NONE;
-    game->world.tiles[y][x].unit = unit->id;
-    unit->x = x;
-    unit->y = y;
-
-    //
-    // Gezogen ist sie, sobald sie wenigstens ein Feld weit kam -- auch wenn der
-    // Weg danach besetzt war. Kam sie gar nicht los, darf sie es noch einmal
-    // versuchen.
+    // Jetzt erst schreiben -- ueber die Welt, die Feld und Einheit synchron haelt
+    // und den Zug meldet. Gezogen ist sie, sobald sie wenigstens ein Feld weit
+    // kam, auch wenn der Weg danach besetzt war; gesetzt vor dem Zug, damit ein
+    // Abonnent sie schon so sieht, wie beim Aufstellen (control/deploy_unit.c).
+    // Kam sie gar nicht los, darf sie es noch einmal versuchen.
     //
     if(valid_path.number_of_steps >= 2)
     {
         unit->turn.moved = 1;
+        if(RAD_WorldMoveUnitAlong(&game->world, unit->id, &valid_path, &recipients))
+        {
+            RAD_GameNotifyObservers(game, unit, &valid_path);
+            return;
+        }
+        // Die Welt lehnt nur ab, was oben schon geprueft ist -- kommt es doch
+        // vor, ist nichts geschehen, und gemeldet wird wie bei jedem Zug, der
+        // nicht losging.
+        unit->turn.moved = 0;
+        valid_path.number_of_steps = 0;
     }
 
 end:
     //
-    // Beobachter benachrichtigen...
+    // Nichts geschrieben, aber gemeldet: ein Absender wartet auf Antwort, und ein
+    // abgewiesener Zug soll von einem verlorenen nicht zu unterscheiden sein.
     //
-    RAD_EventManagerPublishUnitMoved(game->event_manager, unit, &valid_path, result);
+    RAD_WorldNotifyUnitMoved(&game->world, move->unit, &valid_path, result, &recipients);
 }

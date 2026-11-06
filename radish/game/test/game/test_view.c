@@ -116,10 +116,10 @@ void test_view_zaehlt_nur_vorhandene_einheiten(void)
     RAD_Unit_t unit;
     TEST_ASSERT_FALSE(RAD_GameUnitAt(game, 0, &unit));
 
-    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 1, 1));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 1, 1, NULL));
     TEST_ASSERT_EQUAL_INT(1, RAD_GameNumberOfUnits(game));
 
-    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3, NULL));
     TEST_ASSERT_EQUAL_INT(2, RAD_GameNumberOfUnits(game));
 
     abbauen();
@@ -136,10 +136,10 @@ void test_view_zaehlt_einheiten_in_jedem_zustand(void)
     strcpy(values.name, "Trupp");
     strcpy(values.members[0].profile, "Soldat");
 
-    const RAD_UnitId_t deployed  = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 0, 0);
+    const RAD_UnitId_t deployed  = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 0, 0, NULL);
     const RAD_UnitId_t reserve   = RAD_WorldAddReserveUnit(&game->world, &values, RAD_USER_NONE);
-    const RAD_UnitId_t destroyed = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 2, 0);
-    RAD_WorldRemoveUnit(&game->world, destroyed);
+    const RAD_UnitId_t destroyed = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 2, 0, NULL);
+    RAD_WorldRemoveUnit(&game->world, destroyed, NULL);
 
     TEST_ASSERT_EQUAL_INT(3, RAD_GameNumberOfUnits(game));
 
@@ -169,7 +169,7 @@ void test_view_gibt_eine_kopie_heraus(void)
 {
     aufbauen();
 
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 4, 5);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 4, 5, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     // Die eigentliche Zusage: was der Aufrufer bekommt, haengt nicht an der Welt.
@@ -207,7 +207,7 @@ void test_view_findet_die_gesetzte_figur_auf_ihrem_tile(void)
 
     // Die zwei Seiten gegeneinander: die Figur kennt ihr Feld, das Feld die Figur.
     // Beides muss durch die Fassade gleich herauskommen.
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 3, 2, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
 
     RAD_Unit_t unit;

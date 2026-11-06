@@ -184,7 +184,7 @@ void RAD_WorldPublishTileChanges(
 /// keinem Feld. So kommt eine Einheit aus der Armee ins Spiel.
 ///
 /// Uebernommen werden aus "values" die Werte der Einheit -- type, name, movement,
-/// transport_capacity, can_capture, attributes und die Mitglieder. Id, Zustand,
+/// sight_range, transport_capacity, can_capture, attributes und die Mitglieder. Id, Zustand,
 /// Besitzer und Position vergibt die Welt: die Id der Pool, der
 /// Zustand RAD_UNIT_STATE_RESERVE, der Besitzer "owner", die Position (-1,-1). Ein
 /// Ereignis gibt es nicht -- auf dem Feld hat sich nichts geaendert.
@@ -215,10 +215,75 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
 /// Feld hat sie nie gestanden. Sie bleibt im Pool (RAD_UNIT_STATE_DESTROYED),
 /// und eine schon zerstoerte Einheit noch einmal zu entfernen tut nichts.
 ///
-RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y);
-bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y);
-bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y);
-void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id);
+/// **"recipients" sind die Spieler, die davon erfahren** (RAD_Recipients_t,
+/// event_manager.h). Die Welt entscheidet das nicht -- wer was sieht, ist eine
+/// Regel und steht in control/ --, sie reicht die Liste nur an den Manager
+/// weiter, zusammen mit dem Ereignis, das sie ohnehin meldet. NULL heisst: kein
+/// Spieler; der Abonnent ohne Empfaenger erfaehrt es trotzdem. Ein abgelehnter
+/// Aufruf meldet niemandem etwas.
+///
+RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y,
+                                const RAD_Recipients_t *recipients);
+bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                         const RAD_Recipients_t *recipients);
+bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                       const RAD_Recipients_t *recipients);
+void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id, const RAD_Recipients_t *recipients);
+
+///
+/// Melden, ohne zu aendern: die Sicht eines Spielers hat sich bewegt, nicht die
+/// Einheit. Auch das laeuft ueber die Welt und nicht an ihr vorbei zum Manager,
+/// damit jedes Ereignis zu einer Einheit aus derselben Quelle kommt -- control/
+/// entscheidet, wer es erfaehrt, die Welt meldet es.
+///
+/// RAD_WorldNotifyUnitSighted: die Einheit steht in der Sicht von "recipients"
+/// (RAD_OnUnitSighted_t, mit ihrem Feld). false und keine Meldung, wenn es sie
+/// nicht gibt oder sie nicht auf dem Feld steht.
+///
+/// RAD_WorldNotifyUnitLost: sie ist aus der Sicht von "recipients"
+/// verschwunden; (x, y) ist, wo sie zuletzt gesehen wurde (RAD_OnUnitLost_t) --
+/// in ihr steht das womoeglich nicht mehr, etwa nach einem Zug. false und keine
+/// Meldung, wenn es sie nicht gibt.
+///
+///
+/// Der Zug ueber einen Weg (control/move_unit.c): die Einheit steht danach auf
+/// dem letzten Feld von "path", und gemeldet wird der ganze Weg
+/// (RAD_OnUnitMoved_t, Ergebnis 0). RAD_WorldMoveUnit ist derselbe Zug ueber
+/// genau ein Feld.
+///
+/// Geprueft werden nur die Enden, nicht der Weg dazwischen -- ob er begehbar
+/// ist und in die Bewegung passt, ist eine Regel und steht in control/
+/// (RAD_GameCheckMovePath). Die Welt haelt nur ihre eigene Zusage: das erste
+/// Feld ist, wo die Einheit steht, und das letzte liegt in der Welt und ist
+/// frei. false und keine Aenderung und keine Meldung, wenn es die Einheit nicht
+/// gibt, sie nicht auf dem Feld steht, der Weg NULL ist, kuerzer als zwei
+/// Felder, laenger als RAD_PATH_MAX_STEPS, oder eines der Enden nicht taugt.
+///
+bool RAD_WorldMoveUnitAlong(RAD_World_t *world, RAD_UnitId_t id, const RAD_Path_t *path,
+                            const RAD_Recipients_t *recipients);
+
+///
+/// Ein Zug, der nichts geaendert hat, aber gemeldet wird: abgelehnt oder nicht
+/// losgekommen. "path" ist, was gegangen wurde (meist leer), "result" das
+/// Ergebnis, wie es das Spiel meldet. Gibt es die Einheit nicht, geht sie als
+/// NULL hinaus -- so kennt ein Abonnent den abgelehnten Zug ohne Einheit
+/// (RAD_OnUnitMoved_t). false und keine Meldung nur fuer einen NULL-Weg.
+///
+bool RAD_WorldNotifyUnitMoved(RAD_World_t *world, RAD_UnitId_t id, const RAD_Path_t *path, int32_t result,
+                              const RAD_Recipients_t *recipients);
+
+///
+/// Ein angenommener Angriff, nach dem Kampf (control/attack_unit.c). Was er
+/// geaendert hat, hat die Welt schon -- Lebenspunkte am Mitglied, eine
+/// Zerstoerung ueber RAD_WorldRemoveUnit --, hier wird nur gemeldet
+/// (RAD_OnUnitAttacked_t). false und keine Meldung fuer ein NULL-Ergebnis.
+///
+bool RAD_WorldNotifyUnitAttacked(RAD_World_t *world, const RAD_AttackResult_t *result,
+                                 const RAD_Recipients_t *recipients);
+
+bool RAD_WorldNotifyUnitSighted(RAD_World_t *world, RAD_UnitId_t id, const RAD_Recipients_t *recipients);
+bool RAD_WorldNotifyUnitLost(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                             const RAD_Recipients_t *recipients);
 
 ///
 /// Besitz einer Einheit lesen und setzen (RAD_Unit_t.owner).

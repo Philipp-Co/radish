@@ -10,6 +10,7 @@ typedef void (*RAD_ClientWorldUnitMoved_t)(void *user_argument, const RAD_Client
                                            const RAD_ClientPosition_t *steps, size_t count);
 typedef void (*RAD_ClientWorldUnitAttacked_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                                               RAD_ClientPosition_t target);
+typedef void (*RAD_ClientWorldAttackRejected_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
 
 static bool RAD_ClientWorldInBounds(int32_t x, int32_t y)
 {
@@ -18,9 +19,11 @@ static bool RAD_ClientWorldInBounds(int32_t x, int32_t y)
 
 static RAD_ClientUnit_t* RAD_ClientWorldFieldUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id);
 static RAD_ClientReserve_t* RAD_ClientWorldReserveContaining(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id);
+static RAD_ClientTile_t* RAD_ClientWorldTileOfUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id,
+                                                   RAD_ClientPosition_t hint);
 
 //
-// Die vier Ereignisse haben je eine eigene Signatur, also je eine eigene
+// Die Ereignisse haben je eine eigene Signatur, also je eine eigene
 // Meldefunktion. Alle laufen ueber eine Kopie der Liste: ein Beobachter darf
 // sich im Callback an- und abmelden.
 //
@@ -98,6 +101,21 @@ static void RAD_ClientWorldNotifyUnitAttacked(const RAD_ClientWorld_t *world, RA
         if(callback != NULL)
         {
             callback(observer->user_argument, world, unit, target);
+        }
+    }
+}
+
+static void RAD_ClientWorldNotifyAttackRejected(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit)
+{
+    const RAD_ModelObservable_t observable = world->observable;
+
+    for(uint32_t i = 0; i < observable.number_of_observers; ++i)
+    {
+        const RAD_ModelObserver_t *observer = &observable.observers[i];
+        const RAD_ClientWorldAttackRejected_t callback = (RAD_ClientWorldAttackRejected_t)observer->callbacks[RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED];
+        if(callback != NULL)
+        {
+            callback(observer->user_argument, world, unit);
         }
     }
 }
@@ -184,6 +202,23 @@ void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit
     }
 
     RAD_ClientUnit_t *unit = world->tiles[from.y][from.x].unit;
+    if((unit == NULL) && world->known[from.y][from.x])
+    {
+        // Der Weg eines Beobachters (world.h): die Einheit steht nicht auf
+        // steps[0], war aber schon einmal zu sehen. Erst dorthin, dann ziehen --
+        // reserviert ist sie nicht, sonst kaeme sie mit "aufgestellt".
+        RAD_ClientUnit_t *known = RAD_ClientWorldFieldUnit(world, unit_id);
+        if(known != NULL)
+        {
+            RAD_ClientTile_t *elsewhere = RAD_ClientWorldTileOfUnit(world, unit_id, from);
+            if(elsewhere != NULL)
+            {
+                RAD_ClientTileSetUnit(elsewhere, NULL);
+            }
+            RAD_ClientTileSetUnit(&world->tiles[from.y][from.x], known);
+            unit = known;
+        }
+    }
     if((unit == NULL) || (unit->id != unit_id))
     {
         return;
@@ -203,6 +238,11 @@ void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, RAD_ClientUnitI
     }
 
     RAD_ClientWorldNotifyUnitAttacked(world, unit, target);
+}
+
+void RAD_ClientWorldReportAttackRejected(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit)
+{
+    RAD_ClientWorldNotifyAttackRejected(world, unit);
 }
 
 static RAD_ClientReserve_t* RAD_ClientWorldReserveOf(RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner)
@@ -355,6 +395,58 @@ bool RAD_ClientWorldDeployUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, 
     return true;
 }
 
+bool RAD_ClientWorldShowUnit(RAD_ClientWorld_t *world, const RAD_ClientUnit_t *unit, RAD_ClientPosition_t position)
+{
+    if(!RAD_ClientWorldAddUnit(world, unit))
+    {
+        return false;
+    }
+
+    // Wer sie bisher nannte, nennt sie nicht mehr: eine Reserve -- der Client
+    // kennt auch die fremde --, und ein Feld, auf dem er sie zuletzt sah.
+    RAD_ClientReserve_t *reserve = RAD_ClientWorldReserveContaining(world, unit->id);
+    if(reserve != NULL)
+    {
+        RAD_ClientReserveRemoveUnit(reserve, unit->id);
+    }
+    RAD_ClientTile_t *before = RAD_ClientWorldTileOfUnit(world, unit->id, position);
+    if((before != NULL) && ((before->x != position.x) || (before->y != position.y)))
+    {
+        RAD_ClientTileSetUnit(before, NULL);
+    }
+
+    if(!RAD_ClientWorldInBounds(position.x, position.y) || !world->known[position.y][position.x])
+    {
+        return false;
+    }
+    RAD_ClientTile_t *tile = &world->tiles[position.y][position.x];
+    if((tile->unit != NULL) && (tile->unit->id != unit->id))
+    {
+        return false;
+    }
+    if(tile->unit == NULL)
+    {
+        RAD_ClientTileSetUnit(tile, RAD_ClientUnitRepositoryFind(&world->units, unit->id));
+    }
+    return true;
+}
+
+bool RAD_ClientWorldHideUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, RAD_ClientPosition_t position)
+{
+    if(RAD_ClientUnitRepositoryFind(&world->units, id) == NULL)
+    {
+        return false;
+    }
+
+    RAD_ClientTile_t *tile = RAD_ClientWorldTileOfUnit(world, id, position);
+    if(tile == NULL)
+    {
+        return false;
+    }
+    RAD_ClientTileSetUnit(tile, NULL);
+    return true;
+}
+
 const RAD_ClientReserve_t* RAD_ClientWorldReserve(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t owner)
 {
     if(owner == RAD_CLIENT_PLAYER_NONE)
@@ -484,7 +576,8 @@ bool RAD_ClientWorldSubscribe(const RAD_ClientWorld_t *world, RAD_ClientWorldObs
             [RAD_CLIENT_WORLD_EVENT_RESERVE_CREATED] = (RAD_ModelCallback_t)observer.reserve_created,
             [RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED] = (RAD_ModelCallback_t)observer.size_changed,
             [RAD_CLIENT_WORLD_EVENT_UNIT_MOVED] = (RAD_ModelCallback_t)observer.unit_moved,
-            [RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED] = (RAD_ModelCallback_t)observer.unit_attacked
+            [RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED] = (RAD_ModelCallback_t)observer.unit_attacked,
+            [RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED] = (RAD_ModelCallback_t)observer.attack_rejected
         }
     };
     return RAD_ModelObservableSubscribe(RAD_ModelObservableOf(&world->observable), &generic);
@@ -515,6 +608,36 @@ static RAD_ClientReserve_t* RAD_ClientWorldReserveContaining(RAD_ClientWorld_t *
 /// RAD_CLIENT_UNIT_ID_NONE eingeschlossen. Auf dem Feld steht, was die Welt kennt
 /// und keine Reserve nennt.
 ///
+///
+/// Das Feld, auf dem die Einheit "id" steht, oder NULL. Zuerst "hint" -- meist
+/// steht sie dort --, sonst wird das Raster abgesucht.
+///
+static RAD_ClientTile_t* RAD_ClientWorldTileOfUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id,
+                                                   RAD_ClientPosition_t hint)
+{
+    if(RAD_ClientWorldInBounds(hint.x, hint.y))
+    {
+        RAD_ClientTile_t *tile = &world->tiles[hint.y][hint.x];
+        if((tile->unit != NULL) && (tile->unit->id == id))
+        {
+            return tile;
+        }
+    }
+
+    for(int32_t y = 0; y < RAD_ISO_MAP_SIZE; ++y)
+    {
+        for(int32_t x = 0; x < RAD_ISO_MAP_SIZE; ++x)
+        {
+            RAD_ClientTile_t *tile = &world->tiles[y][x];
+            if((tile->unit != NULL) && (tile->unit->id == id))
+            {
+                return tile;
+            }
+        }
+    }
+    return NULL;
+}
+
 static RAD_ClientUnit_t* RAD_ClientWorldFieldUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id)
 {
     if(RAD_ClientWorldReserveContaining(world, id) != NULL)

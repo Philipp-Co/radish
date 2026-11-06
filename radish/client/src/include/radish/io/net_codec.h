@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <radish/io/net_types.h>
 #include <radish/events/event_manager.h>
+#include <radish/io/net_inbox.h>
 
 ///
 /// Abstraktionsschicht zwischen dem WASM-Client und der generierten Protobuf-
@@ -58,7 +59,12 @@ typedef enum
     /// strukturell nicht das, was ihr data_case/event_case behauptet -- ein
     /// als gesetzt markierter Zweig, dessen Zeiger trotzdem NULL ist, oder gar
     /// kein Zweig gesetzt (*__NOT_SET).
-    RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE
+    RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE,
+    /// Fuer die Kopie einer eingehenden Nachricht war kein Speicher da
+    /// (RAD_NetEnqueueServerMessage) -- sie ist verloren.
+    RAD_NET_CODEC_ERROR_OUT_OF_MEMORY,
+    /// RAD_NetDispatchServerMessage fand keine Nachricht in der Inbox.
+    RAD_NET_CODEC_ERROR_INBOX_EMPTY
 } RAD_NetCodecResult_t;
 
 ///
@@ -169,10 +175,28 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverUnits(uint8_t *buffer,
                                                  size_t *out_length);
 
 ///
-/// Liest eine NetServerMessage aus "data"/"length" (protobuf/message.proto) und
-/// veroeffentlicht sie ueber "events" (events/event_manager.h). Das ist der
-/// einzige Weg, eine eingehende Nachricht vom Server zu lesen; main.c ruft ihn
-/// aus RAD_OnMessageReceived.
+/// Legt eine eingehende Nachricht vom Server ungelesen in "inbox"
+/// (io/net_inbox.h), als Kopie der "length" Bytes ab "data". main.c ruft das aus
+/// RAD_OnMessageReceived, sobald die Bytes eintreffen; gelesen und
+/// veroeffentlicht werden sie erst mit RAD_NetDispatchServerMessage.
+///
+/// Liefert RAD_NET_CODEC_ERROR_OUT_OF_MEMORY, wenn fuer die Kopie kein Speicher
+/// da ist.
+///
+RAD_NetCodecResult_t RAD_NetEnqueueServerMessage(RAD_IoNetInbox_t *inbox,
+                                                  const uint8_t *data,
+                                                  size_t length);
+
+///
+/// Nimmt die aelteste Nachricht aus "inbox", liest sie als NetServerMessage
+/// (protobuf/message.proto) und veroeffentlicht sie ueber "events"
+/// (events/event_manager.h). Das ist der einzige Weg, eine eingehende Nachricht
+/// vom Server zu lesen; main.c ruft ihn je Frame, solange die Darstellung
+/// bereit ist (RAD_ViewIsBusy).
+///
+/// **Die Nachricht ist danach aus der Inbox, auch bei einem Fehler** -- sonst
+/// stuende eine kaputte Nachricht fuer immer vorne. Auf einer leeren Inbox
+/// liefert sie RAD_NET_CODEC_ERROR_INBOX_EMPTY.
 ///
 /// Je nach Zweig ruft sie genau eine der RAD_NetEventManagerPublish...-
 /// Funktionen auf "events" auf:
@@ -204,7 +228,6 @@ RAD_NetCodecResult_t RAD_NetEncodeDiscoverUnits(uint8_t *buffer,
 /// RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE).
 ///
 RAD_NetCodecResult_t RAD_NetDispatchServerMessage(RAD_NetEventManager_t *events,
-                                                   const uint8_t *data,
-                                                   size_t length);
+                                                   RAD_IoNetInbox_t *inbox);
 
 #endif

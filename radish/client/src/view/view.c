@@ -188,7 +188,6 @@ static bool RAD_ViewSameLoadout(const RAD_ClientMember_t *a, const RAD_ClientMem
 static void RAD_ViewOnShownUnitChanged(void *user_argument, const RAD_ClientUnit_t *unit);
 static void RAD_ViewOnShownUnitRemoved(void *user_argument, const RAD_ClientUnit_t *unit);
 static void RAD_ViewOnAim(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
-static void RAD_ViewOnFire(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y);
 static void RAD_ViewOnReleaseAim(void *user_argument, RAD_NetEntityId_t unit);
 static void RAD_ViewMeasureFps(RAD_ViewFpsMetric_t *fps, RAD_DebugView_t *debug_view);
 static void RAD_ViewStartUpdateTimeMeasurement(RAD_ViewUpdateTimeMetric_t *update_time);
@@ -285,7 +284,7 @@ RAD_RootView_t* RAD_CreateView(
 
     view->camera_control = RAD_CreateIoCameraControl(map, drawable_width, drawable_height);
 
-    view->iso_map_view = RAD_CreateIsoMapView(0, 0, drawable_width, drawable_height, map, world, focus);
+    view->iso_map_view = RAD_CreateIsoMapView(0, 0, drawable_width, drawable_height, map, world, focus, session);
     if(view->iso_map_view == NULL)
     {
         printf("Keine IsoMapView\n");
@@ -365,7 +364,6 @@ RAD_RootView_t* RAD_CreateView(
     RAD_ContextMenuViewSetAiming(view->context_menu_view, (RAD_ContextMenuViewAiming_t){
         .user_argument = view->iso_map_view,
         .aim = RAD_ViewOnAim,
-        .fire = RAD_ViewOnFire,
         .release = RAD_ViewOnReleaseAim
     });
 
@@ -489,6 +487,11 @@ void RAD_UpdateView(RAD_RootView_t *view)
 
     RAD_ViewMeasureFps(&view->debug_metrics.fps, view->debug_view);
     RAD_ViewEndUpdateTimeMeasurement(&view->debug_metrics.update_time, view->debug_view);
+}
+
+bool RAD_ViewIsBusy(const RAD_RootView_t *view)
+{
+    return RAD_IsoMapViewIsBusy(view->iso_map_view);
 }
 
 void RAD_ViewSetTerrainInfoVisible(RAD_RootView_t *view, bool visible)
@@ -686,11 +689,6 @@ static void RAD_ViewShowUnit(RAD_RootView_t *view, const RAD_ClientUnit_t *unit)
 static void RAD_ViewOnAim(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y)
 {
     RAD_IsoMapViewAim((RAD_IsoMapView_t*)user_argument, unit, x, y);
-}
-
-static void RAD_ViewOnFire(void *user_argument, RAD_NetEntityId_t unit, int32_t x, int32_t y)
-{
-    RAD_IsoMapViewFire((RAD_IsoMapView_t*)user_argument, unit, x, y);
 }
 
 static void RAD_ViewOnReleaseAim(void *user_argument, RAD_NetEntityId_t unit)

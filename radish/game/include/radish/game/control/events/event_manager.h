@@ -18,7 +18,9 @@
 /// Ein Abonnent je Gruppe, und die Gruppe wird als Ganzes gesetzt. Die
 /// Voreinstellung sind Callbacks, die nichts tun -- deshalb prueft keine
 /// Publish-Funktion auf NULL, und deshalb muss ein Abonnent alle Zeiger seiner
-/// Gruppe fuellen.
+/// Gruppe fuellen. Die Einheiten sind die Ausnahme in beidem: sie gibt es
+/// zusaetzlich je Spieler, und fehlende Zeiger setzt der Manager selbst ein
+/// (RAD_EventsUnitChangedCallback_t).
 ///
 /// **Was oeffentlich ist, sind die Signaturen -- nicht der Manager.** Wer
 /// abonniert, muss beschreiben koennen, was er abonniert; wie die Gruppen
@@ -68,6 +70,16 @@ typedef void (*RAD_OnUnitDestroyed_t)(void *user_argument, const RAD_Unit_t *uni
 typedef void (*RAD_OnUnitMoved_t)(void *user_argument, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
 
 ///
+/// Die Sicht eines Spielers hat sich geaendert, ohne dass die Einheit selbst es
+/// muss: "sighted" -- sie steht jetzt auf (x, y) in seiner Sicht und kommt ganz
+/// mit, denn er kennt sie womoeglich noch nicht; "lost" -- sie ist aus seiner
+/// Sicht verschwunden, (x, y) ist, wo er sie zuletzt sah. Gemeldet nur an die
+/// Spieler, deren Sicht es betrifft (RAD_Recipients_t unten).
+///
+typedef void (*RAD_OnUnitSighted_t)(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y);
+typedef void (*RAD_OnUnitLost_t)(void *user_argument, RAD_UnitId_t unit, int32_t x, int32_t y);
+
+///
 /// Was ein Angriff bewirkt hat (control/attack_unit.c). Die Zaehler sind die
 /// Stufen eines Schusses, jede eine Teilmenge der vorigen: abgegeben, getroffen,
 /// durch die Ruestung, gewirkt. Jeder wirkende Schuss kostet das getroffene
@@ -105,6 +117,12 @@ typedef struct
     int16_t y; 
 } RAD_Use_t;
 
+///
+/// Die Gruppe der Einheiten. "sighted" und "lost" kamen zuletzt dazu; wer sie
+/// nicht setzt, laesst sie NULL, und der Manager setzt beim Abonnieren die
+/// Voreinstellung ein, die nichts tut -- fuer diese Gruppe, und nur fuer sie,
+/// muss ein Abonnent also nicht alle Zeiger fuellen.
+///
 typedef struct
 {
     void *user_argument;
@@ -112,7 +130,51 @@ typedef struct
     RAD_OnUnitDestroyed_t destroyed;
     RAD_OnUnitMoved_t moved;
     RAD_OnUnitAttacked_t attacked;
+    RAD_OnUnitSighted_t sighted;
+    RAD_OnUnitLost_t lost;
 } RAD_EventsUnitChangedCallback_t;
+
+///
+/// Wer von einer Aenderung an Einheiten erfahren soll.
+///
+/// **Entschieden wird in control/**, dort, wo die Regeln stehen -- welcher
+/// Spieler was sieht, weiss nur das Spiel. Das Modell reicht die Liste durch,
+/// und der Manager stellt jedem Empfaenger zu, der fuer sich abonniert hat
+/// (RAD_EventManagerSubscribeToUnitEventsOf). Der Manager selbst entscheidet
+/// nichts; er kennt weder Spiel noch Sicht.
+///
+/// So viele Plaetze wie Mitspieler (RAD_MAX_PLAYERS, privat -- event_manager.c
+/// prueft, dass beide gleich sind). Ein Spieler steht hoechstens einmal darin,
+/// solange die Liste ueber RAD_RecipientsAdd waechst. NULL oder eine leere Liste
+/// heisst: kein Spieler.
+///
+#define RAD_EVENT_MAX_RECIPIENTS 8
+
+///
+/// **"variant": eine weitere Fassung eines Ereignisses, das schon gemeldet ist.**
+/// Bekommen nicht alle Empfaenger dasselbe -- ein Angriff ohne Schuetzen, ein
+/// gekuerzter Weg --, meldet control/ einmal je Fassung. Die erste geht wie
+/// jede Meldung auch an den Abonnenten ohne Empfaenger; jede weitere traegt
+/// "variant" und geht nur an ihre Liste, damit er das Ereignis genau einmal
+/// sieht. Leer initialisiert ist es false.
+///
+typedef struct
+{
+    RAD_UserId_t users[RAD_EVENT_MAX_RECIPIENTS];
+    int32_t number_of_users;
+    bool variant;
+} RAD_Recipients_t;
+
+///
+/// Nimmt "user" in die Liste auf. true, wenn er danach darin steht -- auch, wenn
+/// er es schon tat; false fuer RAD_USER_NONE, eine NULL-Liste oder eine volle.
+///
+bool RAD_RecipientsAdd(RAD_Recipients_t *recipients, RAD_UserId_t user);
+
+///
+/// Steht "user" in der Liste? false fuer NULL.
+///
+bool RAD_RecipientsContains(const RAD_Recipients_t *recipients, RAD_UserId_t user);
 
 ///
 /// Der Zugwechsel: ein neuer Zug beginnt, oder niemand ist mehr dran.
@@ -207,11 +269,41 @@ void RAD_EventManagerPublishTileAddedToGameEvent(RAD_EventManager_t *manager, co
 void RAD_EventManagerPublishTileRemovedFromGameEvent(RAD_EventManager_t *manager, const RAD_Tile_t *tile);
 void RAD_EventManagerPublishTileStateChangeEvent(RAD_EventManager_t *manager, const RAD_Tile_t *tile);
 
+///
+/// Die Einheiten gibt es auf zwei Wegen zu abonnieren.
+///
+/// **Ohne Empfaenger** (RAD_EventManagerSubscribeToUnitEvents): ein Abonnent,
+/// der jedes Ereignis genau einmal bekommt, ungefiltert -- die Sicht des
+/// Schiedsrichters, fuer Log und Tests. Wer Spielern etwas schicken will, ist
+/// hier falsch: er saehe, was sie nicht sehen duerfen.
+///
+/// **Je Spieler** (RAD_EventManagerSubscribeToUnitEventsOf): ein Abonnent je
+/// Benutzer, der nur bekommt, wofuer ihn eine Liste nennt. Ein zweites Abo fuer
+/// denselben Benutzer ersetzt das erste. false, wenn "user" RAD_USER_NONE ist
+/// oder schon RAD_EVENT_MAX_RECIPIENTS andere abonniert haben; dann aendert
+/// sich nichts. RAD_EventManagerUnsubscribeUser nimmt ihn wieder heraus, ein
+/// Benutzer ohne Abo ist kein Fehler.
+///
+/// Jede Publish-Funktion ruft zuerst den Abonnenten ohne Empfaenger -- nicht
+/// bei einer weiteren Fassung (RAD_Recipients_t.variant) --, dann je Eintrag in
+/// "recipients" den Abonnenten dieses Benutzers, sofern es ihn gibt -- in der
+/// Reihenfolge der Liste.
+///
 void RAD_EventManagerSubscribeToUnitEvents(RAD_EventManager_t *manager, RAD_EventsUnitChangedCallback_t callbacks);
-void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
-void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Unit_t *unit, int32_t x, int32_t y);
-void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
-void RAD_EventManagerPublishUnitAttacked(RAD_EventManager_t *manager, const RAD_AttackResult_t *result);
+bool RAD_EventManagerSubscribeToUnitEventsOf(RAD_EventManager_t *manager, RAD_UserId_t user, RAD_EventsUnitChangedCallback_t callbacks);
+void RAD_EventManagerUnsubscribeUser(RAD_EventManager_t *manager, RAD_UserId_t user);
+void RAD_EventManagerPublishUnitSpawned(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                        const RAD_Unit_t *unit, int32_t x, int32_t y);
+void RAD_EventManagerPublishUnitDestroyed(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                          const RAD_Unit_t *unit, int32_t x, int32_t y);
+void RAD_EventManagerPublishUnitMoved(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                      const RAD_Unit_t *unit, const RAD_Path_t *path, int32_t result);
+void RAD_EventManagerPublishUnitAttacked(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                         const RAD_AttackResult_t *result);
+void RAD_EventManagerPublishUnitSighted(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                        const RAD_Unit_t *unit, int32_t x, int32_t y);
+void RAD_EventManagerPublishUnitLost(RAD_EventManager_t *manager, const RAD_Recipients_t *recipients,
+                                     RAD_UnitId_t unit, int32_t x, int32_t y);
 
 void RAD_EventManagerSubscribeToTurnEvents(RAD_EventManager_t *manager, RAD_EventsTurnCallback_t callbacks);
 void RAD_EventManagerPublishTurnChanged(RAD_EventManager_t *manager, RAD_UserId_t current_user);

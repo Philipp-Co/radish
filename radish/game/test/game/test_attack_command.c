@@ -67,7 +67,7 @@ static void bewaffne(RAD_UnitId_t figur, int16_t min_range, int16_t max_range)
 /// Eine Einheit auf (x, y), deren Waffe "max_range" Felder weit reicht.
 static RAD_UnitId_t bewaffnete_figur(int16_t x, int16_t y, int16_t max_range)
 {
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
     bewaffne(figur, 0, max_range);
     // Ein Feld weit ziehen koennen, wie eine aus einer Armee.
@@ -236,7 +236,7 @@ void test_attack_prueft_die_reichweite(void)
     aufbauen();
 
     // Eine Waffe von 2 bis 3 Feldern.
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2, NULL);
     bewaffne(figur, 2, 3);
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_TARGET_OUT_OF_RANGE, RAD_GameCheckAttack(game, figur, 2, 2));
@@ -257,7 +257,7 @@ void test_attack_prueft_die_reichweite(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_TARGET_OUT_OF_RANGE, RAD_GameCheckAttack(game, figur, 2, 2));
 
     // Ohne Waffen reicht nichts.
-    const RAD_UnitId_t unbewaffnet = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 6, 6);
+    const RAD_UnitId_t unbewaffnet = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 6, 6, NULL);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_TARGET_OUT_OF_RANGE, RAD_GameCheckAttack(game, unbewaffnet, 6, 5));
 
     abbauen();
@@ -364,7 +364,7 @@ static RAD_UnitId_t schuetze(int16_t x, int16_t y, int16_t accuracy, int16_t sho
 ///
 static RAD_UnitId_t ziel(int16_t x, int16_t y, int32_t members, int16_t health, int16_t armor, int16_t toughness)
 {
-    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
+    const RAD_UnitId_t figur = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, figur);
     RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, figur);
     unit->number_of_members = members;
@@ -542,8 +542,8 @@ void test_kampf_die_letzte_einheit_faellt_und_das_spiel_endet(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &angreifende));
     values.members[0].health = 1;
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, verteidiger, &values, &getroffene));
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2));
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, getroffene, 4, 2));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2, NULL));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, getroffene, 4, 2, NULL));
 
     bewaffne(angreifende, 0, 5);
     RAD_UnitMember_t *member = &RAD_WorldUnitById(&game->world, angreifende)->members[0];
@@ -622,8 +622,8 @@ void test_kampf_trifft_auch_eigene_einheiten(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &angreifende));
     values.members[0].health = 4;
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddUnit(game, angreifer, &values, &eigene));
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2));
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 4, 2));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, angreifende, 2, 2, NULL));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 4, 2, NULL));
 
     bewaffne(angreifende, 0, 5);
     RAD_UnitMember_t *member = &RAD_WorldUnitById(&game->world, angreifende)->members[0];
@@ -740,7 +740,7 @@ void test_sicht_einheiten_versperren(void)
     aufbauen();
 
     const RAD_UnitId_t figur = bewaffnete_figur(2, 2, 5);
-    const RAD_UnitId_t davor = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3);
+    const RAD_UnitId_t davor = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 3, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, davor);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, angreifer, davor));
 
@@ -748,7 +748,7 @@ void test_sicht_einheiten_versperren(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NO_LINE_OF_SIGHT, RAD_GameCheckAttack(game, figur, 2, 5));
 
     // Ist sie weg, ist die Sicht frei.
-    RAD_WorldRemoveUnit(&game->world, davor);
+    RAD_WorldRemoveUnit(&game->world, davor, NULL);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckAttack(game, figur, 2, 5));
 
     abbauen();
@@ -853,6 +853,145 @@ void test_sicht_ist_gegenseitig(void)
     // Beides kommt vor -- sonst prueft der Test nichts.
     TEST_ASSERT_TRUE(gesehen > 0);
     TEST_ASSERT_TRUE(verdeckt > 0);
+
+    abbauen();
+}
+
+///
+/// Wer von einer Zerstoerung erfaehrt, bestimmt das Spiel (RAD_GameDestroyUnit,
+/// control/victory.c): bisher nur der Besitzer der zerstoerten Einheit, nicht
+/// der Angreifer. Der Abonnent ohne Empfaenger bekommt sie wie immer.
+///
+void test_kampf_zerstoerung_meldet_dem_besitzer(void)
+{
+    aufbauen();
+    const RAD_UserId_t verteidiger = (RAD_UserId_t)0x0815;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, verteidiger));
+
+    mitschreiben();
+    RAD_AngriffMitschrift_t vom_angreifer, vom_verteidiger;
+    memset(&vom_angreifer, 0, sizeof(vom_angreifer));
+    memset(&vom_verteidiger, 0, sizeof(vom_verteidiger));
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, angreifer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_angreifer,
+        .destroyed = notiere_zerstoerung
+    }));
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, verteidiger, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_verteidiger,
+        .destroyed = notiere_zerstoerung
+    }));
+
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 10, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 1, 0, 0);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, angreifer, angreifende));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, verteidiger, getroffene));
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_TRUE(angriffe.result.target_destroyed);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.destroyed);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.destroyed);
+    TEST_ASSERT_EQUAL_INT(0, vom_angreifer.destroyed);
+
+    abbauen();
+}
+
+///
+/// Wer von einem Angriff erfaehrt, bestimmt das Spiel (control/attack_unit.c):
+/// bisher der Besitzer der angreifenden und der der getroffenen Einheit. Ein
+/// Dritter, der abonniert hat, bekommt nichts -- mitspielen kann er nicht, das
+/// Spiel kennt zwei Spieler, aber abonnieren kann jeder.
+///
+void test_kampf_angriff_meldet_beiden_besitzern(void)
+{
+    aufbauen();
+    const RAD_UserId_t verteidiger = (RAD_UserId_t)0x0815;
+    const RAD_UserId_t zuschauer = (RAD_UserId_t)0x0042;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, verteidiger));
+
+    mitschreiben();
+    RAD_AngriffMitschrift_t vom_angreifer, vom_verteidiger, vom_zuschauer;
+    memset(&vom_angreifer, 0, sizeof(vom_angreifer));
+    memset(&vom_verteidiger, 0, sizeof(vom_verteidiger));
+    memset(&vom_zuschauer, 0, sizeof(vom_zuschauer));
+    RAD_EventManagerSubscribeToUnitEventsOf(events, angreifer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_angreifer, .attacked = notiere_angriff
+    });
+    RAD_EventManagerSubscribeToUnitEventsOf(events, verteidiger, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_verteidiger, .attacked = notiere_angriff
+    });
+    RAD_EventManagerSubscribeToUnitEventsOf(events, zuschauer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_zuschauer, .attacked = notiere_angriff
+    });
+
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 11, 1, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 3, 0, 0);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, angreifer, angreifende));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, verteidiger, getroffene));
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
+    TEST_ASSERT_EQUAL_INT(angreifende, angriffe.result.attacker);
+    TEST_ASSERT_EQUAL_INT(1, vom_angreifer.attacked);
+    TEST_ASSERT_EQUAL_INT(angreifende, vom_angreifer.result.attacker);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.attacked);
+    TEST_ASSERT_EQUAL_INT(getroffene, vom_verteidiger.result.target);
+    TEST_ASSERT_EQUAL_INT(0, vom_zuschauer.attacked);
+
+    // Ihre Einheit sieht nichts (Sichtweite 0): der Verteidiger erfaehrt, was
+    // ankam, aber nicht von wem.
+    TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, vom_verteidiger.result.attacker);
+
+    // Auf ein leeres Feld: nur der Angreifer.
+    RAD_WorldUnitById(&game->world, angreifende)->turn.attacked = 0;
+    greife_an(angreifende, 3, 3);
+    TEST_ASSERT_EQUAL_INT(2, vom_angreifer.attacked);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.attacked);
+    TEST_ASSERT_EQUAL_INT(0, vom_zuschauer.attacked);
+
+    abbauen();
+}
+
+///
+/// Sieht der Verteidiger den Schuetzen, erfaehrt er auch, wer geschossen hat; und
+/// sieht der Angreifer das Ziel, erfaehrt er von dessen Zerstoerung. Der
+/// Abonnent ohne Empfaenger bekommt jedes Ereignis genau einmal.
+///
+void test_kampf_wer_sieht_erfaehrt_mehr(void)
+{
+    aufbauen();
+    const RAD_UserId_t verteidiger = (RAD_UserId_t)0x0815;
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, verteidiger));
+
+    mitschreiben();
+    RAD_AngriffMitschrift_t vom_angreifer, vom_verteidiger;
+    memset(&vom_angreifer, 0, sizeof(vom_angreifer));
+    memset(&vom_verteidiger, 0, sizeof(vom_verteidiger));
+    RAD_EventManagerSubscribeToUnitEventsOf(events, angreifer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_angreifer, .attacked = notiere_angriff, .destroyed = notiere_zerstoerung
+    });
+    RAD_EventManagerSubscribeToUnitEventsOf(events, verteidiger, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_verteidiger, .attacked = notiere_angriff, .destroyed = notiere_zerstoerung
+    });
+
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 10, 0, 0);
+    const RAD_UnitId_t getroffene = ziel(4, 2, 1, 1, 0, 0);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, angreifer, angreifende));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, verteidiger, getroffene));
+    RAD_WorldUnitById(&game->world, angreifende)->sight_range = 2;
+    RAD_WorldUnitById(&game->world, getroffene)->sight_range = 2;
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_TRUE(angriffe.result.target_destroyed);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.destroyed);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.attacked);
+    TEST_ASSERT_EQUAL_INT(angreifende, vom_verteidiger.result.attacker);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.destroyed);
+    TEST_ASSERT_EQUAL_INT(1, vom_angreifer.attacked);
+    TEST_ASSERT_EQUAL_INT(1, vom_angreifer.destroyed);
 
     abbauen();
 }

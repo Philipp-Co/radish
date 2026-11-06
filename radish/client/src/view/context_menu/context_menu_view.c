@@ -924,15 +924,10 @@ static void RAD_ContextMenuViewRunAction(RAD_ContextMenuView_t *context_menu_vie
             {
                 printf("[ContextMenuView] Einheit %d greift Feld (%d, %d) an\n",
                        (int)context_menu_view->move_unit, (int)context_menu_view->target_x, (int)context_menu_view->target_y);
-                // Der Turm steht schon; nach dem Schuss laeuft er zurueck. Das
-                // bestaetigte Ereignis tut dasselbe noch einmal -- auch, wenn der
-                // Server ablehnt, steht er so am Ende wieder vorn.
+                // Der Turm steht schon und bleibt auf dem Ziel. Gefeuert wird erst,
+                // wenn der Server den Angriff bestaetigt ("unit_attacked"); lehnt er
+                // ab, dreht der Turm zurueck ("attack_rejected", model/world.h).
                 context_menu_view->aimed_unit = RAD_NET_ENTITY_NONE;
-                if(context_menu_view->aiming.fire != NULL)
-                {
-                    context_menu_view->aiming.fire(context_menu_view->aiming.user_argument, context_menu_view->move_unit,
-                                                   context_menu_view->target_x, context_menu_view->target_y);
-                }
                 RAD_ControlAttackUnit(context_menu_view->session, context_menu_view->move_unit,
                                       (int16_t)context_menu_view->target_x, (int16_t)context_menu_view->target_y);
             }

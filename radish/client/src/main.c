@@ -14,6 +14,7 @@
 #include <radish/rendering/iso_unit_images.h>
 #include <radish/io/net_codec.h>
 #include <radish/io/net_event_handler.h>
+#include <radish/io/net_inbox.h>
 #include <radish/io/net_request.h>
 #include <radish/io/net_session.h>
 #include <radish/events/event_manager.h>
@@ -71,6 +72,14 @@ static RAD_ClientFocus_t focus = { .tile = NULL };
 static RAD_NetEventManager_t *net_event_manager;
 
 ///
+/// Was der Server geschickt hat und noch nicht gelesen ist (io/net_inbox.h).
+/// RAD_OnMessageReceived legt hinein, RAD_EMCC_OnNewFrame holt heraus -- erst,
+/// wenn die View abgespielt hat, was die vorige Nachricht ausgeloest hat. Nur
+/// ein Zeiger: RAD_CreateIoNetInbox legt sie selbst an.
+///
+static RAD_IoNetInbox_t *net_inbox;
+
+///
 /// Was der Client ueber seine Verbindung weiss (io/net_session.h): die Anfragen
 /// schreiben hinein, die Abonnenten von net_event_manager lesen daraus.
 ///
@@ -114,6 +123,9 @@ void RAD_ClientSetPlayerId(const char *identifier)
 /// ein. Unterbrechen kann sie den Frame nicht -- JS ist einthreadig und
 /// RAD_EMCC_OnNewFrame() laeuft durch.
 ///
+/// **Gelesen wird hier nichts**: die Bytes kommen nur in die Inbox (net_inbox),
+/// abgearbeitet werden sie in RAD_EMCC_OnNewFrame().
+///
 EMSCRIPTEN_KEEPALIVE
 void RAD_OnMessageReceived(const uint8_t *data, int length)
 {
@@ -122,7 +134,13 @@ void RAD_OnMessageReceived(const uint8_t *data, int length)
         return;
     }
 
-    const RAD_NetCodecResult_t result = RAD_NetDispatchServerMessage(net_event_manager, data, (size_t)length);
+    if(net_inbox == NULL)
+    {
+        printf("<- %d Bytes verworfen: noch keine Inbox\n", length);
+        return;
+    }
+
+    const RAD_NetCodecResult_t result = RAD_NetEnqueueServerMessage(net_inbox, data, (size_t)length);
 
     if(result != RAD_NET_CODEC_OK)
     {
@@ -164,6 +182,20 @@ void zuc_on_connection_state(int state)
 
 static void RAD_EMCC_OnNewFrame(void)
 {
+    // Erst abarbeiten, was der Server geschickt hat -- solange die View nichts
+    // abspielt. Eine Nachricht, die einen Zug oder Schuss ausloest, haelt die
+    // Inbox an, bis er durch ist; alle anderen laufen im selben Frame durch.
+    // Vor RAD_UpdateView: das raeumt fertige Animationen ab, hier gilt also der
+    // Stand nach dem letzten Bild.
+    while(!RAD_IoNetInboxIsEmpty(net_inbox) && !RAD_ViewIsBusy(view))
+    {
+        const RAD_NetCodecResult_t result = RAD_NetDispatchServerMessage(net_event_manager, net_inbox);
+        if(result != RAD_NET_CODEC_OK)
+        {
+            printf("<- Nachricht verworfen: %s\n", RAD_NetCodecResultText(result));
+        }
+    }
+
     RAD_UpdateView(view);
 
     // Nur bei offener Verbindung: sonst wirft Module.sendToChannel die Bytes
@@ -196,6 +228,13 @@ int main(void)
         return 1;
     }
 
+    net_inbox = RAD_CreateIoNetInbox();
+    if(net_inbox == NULL)
+    {
+        printf("Keine Net-Inbox -- Abbruch.\n");
+        return 1;
+    }
+
     net_event_context.world = &world;
 
     RAD_NetEventManagerSubscribeToCommandResponseEvents(net_event_manager, (RAD_NetEventsCommandResponseCallback_t){
@@ -220,7 +259,9 @@ int main(void)
         .unit = RAD_IoNetOnUnit,
         .unit_moved = RAD_IoNetOnUnitMoved,
         .unit_attacked = RAD_IoNetOnUnitAttacked,
-        .unit_destroyed = RAD_IoNetOnUnitDestroyed
+        .unit_destroyed = RAD_IoNetOnUnitDestroyed,
+        .unit_sighted = RAD_IoNetOnUnitSighted,
+        .unit_lost = RAD_IoNetOnUnitLost
     });
     RAD_NetEventManagerSubscribeToTileEvents(net_event_manager, (RAD_NetEventsTileCallback_t){
         .user_argument = &net_event_context,
@@ -260,6 +301,7 @@ int main(void)
     // Nach der RootView: ihre IsoMapView legt laufende Zuege noch auf die Map zurueck.
     RAD_DestroyIsoMap(&map);
     RAD_DestroyNetEventManager(&net_event_manager);
+    RAD_DestroyIoNetInbox(&net_inbox);
 
     printf("Bye Bye!\n");
     return 0;

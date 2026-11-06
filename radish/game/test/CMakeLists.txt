@@ -51,6 +51,7 @@ add_subdirectory(control/events)
 add_subdirectory(control/move_unit)
 add_subdirectory(control/start_game)
 add_subdirectory(control/dice)
+add_subdirectory(control/visibility)
 
 ###
 # Das Schema der Weltdefinition und die Welten, die danach geschrieben sind.

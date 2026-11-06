@@ -9,7 +9,8 @@
 /// (RAD_Unit_t.turn), soweit sie Ziehen und Angreifen gemeinsam ist. Gesetzt
 /// werden die Flags von den Kommandos selbst (control/deploy_unit.c,
 /// move_unit.c, attack_unit.c); hier stehen die gemeinsame Frage und das
-/// Zuruecksetzen.
+/// Zuruecksetzen. Dazu die Entfernung einer Einheit zu einem Feld, an der
+/// Angriff und Sicht gleichermassen messen.
 ///
 
 ///
@@ -19,6 +20,15 @@
 /// worden (RAD_GAME_ERROR_UNIT_JUST_DEPLOYED). "unit" darf NULL sein.
 ///
 RAD_GameResult_t RAD_GameCheckUnitMayAct(const RAD_Unit_t *unit);
+
+///
+/// Felder waagerecht plus senkrecht von "unit" bis (x, y) -- wie ein Weg ueber
+/// die vier Nachbarn. Daran messen die Reichweite einer Waffe
+/// (control/attack_unit.c) und die Sichtweite (control/visibility.c); beide
+/// sollen gleich zaehlen, deshalb steht die Rechnung nur hier. "unit" darf nicht
+/// NULL sein.
+///
+int32_t RAD_GameDistance(const RAD_Unit_t *unit, int32_t x, int32_t y);
 
 ///
 /// Ein neuer Zug beginnt: alle Einheiten vergessen, was sie im letzten getan

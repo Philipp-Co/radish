@@ -313,7 +313,8 @@ RAD_UnitId_t RAD_WorldAddReserveUnit(RAD_World_t *world, const RAD_Unit_t *value
     return id;
 }
 
-RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y)
+RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t x, int32_t y,
+                                const RAD_Recipients_t *recipients)
 {
     // Erst das Feld, dann der Pool: eine abgelehnte Figur belegt keinen Platz.
     RAD_Tile_t *tile = RAD_WorldTileAt(world, x, y);
@@ -336,12 +337,13 @@ RAD_UnitId_t RAD_WorldSpawnUnit(RAD_World_t *world, RAD_UnitType_t type, int32_t
     unit->y = y;
     tile->unit = unit->id;
 
-    RAD_EventManagerPublishUnitSpawned(world->event_manager, unit, x, y);
+    RAD_EventManagerPublishUnitSpawned(world->event_manager, recipients, unit, x, y);
 
     return unit->id;
 }
 
-bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y)
+bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                         const RAD_Recipients_t *recipients)
 {
     RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
     if((unit == NULL) || (unit->state != RAD_UNIT_STATE_RESERVE))
@@ -366,14 +368,15 @@ bool RAD_WorldDeployUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t
 
     // Fuer einen Abonnenten ist das dasselbe wie ein Spawn: eine Figur steht, wo
     // vorher keine stand. Woher sie kommt, aendert fuer ihn nichts.
-    RAD_EventManagerPublishUnitSpawned(world->event_manager, unit, x, y);
+    RAD_EventManagerPublishUnitSpawned(world->event_manager, recipients, unit, x, y);
 
     return true;
 }
 
-bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y)
+bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                       const RAD_Recipients_t *recipients)
 {
-    RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
+    const RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
     if((unit == NULL) || (unit->state != RAD_UNIT_STATE_DEPLOYED))
     {
         return false;
@@ -384,16 +387,50 @@ bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y
         return true;
     }
 
-    RAD_Tile_t *target = RAD_WorldTileAt(world, x, y);
-    if(target == NULL || target->unit != RAD_UNIT_NONE)
+    // Vor dem Schritt auf int16_t: ausserhalb der Welt koennte er zurueck in sie
+    // hinein umbrechen.
+    if(!RAD_WorldInBounds(world, x, y))
     {
         return false;
     }
 
-    // Woher die Figur kommt, muss vor dem Schreiben festgehalten werden: gleich
-    // steht in unit->x/y das Ziel, und das Ereignis unten braucht beides.
-    const int16_t from_x = unit->x;
-    const int16_t from_y = unit->y;
+    // Ein Zug ueber ein Feld sind zwei Felder: das verlassene und das betretene
+    // (path.h) -- derselbe Zug wie ueber einen laengeren Weg, nur kuerzer.
+    const RAD_Path_t path = {
+        .steps_to = {
+            { .x = unit->x,    .y = unit->y    },
+            { .x = (int16_t)x, .y = (int16_t)y }
+        },
+        .number_of_steps = 2
+    };
+    return RAD_WorldMoveUnitAlong(world, id, &path, recipients);
+}
+
+bool RAD_WorldMoveUnitAlong(RAD_World_t *world, RAD_UnitId_t id, const RAD_Path_t *path,
+                            const RAD_Recipients_t *recipients)
+{
+    RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
+    if((unit == NULL) || (unit->state != RAD_UNIT_STATE_DEPLOYED) || (path == NULL))
+    {
+        return false;
+    }
+    if((path->number_of_steps < 2) || (path->number_of_steps > RAD_PATH_MAX_STEPS))
+    {
+        return false;
+    }
+
+    // Die beiden Enden: das erste ist, wo sie steht, das letzte ist frei.
+    const RAD_Position_t from = path->steps_to[0];
+    const RAD_Position_t to = path->steps_to[path->number_of_steps - 1];
+    if((from.x != unit->x) || (from.y != unit->y))
+    {
+        return false;
+    }
+    RAD_Tile_t *target = RAD_WorldTileAt(world, to.x, to.y);
+    if((target == NULL) || (target->unit != RAD_UNIT_NONE))
+    {
+        return false;
+    }
 
     // Ab hier ist der Zug gueltig; erst jetzt wird geschrieben, damit ein
     // abgelehnter Zug die Welt garantiert unveraendert laesst.
@@ -404,27 +441,41 @@ bool RAD_WorldMoveUnit(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y
     }
 
     target->unit = id;
-    unit->x = x;
-    unit->y = y;
+    unit->x = to.x;
+    unit->y = to.y;
 
-    // Ein Zug ueber ein Feld sind zwei Felder: das verlassene und das betretene.
-    // Beide gehoeren in den Pfad -- ein Abonnent hat eine Figur umzuhaengen und
-    // braucht dafuer beide Enden (path.h). Aus unit->x/y liesse sich das nicht
-    // mehr holen: dort steht seit drei Zeilen das Ziel.
-    const RAD_Path_t path = {
-        .steps_to = {
-            { .x = from_x,     .y = from_y     },
-            { .x = (int16_t)x, .y = (int16_t)y }
-        },
-        .number_of_steps = 2
-    };
-
-    RAD_EventManagerPublishUnitMoved(world->event_manager, unit, &path, 0);
+    RAD_EventManagerPublishUnitMoved(world->event_manager, recipients, unit, path, 0);
 
     return true;
 }
 
-void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id)
+bool RAD_WorldNotifyUnitMoved(RAD_World_t *world, RAD_UnitId_t id, const RAD_Path_t *path, int32_t result,
+                              const RAD_Recipients_t *recipients)
+{
+    if(path == NULL)
+    {
+        return false;
+    }
+
+    // Ohne Einheit ist kein Fehler: so meldet das Spiel einen abgelehnten Zug,
+    // dessen Einheit es nicht gibt (world.h).
+    RAD_EventManagerPublishUnitMoved(world->event_manager, recipients, RAD_WorldUnitById(world, id), path, result);
+    return true;
+}
+
+bool RAD_WorldNotifyUnitAttacked(RAD_World_t *world, const RAD_AttackResult_t *result,
+                                 const RAD_Recipients_t *recipients)
+{
+    if(result == NULL)
+    {
+        return false;
+    }
+
+    RAD_EventManagerPublishUnitAttacked(world->event_manager, recipients, result);
+    return true;
+}
+
+void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id, const RAD_Recipients_t *recipients)
 {
     RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
     if((unit == NULL) || (unit->state == RAD_UNIT_STATE_DESTROYED))
@@ -456,8 +507,32 @@ void RAD_WorldRemoveUnit(RAD_World_t *world, RAD_UnitId_t id)
     // verschwindet eine Einheit still: ein Abonnent hat sie nie gesehen.
     if(was_deployed)
     {
-        RAD_EventManagerPublishUnitDestroyed(world->event_manager, unit, x, y);
+        RAD_EventManagerPublishUnitDestroyed(world->event_manager, recipients, unit, x, y);
     }
+}
+
+bool RAD_WorldNotifyUnitSighted(RAD_World_t *world, RAD_UnitId_t id, const RAD_Recipients_t *recipients)
+{
+    const RAD_Unit_t *unit = RAD_WorldUnitById(world, id);
+    if((unit == NULL) || (unit->state != RAD_UNIT_STATE_DEPLOYED))
+    {
+        return false;
+    }
+
+    RAD_EventManagerPublishUnitSighted(world->event_manager, recipients, unit, unit->x, unit->y);
+    return true;
+}
+
+bool RAD_WorldNotifyUnitLost(RAD_World_t *world, RAD_UnitId_t id, int32_t x, int32_t y,
+                             const RAD_Recipients_t *recipients)
+{
+    if(RAD_WorldUnitById(world, id) == NULL)
+    {
+        return false;
+    }
+
+    RAD_EventManagerPublishUnitLost(world->event_manager, recipients, id, x, y);
+    return true;
 }
 
 RAD_UserId_t RAD_WorldUnitOwner(const RAD_World_t *world, RAD_UnitId_t id)

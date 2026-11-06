@@ -27,5 +27,11 @@ void RAD_IoNetOnAttackResponse(void *user_argument, const RAD_NetAttackResponse_
     }
 
     // In die Welt traegt die Antwort nichts ein. Einen angenommenen Angriff
-    // bringt vorher das Ereignis (unit_attacked.c).
+    // bringt das Ereignis (unit_attacked.c). Einen abgelehnten eigenen meldet sie
+    // den Beobachtern: der Turm steht schon auf dem Ziel (ContextMenuView) und
+    // soll zurueckdrehen. Fremde Clients zielen nicht vorab.
+    if(!response->success && (response->user == context->session->own_player_id))
+    {
+        RAD_ClientWorldReportAttackRejected(context->world, response->entity);
+    }
 }

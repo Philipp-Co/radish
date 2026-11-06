@@ -1,0 +1,12 @@
+# Nur, was `migrate` braucht -- Grundlage des Migrator-Images
+# (docker/backend-migrate/Dockerfile). requirements.txt bindet diese Datei
+# ein, die Versionen stehen deshalb nur hier.
+asgiref==3.12.1
+Django==5.2.17
+sqlparse==0.6.0
+typing_extensions==4.16.0
+# psycopg 3 statt psycopg2: nur damit hat Django einen eingebauten
+# Connection-Pool (OPTIONS "pool" in config/settings.py; den Pool selbst
+# bringt psycopg-pool in requirements.txt). Fertige musllinux-Wheels, auf
+# Alpine also ohne Build-Abhaengigkeiten.
+psycopg[binary]==3.2.3

@@ -80,6 +80,8 @@ export interface UnitType {
   can_capture_objectives: boolean;
   /** Bewegungsradius in Feldern. */
   movement: number;
+  /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
+  sight_range: number;
   profiles: EntityProfile[];
 }
 
@@ -219,6 +221,8 @@ export interface AdminUnitType {
   can_capture_objectives: boolean;
   /** Bewegungsradius in Feldern. */
   movement: number;
+  /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
+  sight_range: number;
   in_use: boolean;
   profiles: AdminEntityProfile[];
 }

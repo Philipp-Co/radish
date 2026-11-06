@@ -177,6 +177,13 @@ struct RAD_Unit
     ///
     char name[RAD_UNIT_NAME_MAX];
     int16_t movement;
+    ///
+    /// Wie weit die Einheit sieht, in Feldern waagerecht plus senkrecht -- wie
+    /// die Reichweite einer Waffe. 0 heisst: nur ihr eigenes Feld. Ein Byte und
+    /// ohne Vorzeichen, denn negativ ist sie nie, und 255 Felder reichen ueber
+    /// jede Welt hinaus; mehr weist schon das Einlesen ab (start_game.h).
+    ///
+    uint8_t sight_range;
     int16_t transport_capacity;
     bool can_capture;
 
@@ -245,6 +252,15 @@ int32_t RAD_GameNumberOfUnits(const RAD_Game_t *game);
 /// bleibt dann unangetastet** -- es wird nichts halb hineingeschrieben.
 ///
 bool RAD_GameUnitAt(const RAD_Game_t *game, int32_t index, RAD_Unit_t *output);
+
+///
+/// Die Figur an dieser Stelle, wenn "user" sie kennen darf: seine eigenen
+/// immer, gleich wo sie stehen; eine fremde nur auf dem Feld und nur, wenn er
+/// ihr Feld sieht. Sonst false und "output" unangetastet, wie bei einem Index
+/// ausserhalb -- wer ueber alle Indizes laeuft, bekommt so nur, was er sehen
+/// darf (RAD_GameTileAtFor in tile.h).
+///
+bool RAD_GameUnitAtFor(const RAD_Game_t *game, RAD_UserId_t user, int32_t index, RAD_Unit_t *output);
 
 ///
 /// Dieselben zwei Fragen, eingeschraenkt auf die Einheiten eines Benutzers: erst

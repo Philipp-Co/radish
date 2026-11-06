@@ -278,6 +278,34 @@ RAD_NetCodecResult_t RAD_SerializeUnitDestroyedEventToMessage(RAD_UnitId_t unit,
                                                                uint16_t *out_size);
 
 ///
+/// Eine fremde Einheit ist einem Spieler in die Sicht gekommen
+/// (NetServerMessage -> NetEvent -> NetGameEvent mit unit_sighted,
+/// protobuf/game.proto): die ganze Einheit, wie beim Aufstellen, und das Feld, auf
+/// dem sie steht. Geschickt wird es, wenn das Spiel es meldet
+/// (RAD_OnUnitSighted_t). Groesse und Fehler wie bei der Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitSightedEventToMessage(const RAD_Unit_t *unit,
+                                                             int32_t x,
+                                                             int32_t y,
+                                                             uint8_t *out_message,
+                                                             uint16_t capacity,
+                                                             uint16_t *out_size);
+
+///
+/// Eine fremde Einheit ist aus der Sicht eines Spielers verschwunden
+/// (NetServerMessage -> NetEvent -> NetGameEvent mit unit_lost,
+/// protobuf/game.proto); (x, y) ist, wo er sie zuletzt sah. Geschickt wird es,
+/// wenn das Spiel es meldet (RAD_OnUnitLost_t). Groesse und Fehler wie bei der
+/// Reserve.
+///
+RAD_NetCodecResult_t RAD_SerializeUnitLostEventToMessage(RAD_UnitId_t unit,
+                                                          int32_t x,
+                                                          int32_t y,
+                                                          uint8_t *out_message,
+                                                          uint16_t capacity,
+                                                          uint16_t *out_size);
+
+///
 /// Schreibt eine Antwort als ausgehende Nachricht (NetServerMessage mit
 /// gesetztem command_response, protobuf/message.proto).
 ///

@@ -33,9 +33,12 @@ add_executable(client
     src/rendering/iso_tile/city.c
     src/rendering/iso_tile/road.c
     src/rendering/iso_tile/fortification.c
+    src/rendering/iso_tile/dragons_teeth.c
+    src/rendering/iso_tile/high_grass.c
     src/rendering/iso_tile/unknown.c
     
     src/io/net_codec.c
+    src/io/net_inbox.c
     src/io/camera_control.c
     src/io/net_transport.c
 
@@ -55,6 +58,8 @@ add_executable(client
     src/io/net_event_handler/unit_moved.c
     src/io/net_event_handler/unit_attacked.c
     src/io/net_event_handler/unit_destroyed.c
+    src/io/net_event_handler/unit_sighted.c
+    src/io/net_event_handler/unit_lost.c
     src/io/net_event_handler/unit.c
     src/io/net_event_handler/end_turn_response.c
     src/io/net_event_handler/attack_response.c
@@ -74,6 +79,7 @@ add_executable(client
 
     src/control/terrain.c
     src/control/line_of_sight.c
+    src/control/visibility.c
     src/control/deploy_unit.c
     src/control/move_unit.c
     src/control/attack_unit.c

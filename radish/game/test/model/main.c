@@ -33,6 +33,9 @@ void test_world_aufstellen_wird_abgelehnt(void);
 void test_world_nur_einheiten_auf_dem_feld_ziehen(void);
 void test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu(void);
 void test_world_konsistenz_kennt_die_zustaende(void);
+void test_world_zug_ueber_einen_weg(void);
+void test_world_zug_ueber_einen_weg_wird_abgelehnt(void);
+void test_world_meldet_ohne_zu_aendern(void);
 
 void test_unit_pool_faengt_leer_an(void);
 void test_unit_pool_neue_einheit_steht_in_der_reserve(void);
@@ -85,6 +88,9 @@ int main(void)
     RUN_TEST(test_world_nur_einheiten_auf_dem_feld_ziehen);
     RUN_TEST(test_world_entfernen_zerstoert_und_vergibt_die_id_nicht_neu);
     RUN_TEST(test_world_konsistenz_kennt_die_zustaende);
+    RUN_TEST(test_world_zug_ueber_einen_weg);
+    RUN_TEST(test_world_zug_ueber_einen_weg_wird_abgelehnt);
+    RUN_TEST(test_world_meldet_ohne_zu_aendern);
 
     RUN_TEST(test_unit_pool_faengt_leer_an);
     RUN_TEST(test_unit_pool_neue_einheit_steht_in_der_reserve);

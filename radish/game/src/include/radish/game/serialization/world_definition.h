@@ -25,7 +25,8 @@
 ///   rows     Das Gelaende, eine Zeile je String, Zeile 0 zuerst; das Zeichen an
 ///            Stelle x ist das Feld (x, y). '_' VOID, '.' GROUND,
 ///            '~' WATER_SHALLOW, ',' MUD, ':' MEADOW, '^' FOREST,
-///            '=' WATER_DEEP, 'H' CITY, '+' ROAD, '*' FORTIFICATION.
+///            '=' WATER_DEEP, 'H' CITY, '+' ROAD, '*' FORTIFICATION,
+///            '#' DRAGONS_TEETH, ';' HIGH_GRASS.
 ///   heights  Optional: z je Feld als Ziffer 0-9, in derselben Form wie "rows".
 ///            Fehlt es, steht alles auf 0.
 ///   victory_tiles  Optional: die Siegfelder, je ein Objekt mit "x" und "y"

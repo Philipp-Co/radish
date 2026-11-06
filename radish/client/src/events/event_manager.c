@@ -34,6 +34,8 @@ static void RAD_DefaultOnNetUnit(void *user_argument, const RAD_NetUnit_t *unit)
 static void RAD_DefaultOnNetUnitMoved(void *user_argument, const RAD_NetUnitMoved_t *moved);
 static void RAD_DefaultOnNetUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked);
 static void RAD_DefaultOnNetUnitDestroyed(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
+static void RAD_DefaultOnNetUnitSighted(void *user_argument, const RAD_NetUnitSighted_t *sighted);
+static void RAD_DefaultOnNetUnitLost(void *user_argument, const RAD_NetUnitLost_t *lost);
 
 static void RAD_DefaultOnNetTileCreated(void *user_argument, const RAD_NetTile_t *tile);
 static void RAD_DefaultOnNetTileRemoved(void *user_argument, uint32_t x, uint32_t y);
@@ -71,6 +73,8 @@ RAD_NetEventManager_t* RAD_CreateNetEventManager(void)
             .unit_moved = RAD_DefaultOnNetUnitMoved,
             .unit_attacked = RAD_DefaultOnNetUnitAttacked,
             .unit_destroyed = RAD_DefaultOnNetUnitDestroyed,
+            .unit_sighted = RAD_DefaultOnNetUnitSighted,
+            .unit_lost = RAD_DefaultOnNetUnitLost,
             .unit = RAD_DefaultOnNetUnit
         },
         .tile_events = {
@@ -216,6 +220,16 @@ void RAD_NetEventManagerPublishUnitDestroyed(RAD_NetEventManager_t *manager, con
     manager->game_events.unit_destroyed(manager->game_events.user_argument, destroyed);
 }
 
+void RAD_NetEventManagerPublishUnitSighted(RAD_NetEventManager_t *manager, const RAD_NetUnitSighted_t *sighted)
+{
+    manager->game_events.unit_sighted(manager->game_events.user_argument, sighted);
+}
+
+void RAD_NetEventManagerPublishUnitLost(RAD_NetEventManager_t *manager, const RAD_NetUnitLost_t *lost)
+{
+    manager->game_events.unit_lost(manager->game_events.user_argument, lost);
+}
+
 static void RAD_DefaultOnNetGameCreated(void *user_argument)
 {
     (void)user_argument;
@@ -303,6 +317,18 @@ static void RAD_DefaultOnNetUnitDestroyed(void *user_argument, const RAD_NetUnit
     (void)destroyed;
 }
 
+static void RAD_DefaultOnNetUnitSighted(void *user_argument, const RAD_NetUnitSighted_t *sighted)
+{
+    (void)user_argument;
+    (void)sighted;
+}
+
+static void RAD_DefaultOnNetUnitLost(void *user_argument, const RAD_NetUnitLost_t *lost)
+{
+    (void)user_argument;
+    (void)lost;
+}
+
 const char* RAD_NetTileTypeText(RAD_NetTileType_t type)
 {
     switch(type)
@@ -317,6 +343,8 @@ const char* RAD_NetTileTypeText(RAD_NetTileType_t type)
         case RAD_NET_TILE_TYPE_CITY:          return "city";
         case RAD_NET_TILE_TYPE_ROAD:          return "road";
         case RAD_NET_TILE_TYPE_FORTIFICATION: return "fortification";
+        case RAD_NET_TILE_TYPE_DRAGONS_TEETH: return "dragons_teeth";
+        case RAD_NET_TILE_TYPE_HIGH_GRASS:    return "high_grass";
         case RAD_NET_TILE_TYPE_UNKNOWN:       return "unbekannt";
     }
     return "unbekannt";

@@ -131,6 +131,7 @@ import { UnitDetailComponent } from './unit-detail.component';
                         <strong>{{ type.name }}</strong>
                         <div class="muted small">{{ composition(type, unit) }}</div>
                         <div class="muted small">Bewegung: {{ type.movement }} Felder</div>
+                        <div class="muted small">Sichtweite: {{ type.sight_range }} Felder</div>
                         @if (type.transport_capacity > 0) {
                           <div class="muted small">
                             Transport: {{ type.transport_capacity }}

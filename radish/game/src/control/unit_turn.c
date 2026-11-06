@@ -24,6 +24,13 @@ RAD_GameResult_t RAD_GameCheckUnitMayAct(const RAD_Unit_t *unit)
     return RAD_GAME_OK;
 }
 
+int32_t RAD_GameDistance(const RAD_Unit_t *unit, int32_t x, int32_t y)
+{
+    const int32_t dx = x - unit->x;
+    const int32_t dy = y - unit->y;
+    return ((dx < 0) ? -dx : dx) + ((dy < 0) ? -dy : dy);
+}
+
 ///
 /// Ein neuer Zug beginnt: alle Einheiten vergessen, was sie im letzten getan
 /// haben (RAD_Unit_t.turn). Alle und nicht nur die dessen, der jetzt dran ist --

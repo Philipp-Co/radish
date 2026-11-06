@@ -45,7 +45,7 @@ void RAD_IoNetOnAttackResponse(void *user_argument, const RAD_NetAttackResponse_
 
 // Spielereignisse (game_created.c, game_finished.c, round.c, current_player.c, players.c,
 // world_size.c, deploy_zone.c, tiles.c, reserve_unit.c, unit_deployed.c, unit.c, unit_moved.c,
-// unit_attacked.c, unit_destroyed.c).
+// unit_attacked.c, unit_destroyed.c, unit_sighted.c, unit_lost.c).
 void RAD_IoNetOnGameCreated(void *user_argument);
 void RAD_IoNetOnGameFinished(void *user_argument, const RAD_NetGameFinished_t *finished);
 void RAD_IoNetOnRound(void *user_argument, uint32_t round, uint32_t rounds);
@@ -60,6 +60,8 @@ void RAD_IoNetOnUnit(void *user_argument, const RAD_NetUnit_t *unit);
 void RAD_IoNetOnUnitMoved(void *user_argument, const RAD_NetUnitMoved_t *moved);
 void RAD_IoNetOnUnitAttacked(void *user_argument, const RAD_NetUnitAttacked_t *attacked);
 void RAD_IoNetOnUnitDestroyed(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
+void RAD_IoNetOnUnitSighted(void *user_argument, const RAD_NetUnitSighted_t *sighted);
+void RAD_IoNetOnUnitLost(void *user_argument, const RAD_NetUnitLost_t *lost);
 
 // Tile-Ereignisse (tile_created.c, tile_removed.c, tile_changed.c).
 void RAD_IoNetOnTileCreated(void *user_argument, const RAD_NetTile_t *tile);

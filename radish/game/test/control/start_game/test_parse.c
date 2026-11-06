@@ -22,7 +22,7 @@
     "\"waffen\":[" waffen "],\"ausruestung\":[]}"
 
 #define EINHEIT(typ, mitglieder) \
-    "{\"typ\":\"" typ "\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true," \
+    "{\"typ\":\"" typ "\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true," \
     "\"entitaeten\":[" mitglieder "]}"
 
 #define EINHEIT_1 EINHEIT("Trupp", MITGLIED("Soldat", ""))
@@ -32,7 +32,7 @@
     "{\"name\":\"" name "\",\"kennung\":\"" kennung "\"," \
     "\"armee\":{\"name\":\"Armee " name "\",\"spezies\":\"Menschen\",\"einheiten\":[" einheiten "]}}"
 
-/// Ein Eintrag in "gelaende", und alle zehn Typen je einmal. TERRAIN ist nicht
+/// Ein Eintrag in "gelaende", und alle zwoelf Typen je einmal. TERRAIN ist nicht
 /// sichtblockierend, TERRAIN_SICHT sagt es selbst.
 #define TERRAIN_SICHT(typ, mv, cv, unbegehbar, sichtblockierend) \
     "{\"typ\":\"" typ "\",\"bewegung\":" mv ",\"deckung\":" cv ",\"unbegehbar\":" unbegehbar \
@@ -44,7 +44,8 @@
     TERRAIN("water_shallow", "-1", "0", "false") "," TERRAIN("mud", "-1", "0", "false") "," \
     TERRAIN("meadow", "0", "0", "false") "," TERRAIN_SICHT("forest", "-1", "2", "false", "true") "," \
     TERRAIN("water_deep", "0", "0", "true") "," TERRAIN("city", "0", "2", "false") "," \
-    TERRAIN("fortification", "-1", "3", "false")
+    TERRAIN("fortification", "-1", "3", "false") "," TERRAIN("dragons_teeth", "0", "0", "true") "," \
+    TERRAIN_SICHT("high_grass", "0", "1", "false", "true")
 
 #define GELAENDE "[" TERRAIN_OHNE_ROAD "," TERRAIN("road", "1", "0", "false") "]"
 
@@ -95,7 +96,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
 {
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(
         SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"Transporter\",\"bewegung\":12,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
+            "{\"typ\":\"Transporter\",\"bewegung\":12,\"sichtweite\":9,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
             "\"entitaeten\":["
               "{\"profil\":\"Anfuehrer\",\"leben\":2,\"ruestung\":3,\"widerstand\":6,\"staerke\":4,\"genauigkeit\":5,"
               "\"waffen\":["
@@ -107,6 +108,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
     const RAD_Unit_t *unit = &start->players[0].units[0];
     TEST_ASSERT_EQUAL_STRING("Transporter", unit->name);
     TEST_ASSERT_EQUAL_INT(12, unit->movement);
+    TEST_ASSERT_EQUAL_UINT8(9, unit->sight_range);
     TEST_ASSERT_EQUAL_INT(2, unit->transport_capacity);
     TEST_ASSERT_FALSE(unit->can_capture);
     TEST_ASSERT_EQUAL_INT(1, unit->number_of_members);
@@ -146,7 +148,7 @@ void test_spielstart_uebergeht_unbekannte_schluessel(void)
         "{\"neu\":1,\"spieldaten\":["
         "{\"rang\":3,\"name\":\"a\",\"kennung\":\"aaaaaaaa\","
         " \"armee\":{\"farbe\":\"rot\",\"name\":\"x\",\"einheiten\":["
-        "{\"rolle\":\"x\",\"typ\":\"Trupp\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "{\"rolle\":\"x\",\"typ\":\"Trupp\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
         "\"entitaeten\":[{\"rang\":1,\"profil\":\"S\",\"leben\":1,\"ruestung\":1,\"widerstand\":3,\"staerke\":1,\"genauigkeit\":1,"
         "\"waffen\":[],\"ausruestung\":[{\"name\":\"M\",\"wirkung\":2}]}]}"
         "]}},"
@@ -183,6 +185,10 @@ void test_spielstart_liest_das_gelaende(void)
     TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_WATER_DEEP].impassable);
     TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_VOID].impassable);
     TEST_ASSERT_EQUAL_INT(3, start->terrain[RAD_TILE_TYPE_FORTIFICATION].cover);
+    TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_DRAGONS_TEETH].impassable);
+    TEST_ASSERT_FALSE(start->terrain[RAD_TILE_TYPE_DRAGONS_TEETH].blocks_sight);
+    TEST_ASSERT_FALSE(start->terrain[RAD_TILE_TYPE_HIGH_GRASS].impassable);
+    TEST_ASSERT_TRUE(start->terrain[RAD_TILE_TYPE_HIGH_GRASS].blocks_sight);
 
     RAD_DestroyGameStart(&start);
 }
@@ -231,6 +237,24 @@ void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void)
     RAD_DestroyGameStart(&start);
 }
 
+///
+/// Die Sichtweite ist ein Byte: 0 und 255 sind die Grenzen, beide gelten. Was
+/// darueber liegt, lehnt test_spielstart_lehnt_fehlerhafte_dateien_ab ab.
+///
+void test_spielstart_sichtweite_bis_255(void)
+{
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+        "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":0,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "\"entitaeten\":[" MITGLIED("S", "") "]},"
+        "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":255,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "\"entitaeten\":[" MITGLIED("S", "") "]}"))));
+
+    TEST_ASSERT_EQUAL_UINT8(0, start->players[0].units[0].sight_range);
+    TEST_ASSERT_EQUAL_UINT8(255, start->players[0].units[1].sight_range);
+
+    RAD_DestroyGameStart(&start);
+}
+
 void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
 {
     static const char *const fehlerhaft[] = {
@@ -257,7 +281,18 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
         "{\"spieldaten\":[{\"name\":1,\"kennung\":\"aaaaaaaa\",\"armee\":{}}," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]}",
         // Einheit ohne Pflichtschluessel "bewegung"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"Trupp\",\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"Trupp\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "\"entitaeten\":[" MITGLIED("S", "") "]}")),
+        // Einheit ohne Pflichtschluessel "sichtweite"
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+            "{\"typ\":\"Trupp\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "\"entitaeten\":[" MITGLIED("S", "") "]}")),
+        // Sichtweite ueber einem Byte (RAD_Unit_t.sight_range), und negativ
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":256,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "\"entitaeten\":[" MITGLIED("S", "") "]}")),
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":-1,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // Mitglied ohne "ausruestung"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("Trupp",
@@ -270,20 +305,20 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("", MITGLIED("S", "")))),
         // Wert negativ, zu gross, keine ganze Zahl, ein String
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":-1,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bewegung\":-1,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":32768,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bewegung\":32768,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":1.5,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bewegung\":1.5,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":\"6\",\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bewegung\":\"6\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // kein Wahrheitswert
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":1,"
+            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":1,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // unbekannte Waffenklasse
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED("S", WAFFE("G", "gigantisch"))))),
@@ -387,6 +422,7 @@ void test_spielstart_aus_datei(void)
     // ohne Waffen.
     const RAD_Unit_t *trupp = &gelesen->players[0].units[0];
     TEST_ASSERT_EQUAL_STRING("Trupp", trupp->name);
+    TEST_ASSERT_EQUAL_UINT8(4, trupp->sight_range);
     TEST_ASSERT_EQUAL_INT(2, trupp->number_of_members);
     TEST_ASSERT_EQUAL_STRING("Kanone", trupp->members[0].weapons[1].name);
     TEST_ASSERT_EQUAL_INT(RAD_WEAPON_CLASS_HEAVY, trupp->members[0].weapons[1].weapon_class);

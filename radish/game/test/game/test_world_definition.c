@@ -194,7 +194,7 @@ void test_weltdefinition_lehnt_fehlerhafte_dateien_ab(void)
         { "{\"version\":1,\"rows\":[\"..\"],\"heights\":[\"00\",\"00\"]}", RAD_SERIALIZE_ERROR_SIZE_MISMATCH },
 
         // Der Inhalt der Zeilen.
-        { "{\"version\":1,\"rows\":[\".#\"]}",                            RAD_SERIALIZE_ERROR_TILE_TYPE },
+        { "{\"version\":1,\"rows\":[\".X\"]}",                            RAD_SERIALIZE_ERROR_TILE_TYPE },
         { "{\"version\":1,\"rows\":[\"..\"],\"heights\":[\"0a\"]}",       RAD_SERIALIZE_ERROR_SCHEMA },
         { "{\"version\":1,\"rows\":[\"._\"],\"heights\":[\"01\"]}",       RAD_SERIALIZE_ERROR_INCONSISTENT },
 
@@ -259,7 +259,7 @@ void test_weltdefinition_mit_figur_im_spiel_wird_abgelehnt(void)
 {
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
-    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 0, 0));
+    TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 0, 0, NULL));
 
     TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_ERROR_WORLD_OCCUPIED, lade(game, "{\"version\":1,\"rows\":[\"~~\"]}"));
 
@@ -332,7 +332,7 @@ void test_weltdefinition_aus_datei(void)
     TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldWidth(game));
     TEST_ASSERT_EQUAL_INT(16, RAD_GameWorldHeight(game));
 
-    // Nur Wiese und Wald.
+    // Wiese, Wald, hohes Gras und in der Mitte Drachenzaehne.
     RAD_Tile_t tile;
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 5, 5, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
@@ -340,6 +340,14 @@ void test_weltdefinition_aus_datei(void)
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_FOREST, tile.type);
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 15, &tile));
     TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_MEADOW, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 3, 6, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_DRAGONS_TEETH, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 12, 9, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_DRAGONS_TEETH, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 11, 4, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_HIGH_GRASS, tile.type);
+    TEST_ASSERT_TRUE(RAD_GameTileAt(game, 4, 11, &tile));
+    TEST_ASSERT_EQUAL_INT(RAD_TILE_TYPE_HIGH_GRASS, tile.type);
 
     // Ohne "heights": alles auf 0.
     TEST_ASSERT_TRUE(RAD_GameTileAt(game, 0, 0, &tile));
@@ -411,16 +419,18 @@ void test_weltdefinition_kennt_alle_gelaendearten(void)
     RAD_EventManager_t *events = RAD_CreateEventManager();
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
 
-    // Zwei Zeilen zu fuenf: alle zehn passen nicht in RAD_WORLD_WIDTH.
-    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, "{\"version\":1,\"rows\":[\"_.~,:\",\"^=H+*\"]}"));
+    // Zwei Zeilen zu sechs.
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK, lade(game, "{\"version\":1,\"rows\":[\"_.~,:^\",\"=H+*#;\"]}"));
 
-    const RAD_TileType_t erwartet[2][5] = {
-        { RAD_TILE_TYPE_VOID, RAD_TILE_TYPE_GROUND, RAD_TILE_TYPE_WATER_SHALLOW, RAD_TILE_TYPE_MUD, RAD_TILE_TYPE_MEADOW },
-        { RAD_TILE_TYPE_FOREST, RAD_TILE_TYPE_WATER_DEEP, RAD_TILE_TYPE_CITY, RAD_TILE_TYPE_ROAD, RAD_TILE_TYPE_FORTIFICATION }
+    const RAD_TileType_t erwartet[2][6] = {
+        { RAD_TILE_TYPE_VOID, RAD_TILE_TYPE_GROUND, RAD_TILE_TYPE_WATER_SHALLOW, RAD_TILE_TYPE_MUD, RAD_TILE_TYPE_MEADOW,
+          RAD_TILE_TYPE_FOREST },
+        { RAD_TILE_TYPE_WATER_DEEP, RAD_TILE_TYPE_CITY, RAD_TILE_TYPE_ROAD, RAD_TILE_TYPE_FORTIFICATION,
+          RAD_TILE_TYPE_DRAGONS_TEETH, RAD_TILE_TYPE_HIGH_GRASS }
     };
     for(int32_t y=0;y < 2; ++y)
     {
-        for(int32_t x=0;x < 5; ++x)
+        for(int32_t x=0;x < 6; ++x)
         {
             TEST_ASSERT_EQUAL_INT(erwartet[y][x], game->world.tiles[y][x].type);
         }
@@ -432,7 +442,7 @@ void test_weltdefinition_kennt_alle_gelaendearten(void)
 
 ///
 /// Ein Siegfeld darf auf jedem Land liegen, aber nicht im Wasser -- seicht oder
-/// tief -- und nicht auf einem Feld ohne Gelaende.
+/// tief --, nicht auf Drachenzaehnen und nicht auf einem Feld ohne Gelaende.
 ///
 void test_weltdefinition_siegfelder_nur_auf_land(void)
 {
@@ -440,16 +450,18 @@ void test_weltdefinition_siegfelder_nur_auf_land(void)
     RAD_Game_t *game = RAD_CreateGame(events, RAD_USER_NONE);
 
     TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_OK,
-        lade(game, "{\"version\":1,\"rows\":[\".,:^H+*\"],"
+        lade(game, "{\"version\":1,\"rows\":[\".,:^H+*;\"],"
                    "\"victory_tiles\":[{\"x\":0,\"y\":0},{\"x\":1,\"y\":0},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0},"
-                   "{\"x\":4,\"y\":0},{\"x\":5,\"y\":0},{\"x\":6,\"y\":0}]}"));
-    for(int32_t x=0;x < 7; ++x)
+                   "{\"x\":4,\"y\":0},{\"x\":5,\"y\":0},{\"x\":6,\"y\":0},{\"x\":7,\"y\":0}]}"));
+    for(int32_t x=0;x < 8; ++x)
     {
         TEST_ASSERT_TRUE(game->world.tiles[0][x].victory);
     }
 
     TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND,
         lade(game, "{\"version\":1,\"rows\":[\".=\"],\"victory_tiles\":[{\"x\":1,\"y\":0}]}"));
+    TEST_ASSERT_EQUAL_INT(RAD_SERIALIZE_ERROR_VICTORY_NO_GROUND,
+        lade(game, "{\"version\":1,\"rows\":[\".#\"],\"victory_tiles\":[{\"x\":1,\"y\":0}]}"));
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

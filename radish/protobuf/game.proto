@@ -138,6 +138,12 @@ message NetUnit
     bool deployed = 9;
     bool moved = 10;
     bool attacked = 11;
+
+    // Wie weit sie sieht, in Feldern waagerecht plus senkrecht
+    // (RAD_Unit_t.sight_range, 0..255). Der Client rechnet damit die eigene Sicht
+    // nach, wie er Wege mit dem Gelaende nachrechnet; was er sehen darf,
+    // entscheidet der Server.
+    uint32 sight_range = 12;
 }
 
 // Eine Einheit in der Reserve, als Antwort auf NetDiscoverReserveRequest
@@ -167,7 +173,8 @@ message NetDeployZoneEvent
 // Eine Einheit steht jetzt auf dem Feld (x, y), wo vorher keine stand -- aus der
 // Reserve aufgestellt (RAD_WorldDeployUnit) oder vom Spiel direkt angelegt
 // (RAD_WorldSpawnUnit); fuer einen Client ist beides dasselbe. Der Server schickt
-// es an alle, sobald es geschehen ist, noch vor der Antwort auf das Kommando.
+// es an den Besitzer und jeden, der das Feld sieht, sobald es geschehen ist,
+// noch vor der Antwort auf das Kommando.
 //
 // Die ganze Einheit und nicht nur ihre Id: wer die Reserve nicht abgefragt hat,
 // kennt sie sonst nicht.
@@ -208,7 +215,12 @@ message NetUnitMovedEvent
 
 // Eine Einheit hat das Feld (x, y) angegriffen -- gesendet fuer jeden Angriff,
 // den der Server angenommen hat, auch auf ein leeres Feld (RAD_AttackResult_t im
-// Spiel). Wo die Einheit steht, weiss der Client.
+// Spiel), an jeden, der den Schuetzen oder das Zielfeld sieht, und an die
+// Besitzer beider. Wo die Einheit steht, weiss der Client.
+//
+// Sieht der Empfaenger den Schuetzen nicht, erfaehrt er nur, was ankam: unit_id
+// ist dann 4294967295, RAD_UNIT_NONE (-1) als uint32 -- zurueck in eine Id
+// gewandelt wird es wieder -1, "keine Einheit".
 //
 // Stand auf dem Feld eine Einheit, ist has_target gesetzt und target_id ihre Id;
 // die Zaehler sind die Stufen ihrer Schuesse, jede eine Teilmenge der vorigen:
@@ -243,6 +255,29 @@ message NetUnitDestroyedEvent
     uint32 y = 3;
 }
 
+// Eine fremde Einheit ist dem Empfaenger in die Sicht gekommen, ohne dass er es
+// sonst erfahren haette: sie steht jetzt auf (x, y). Die ganze Einheit, wie beim
+// Aufstellen -- er kennt sie womoeglich noch nicht. Kam sie durch ihren eigenen
+// Zug, ist der Teil des Weges, den er sah, vorher schon als NetUnitMovedEvent
+// gekommen.
+message NetUnitSightedEvent
+{
+    NetUnit unit = 1;
+    uint32 x = 2;
+    uint32 y = 3;
+}
+
+// Eine fremde Einheit ist aus der Sicht des Empfaengers verschwunden. (x, y) ist
+// das Feld, auf dem er sie zuletzt sah -- nicht, wo sie jetzt steht. Sie ist
+// nicht zerstoert (dafuer gibt es NetUnitDestroyedEvent); der Client nimmt sie
+// vom Feld und behaelt sie.
+message NetUnitLostEvent
+{
+    uint32 unit_id = 1;
+    uint32 x = 2;
+    uint32 y = 3;
+}
+
 message NetGameEvent
 {
     oneof event
@@ -261,5 +296,7 @@ message NetGameEvent
         NetDeployZoneEvent deploy_zone = 12;
         NetRoundEvent round = 13;
         NetUnitDestroyedEvent unit_destroyed = 14;
+        NetUnitSightedEvent unit_sighted = 15;
+        NetUnitLostEvent unit_lost = 16;
     }
 }

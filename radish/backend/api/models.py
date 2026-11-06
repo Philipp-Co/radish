@@ -223,6 +223,10 @@ class Game(models.Model):
 # Obergrenze fuer die Entitaeten einer Einheit, unabhaengig vom Einheitentyp.
 MAX_UNIT_ENTITIES = 10
 
+# Obergrenze der Sichtweite: im Spiel ein Byte (RAD_Unit_t.sight_range), und
+# mehr nimmt der Spielserver beim Start nicht an (spielstart.schema.json).
+MAX_SIGHT_RANGE = 255
+
 
 class Species(models.Model):
     """
@@ -271,6 +275,9 @@ class UnitType(models.Model):
     # Bewegungsradius: wie viele Felder weit sich die Einheit bewegen kann.
     # Wie die Werte der Profile ohne Default -- der Admin traegt ihn ein.
     movement = models.PositiveSmallIntegerField()
+    # Sichtweite: wie viele Felder weit die Einheit sieht, waagerecht plus
+    # senkrecht; 0 = nur ihr eigenes Feld. Wie movement ohne Default.
+    sight_range = models.PositiveSmallIntegerField(validators=[MaxValueValidator(MAX_SIGHT_RANGE)])
 
     class Meta:
         ordering = ["species", "name"]
@@ -408,8 +415,8 @@ class TerrainCode(models.TextChoices):
     Die Tile-Typen des Spiels (RAD_TileType_t in radish/game/include/radish/
     game/model/model.h), unter dem Namen, unter dem sie im Spielstart stehen
     (radish/game/schema/spielstart.schema.json, "gelaende"). Ein neuer Typ
-    kommt im Spiel, im Schema und hier dazu -- mit einer Migration, die
-    seine Zeile anlegt.
+    kommt im Spiel, im Schema und hier dazu -- und mit seiner Zeile in den
+    Dump api/fixtures/seed.json (die Migrationen enthalten nur das Schema).
 
     Die Bezeichnungen sind fuer den Adminbereich; der Spiel-Client fuehrt
     seine eigenen Anzeigenamen.
@@ -425,6 +432,8 @@ class TerrainCode(models.TextChoices):
     CITY = "city", "Stadt"
     ROAD = "road", "Strasse"
     FORTIFICATION = "fortification", "Befestigte Stellung"
+    DRAGONS_TEETH = "dragons_teeth", "Drachenzaehne"
+    HIGH_GRASS = "high_grass", "Hohes Gras"
 
 
 # Wie weit MV und CV reichen duerfen. Deckung wirkt gegen einen W10 (Treffer:
@@ -441,7 +450,8 @@ class TerrainType(models.Model):
     ob er die Sicht auf die Felder dahinter versperrt. Geht mit jedem Spielstart an die Instanz (instance_client.
     game_start_document).
 
-    Genau eine Zeile je TerrainCode, angelegt von der Migration. Der Admin
+    Genau eine Zeile je TerrainCode, angelegt aus dem Dump
+    api/fixtures/seed.json (siehe management/commands/seed.py). Der Admin
     aendert nur die Werte -- anlegen und loeschen gibt es nicht, weil das
     Spiel jeden Typ braucht.
     """
@@ -461,7 +471,7 @@ class TerrainType(models.Model):
     blocks_sight = models.BooleanField(default=False)
 
     class Meta:
-        # In der Reihenfolge der Typen im Spiel -- so legt die Migration sie an.
+        # In der Reihenfolge der Typen im Spiel -- so stehen sie im Dump.
         ordering = ["id"]
 
     def __str__(self):

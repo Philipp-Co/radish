@@ -41,6 +41,7 @@ add_library(radish_game STATIC
     src/control/victory.c
     src/control/unit_turn.c
     src/control/dice.c
+    src/control/visibility.c
 
     src/serialization/jsmn_impl.c
     src/serialization/json_reader.c

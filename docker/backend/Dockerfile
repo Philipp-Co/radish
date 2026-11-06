@@ -75,7 +75,9 @@ RUN apk add --no-cache \
     cargo \
     rust
 
-COPY radish/backend/requirements.txt /tmp/requirements.txt
+# Beide Dateien: requirements.txt bindet requirements-migrate.txt ein (siehe
+# docker/backend-migrate/Dockerfile).
+COPY radish/backend/requirements.txt radish/backend/requirements-migrate.txt /tmp/
 RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 
@@ -97,9 +99,10 @@ WORKDIR /app
 # logging-Modul laufen und davon nicht betroffen sind.
 ENV PYTHONUNBUFFERED=1
 
-# Nur, was zur Laufzeit gebraucht wird: manage.py (migrate im entrypoint.sh)
+# Nur, was zur Laufzeit gebraucht wird: manage.py (`migrate --check` im
+# entrypoint.sh -- migriert wird vorher im Image aus docker/backend-migrate/)
 # und die drei Python-Pakete. Bewusst nicht radish/backend/ als Ganzes --
-# requirements.txt braucht nur die Stage "builder", und neue Dateien neben
+# requirements*.txt braucht nur die Stage "builder", und neue Dateien neben
 # dem Code sollen nicht ungefragt im Image landen. Tests, __pycache__/ und
 # Editor-Reste in den Paketen haelt die .dockerignore fern.
 COPY radish/backend/manage.py /app/

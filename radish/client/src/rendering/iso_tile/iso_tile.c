@@ -18,6 +18,8 @@ void RAD_IsoTileApplyType(RAD_IsoObject_t *object, RAD_ClientTileType_t type)
         case RAD_CLIENT_TILE_TYPE_CITY:          RAD_IsoTileInitCity(object);          return;
         case RAD_CLIENT_TILE_TYPE_ROAD:          RAD_IsoTileInitRoad(object);          return;
         case RAD_CLIENT_TILE_TYPE_FORTIFICATION: RAD_IsoTileInitFortification(object); return;
+        case RAD_CLIENT_TILE_TYPE_DRAGONS_TEETH: RAD_IsoTileInitDragonsTeeth(object);  return;
+        case RAD_CLIENT_TILE_TYPE_HIGH_GRASS:    RAD_IsoTileInitHighGrass(object);     return;
         case RAD_CLIENT_TILE_TYPE_UNKNOWN:       RAD_IsoTileInitUnknown(object);       return;
     }
 

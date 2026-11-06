@@ -394,13 +394,16 @@ static bool RAD_TileTypeFromTerrain(char terrain, RAD_TileType_t *type)
         case 'H': *type = RAD_TILE_TYPE_CITY;           return true;
         case '+': *type = RAD_TILE_TYPE_ROAD;           return true;
         case '*': *type = RAD_TILE_TYPE_FORTIFICATION;  return true;
+        case '#': *type = RAD_TILE_TYPE_DRAGONS_TEETH;  return true;
+        case ';': *type = RAD_TILE_TYPE_HIGH_GRASS;     return true;
         default:                                        return false;
     }
 }
 
 ///
 /// Ob auf einem Feld dieses Typs ein Siegfeld liegen darf: jedes Land, kein
-/// Wasser und nicht VOID -- ein Siegfeld muss sich halten lassen. Ohne default:
+/// Wasser, keine Drachenzaehne und nicht VOID -- ein Siegfeld muss sich halten
+/// lassen. Ohne default:
 /// ein neuer Tile-Typ meldet sich hier ueber -Wswitch.
 ///
 static bool RAD_TileTypeHoldsVictory(RAD_TileType_t type)
@@ -414,11 +417,13 @@ static bool RAD_TileTypeHoldsVictory(RAD_TileType_t type)
         case RAD_TILE_TYPE_CITY:
         case RAD_TILE_TYPE_ROAD:
         case RAD_TILE_TYPE_FORTIFICATION:
+        case RAD_TILE_TYPE_HIGH_GRASS:
             return true;
 
         case RAD_TILE_TYPE_VOID:
         case RAD_TILE_TYPE_WATER_SHALLOW:
         case RAD_TILE_TYPE_WATER_DEEP:
+        case RAD_TILE_TYPE_DRAGONS_TEETH:
             return false;
     }
     return false;

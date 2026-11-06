@@ -274,6 +274,14 @@ RAD_UserId_t RAD_ControlUnitOwner(RAD_Control_t control, RAD_UnitId_t unit);
 int32_t RAD_ControlNumberOfUnits(RAD_Control_t control);
 bool RAD_ControlUnitAt(RAD_Control_t control, int32_t index, RAD_Unit_t *output);
 
+///
+/// Dieselbe Zaehlung, aber nur, was "user" kennen darf (RAD_GameUnitAtFor):
+/// seine eigenen Einheiten immer, fremde nur auf dem Feld in seiner Sicht. Fuer
+/// alles, was an einen Spieler geht -- die Einheitenliste, den neuen Stand nach
+/// Zug oder Angriff.
+///
+bool RAD_ControlUnitAtFor(RAD_Control_t control, RAD_UserId_t user, int32_t index, RAD_Unit_t *output);
+
 /// Wie viele mitspielen -- fuers Log.
 int32_t RAD_ControlNumberOfPlayers(RAD_Control_t control);
 
@@ -321,6 +329,13 @@ RAD_UserId_t RAD_ControlWinner(RAD_Control_t control);
 /// "output" bleibt bei false unberuehrt.
 ///
 bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *output);
+
+///
+/// Wie RAD_ControlTileAt, aber wie "user" es kennen darf (RAD_GameTileAtFor):
+/// eine Einheit darauf, die er nicht sieht, steht nicht darin. Fuer die Antwort
+/// auf seine Discover-Anfrage.
+///
+bool RAD_ControlTileAtFor(RAD_Control_t control, RAD_UserId_t user, int32_t x, int32_t y, RAD_Tile_t *output);
 
 ///
 /// Fuehrt ein Kommando aus und beantwortet es.

@@ -1,14 +1,11 @@
-asgiref==3.12.1
-Django==5.2.17
+# Django, psycopg und was migrate sonst braucht (auch fuer den Migrator,
+# siehe docker/backend-migrate/Dockerfile).
+-r requirements-migrate.txt
+
 djangorestframework==3.18.1
-sqlparse==0.6.0
-typing_extensions==4.16.0
 requests==2.32.3
 djangorestframework-simplejwt[crypto]==5.3.1
-# psycopg 3 statt psycopg2: nur damit hat Django einen eingebauten
-# Connection-Pool (OPTIONS "pool" in config/settings.py). Fertige
-# musllinux-Wheels, auf Alpine also ohne Build-Abhaengigkeiten.
-psycopg[binary]==3.2.3
+# Connection-Pool fuer psycopg (OPTIONS "pool" in config/settings.py).
 psycopg-pool==3.2.4
 
 # ASGI-Server + Channels fuer WebSocket-Unterstuetzung (siehe config/asgi.py,

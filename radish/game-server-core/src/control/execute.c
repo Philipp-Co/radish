@@ -184,6 +184,11 @@ bool RAD_ControlUnitAt(RAD_Control_t control, int32_t index, RAD_Unit_t *output)
     return RAD_GameUnitAt(control->game, index, output);
 }
 
+bool RAD_ControlUnitAtFor(RAD_Control_t control, RAD_UserId_t user, int32_t index, RAD_Unit_t *output)
+{
+    return RAD_GameUnitAtFor(control->game, user, index, output);
+}
+
 RAD_UserId_t RAD_ControlUnitOwner(RAD_Control_t control, RAD_UnitId_t unit)
 {
     return RAD_GameUnitOwner(control->game, unit);
@@ -267,6 +272,24 @@ bool RAD_ControlTileAt(RAD_Control_t control, int32_t x, int32_t y, RAD_Tile_t *
     }
 
     return RAD_GameTileAt(control->game, (int16_t)x, (int16_t)y, output);
+}
+
+bool RAD_ControlTileAtFor(RAD_Control_t control, RAD_UserId_t user, int32_t x, int32_t y, RAD_Tile_t *output)
+{
+    if(output == NULL)
+    {
+        return false;
+    }
+
+    // Dieselbe Grenze wie bei RAD_ControlTileAt, aus demselben Grund: die Stelle
+    // kommt von aussen.
+    if((x < 0) || (x >= RAD_GameWorldWidth(control->game)) ||
+       (y < 0) || (y >= RAD_GameWorldHeight(control->game)))
+    {
+        return false;
+    }
+
+    return RAD_GameTileAtFor(control->game, user, (int16_t)x, (int16_t)y, output);
 }
 
 RAD_CommandResponse_t RAD_ControlExecuteCommand(RAD_Control_t control, const RAD_Command_t *command)

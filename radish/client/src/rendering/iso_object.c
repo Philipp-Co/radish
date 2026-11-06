@@ -30,10 +30,13 @@ RAD_IsoObject_t RAD_CreateIsoObject(int32_t x, int32_t y, int32_t layer)
         .front_color = front_color,
         .focus = false,
         .victory = false,
+        .light = 255,
         .layer = layer,
         .image = NULL,
         .overlay = NULL,
+        .overlay_offset_x = 0,
         .overlay_offset_y = 0,
+        .overlay_front = NULL,
         .entities = { NULL }
     };
     return object;
@@ -42,8 +45,25 @@ RAD_IsoObject_t RAD_CreateIsoObject(int32_t x, int32_t y, int32_t layer)
 ///
 /// Zeichnet "image" auf den Rahmen des Wuerfels von "object", dessen Raute bei
 /// (screen_x, screen_y) beginnt. Fokus und Siegfeld als Einfaerbung, Fokus
-/// zuerst; die Textur teilen sich alle Felder, deshalb danach zurueckgesetzt.
+/// zuerst, und im Nebel abgedunkelt (RAD_IsoObjectShade); die Textur teilen
+/// sich alle Felder, deshalb danach zurueckgesetzt.
 ///
+///
+/// "color" in der Helligkeit des Feldes (RAD_IsoObject_t.light): jeder Kanal
+/// malgenommen. Voll hell oder im Fokus unveraendert.
+///
+static SDL_Color RAD_IsoObjectShade(const RAD_IsoObject_t *object, SDL_Color color)
+{
+    if((object->light == 255) || object->focus)
+    {
+        return color;
+    }
+    color.r = (Uint8)((color.r * object->light) / 255);
+    color.g = (Uint8)((color.g * object->light) / 255);
+    color.b = (Uint8)((color.b * object->light) / 255);
+    return color;
+}
+
 static void RAD_RenderIsoObjectImage(SDL_Renderer *renderer, const RAD_IsoObject_t *object,
                                      SDL_Texture *image, int32_t screen_x, int32_t screen_y)
 {
@@ -54,15 +74,17 @@ static void RAD_RenderIsoObjectImage(SDL_Renderer *renderer, const RAD_IsoObject
         .h = 2 * RAD_ISO_TILE_HEIGHT
     };
 
+    SDL_Color tint = { 255, 255, 255, 255 };
     if(object->focus)
     {
-        SDL_SetTextureColorMod(image, 255, 80, 80);
+        tint = (SDL_Color){ 255, 80, 80, 255 };
     }
     else if(object->victory)
     {
-        const SDL_Color victory = RAD_ISO_OBJECT_VICTORY_COLOR;
-        SDL_SetTextureColorMod(image, victory.r, victory.g, victory.b);
+        tint = RAD_ISO_OBJECT_VICTORY_COLOR;
     }
+    tint = RAD_IsoObjectShade(object, tint);
+    SDL_SetTextureColorMod(image, tint.r, tint.g, tint.b);
 
     SDL_RenderCopy(renderer, image, NULL, &target);
     SDL_SetTextureColorMod(image, 255, 255, 255);
@@ -83,6 +105,8 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
         color.g = 0;
         color.a = 255;
     }
+    color = RAD_IsoObjectShade(object, color);
+    const SDL_Color front_color = RAD_IsoObjectShade(object, object->front_color);
 
     // Flaechen um einen halben Pixel versetzt: SDL_RenderGeometry fuellt ein Pixel,
     // wenn seine Mitte im Dreieck liegt, SDL_RenderDrawLine faerbt die Pixel selbst
@@ -161,7 +185,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx,
             .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_0[1] = (SDL_Vertex){
@@ -169,7 +193,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx,
             .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_0[2] = (SDL_Vertex){
@@ -177,7 +201,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     SDL_RenderGeometry(
@@ -190,7 +214,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx,
             .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_1[1] = (SDL_Vertex){
@@ -198,7 +222,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_left_1[2] = (SDL_Vertex){
@@ -206,7 +230,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     SDL_RenderGeometry(
@@ -219,7 +243,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_0[1] = (SDL_Vertex){
@@ -227,7 +251,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_0[2] = (SDL_Vertex){
@@ -235,7 +259,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH,
             .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     SDL_RenderGeometry(
@@ -247,7 +271,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH,
             .y=fy + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_1[1] = (SDL_Vertex){
@@ -255,7 +279,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH,
             .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     front_right_1[2] = (SDL_Vertex){
@@ -263,7 +287,7 @@ static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_
             .x=fx + RAD_ISO_TILE_WIDTH / 2,
             .y=fy + RAD_ISO_TILE_HEIGHT * 2
         },
-        .color=object->front_color,
+        .color=front_color,
         .tex_coord={.x=0.0, .y=0.0}
     };
     SDL_RenderGeometry(
@@ -325,7 +349,7 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
     if(NULL != object->overlay)
     {
         RAD_RenderIsoObjectImage(renderer, object, object->overlay,
-                                 screen_x, screen_y + object->overlay_offset_y);
+                                 screen_x + object->overlay_offset_x, screen_y + object->overlay_offset_y);
     }
 
     // Hinten zuerst: Hintergrund, Mitte, Vordergrund (RAD_IsoDepth_t).
@@ -335,5 +359,11 @@ void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, int32_
         {
             RAD_RenderIsoEntity(renderer, object->entities[depth], screen_x, screen_y);
         }
+    }
+
+    if(NULL != object->overlay_front)
+    {
+        RAD_RenderIsoObjectImage(renderer, object, object->overlay_front,
+                                 screen_x + object->overlay_offset_x, screen_y + object->overlay_offset_y);
     }
 }

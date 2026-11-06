@@ -116,6 +116,11 @@ typedef void (*RAD_OnNetUnitAttacked_t)(void *user_argument, const RAD_NetUnitAt
 // Eine Einheit ist zerstoert und vom Feld -- gleich, wessen Einheit.
 typedef void (*RAD_OnNetUnitDestroyed_t)(void *user_argument, const RAD_NetUnitDestroyed_t *destroyed);
 
+// Eine fremde Einheit ist in die Sicht gekommen bzw. aus ihr verschwunden -- der
+// Nebel des Krieges: der Server schickt jedem nur, was er sieht.
+typedef void (*RAD_OnNetUnitSighted_t)(void *user_argument, const RAD_NetUnitSighted_t *sighted);
+typedef void (*RAD_OnNetUnitLost_t)(void *user_argument, const RAD_NetUnitLost_t *lost);
+
 typedef struct
 {
     void *user_argument;
@@ -133,6 +138,8 @@ typedef struct
     RAD_OnNetUnitMoved_t unit_moved;
     RAD_OnNetUnitAttacked_t unit_attacked;
     RAD_OnNetUnitDestroyed_t unit_destroyed;
+    RAD_OnNetUnitSighted_t unit_sighted;
+    RAD_OnNetUnitLost_t unit_lost;
 } RAD_NetEventsGameCallback_t;
 
 
@@ -187,6 +194,8 @@ void RAD_NetEventManagerPublishUnit(RAD_NetEventManager_t *manager, const RAD_Ne
 void RAD_NetEventManagerPublishUnitMoved(RAD_NetEventManager_t *manager, const RAD_NetUnitMoved_t *moved);
 void RAD_NetEventManagerPublishUnitAttacked(RAD_NetEventManager_t *manager, const RAD_NetUnitAttacked_t *attacked);
 void RAD_NetEventManagerPublishUnitDestroyed(RAD_NetEventManager_t *manager, const RAD_NetUnitDestroyed_t *destroyed);
+void RAD_NetEventManagerPublishUnitSighted(RAD_NetEventManager_t *manager, const RAD_NetUnitSighted_t *sighted);
+void RAD_NetEventManagerPublishUnitLost(RAD_NetEventManager_t *manager, const RAD_NetUnitLost_t *lost);
 
 void RAD_NetEventManagerSubscribeToTileEvents(RAD_NetEventManager_t *manager, RAD_NetEventsTileCallback_t callbacks);
 void RAD_NetEventManagerPublishTileCreated(RAD_NetEventManager_t *manager, const RAD_NetTile_t *tile);

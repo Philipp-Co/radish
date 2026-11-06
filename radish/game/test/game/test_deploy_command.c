@@ -139,7 +139,7 @@ void test_deploy_regel_nennt_jeden_grund(void)
 
     // Beides in der Zone des Hosts, damit die Regel bis zu diesen Fragen kommt.
     TEST_ASSERT_TRUE(RAD_WorldRemoveTile(&game->world, 2, 5));
-    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 3, 6);
+    const RAD_UnitId_t im_weg = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 3, 6, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, im_weg);
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK,                   RAD_GameCheckDeployUnit(game, host, eigene, 1, 1));
@@ -157,9 +157,9 @@ void test_deploy_regel_nennt_jeden_grund(void)
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_OCCUPIED,       RAD_GameCheckDeployUnit(game, host, eigene, 3, 6));
 
     // Steht sie, steht sie nicht mehr in der Reserve; zerstoert genauso wenig.
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 1, 1));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, eigene, 1, 1, NULL));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NOT_IN_RESERVE, RAD_GameCheckDeployUnit(game, host, eigene, 2, 2));
-    RAD_WorldRemoveUnit(&game->world, eigene);
+    RAD_WorldRemoveUnit(&game->world, eigene, NULL);
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_NOT_IN_RESERVE, RAD_GameCheckDeployUnit(game, host, eigene, 2, 2));
 
     abbauen();
@@ -260,6 +260,75 @@ void test_deploy_kommando_ausserhalb_der_zone_aendert_nichts(void)
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, RAD_WorldTileAt(&game->world, RAD_DEPLOY_ZONE_DEPTH, 0)->unit);
     TEST_ASSERT_EQUAL_INT(0, mitschrift.spawned);
     TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
+
+    abbauen();
+}
+
+///
+/// Wer vom Aufstellen erfaehrt, bestimmt das Spiel (control/deploy_unit.c), und
+/// die Welt reicht es an die Abos je Spieler weiter: bisher nur an den Besitzer.
+/// Der Abonnent ohne Empfaenger bekommt es wie immer.
+///
+void test_deploy_meldet_dem_besitzer(void)
+{
+    aufbauen();
+
+    RAD_AufstellMitschrift_t von_host = { .unit = RAD_UNIT_NONE };
+    RAD_AufstellMitschrift_t von_gast = { .unit = RAD_UNIT_NONE };
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, host, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &von_host,
+        .spawned = notiere_spawned
+    }));
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, gast, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &von_gast,
+        .spawned = notiere_spawned
+    }));
+
+    RAD_Command_t command = {0};
+    TEST_ASSERT_TRUE(RAD_GameDeployUnit(game, eigene, 3, 4, &command));
+    RAD_GameExecuteCommand(game, &command);
+
+    TEST_ASSERT_EQUAL_INT(1, von_host.spawned);
+    TEST_ASSERT_EQUAL_INT(eigene, von_host.unit);
+    TEST_ASSERT_EQUAL_INT(3, von_host.x);
+    TEST_ASSERT_EQUAL_INT(4, von_host.y);
+    TEST_ASSERT_EQUAL_INT(0, von_gast.spawned);
+    TEST_ASSERT_EQUAL_INT(1, mitschrift.spawned);
+
+    abbauen();
+}
+
+///
+/// Wer das Zielfeld sieht, erfaehrt vom Aufstellen auch -- hier der Gast mit
+/// einer Einheit, die zwei Felder weit sieht.
+///
+void test_deploy_meldet_wer_das_feld_sieht(void)
+{
+    aufbauen();
+
+    const RAD_UnitId_t spaeher = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 5, 4, NULL);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, gast, spaeher));
+    RAD_WorldUnitById(&game->world, spaeher)->sight_range = 2;
+    // Den Spaeher hat der Abonnent ohne Empfaenger schon gesehen; gezaehlt wird ab hier.
+    mitschrift.spawned = 0;
+
+    RAD_AufstellMitschrift_t von_host = { .unit = RAD_UNIT_NONE };
+    RAD_AufstellMitschrift_t von_gast = { .unit = RAD_UNIT_NONE };
+    RAD_EventManagerSubscribeToUnitEventsOf(events, host, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &von_host, .spawned = notiere_spawned
+    });
+    RAD_EventManagerSubscribeToUnitEventsOf(events, gast, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &von_gast, .spawned = notiere_spawned
+    });
+
+    RAD_Command_t command = {0};
+    TEST_ASSERT_TRUE(RAD_GameDeployUnit(game, eigene, 3, 4, &command));
+    RAD_GameExecuteCommand(game, &command);
+
+    TEST_ASSERT_EQUAL_INT(1, von_host.spawned);
+    TEST_ASSERT_EQUAL_INT(1, von_gast.spawned);
+    TEST_ASSERT_EQUAL_INT(eigene, von_gast.unit);
+    TEST_ASSERT_EQUAL_INT(1, mitschrift.spawned);
 
     abbauen();
 }

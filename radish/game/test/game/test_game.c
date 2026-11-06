@@ -167,7 +167,7 @@ void test_game_move_kommando_veroeffentlicht_ein_ereignis(void)
     RAD_Game_t *game = RAD_CreateGame(events, (RAD_UserId_t)0x4711);
     TEST_ASSERT_NOT_NULL(game);
 
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, 2, 2, NULL);
     TEST_ASSERT_NOT_EQUAL(RAD_UNIT_NONE, id);
     // Eine gespawnte Figur hat keine Bewegung; ohne kommt sie kein Feld weit.
     RAD_WorldUnitById(&game->world, id)->movement = 1;

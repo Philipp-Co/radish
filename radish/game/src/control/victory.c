@@ -1,6 +1,7 @@
 #include <radish/game/game.h>
 #include <radish/game/model/game.h>
 #include <radish/game/game_definitions.h>
+#include <radish/game/control/visibility.h>
 #include <stddef.h>
 
 ///
@@ -128,7 +129,14 @@ void RAD_GameDestroyUnit(RAD_Game_t *game, RAD_UnitId_t unit)
     }
     const RAD_UserId_t owner = destroyed->owner;
 
-    RAD_WorldRemoveUnit(&game->world, unit);
+    // Wie beim Aufstellen (control/deploy_unit.c): der Besitzer und jeder, der
+    // das Feld sieht. Gerechnet, solange sie noch steht -- danach waere es die
+    // Sicht auf ein leeres Feld. Eine herrenlose Einheit hat keinen Besitzer,
+    // dann sind es nur die, die das Feld sehen.
+    RAD_Recipients_t recipients;
+    RAD_GameRecipientsForTile(game, owner, destroyed->x, destroyed->y, &recipients);
+
+    RAD_WorldRemoveUnit(&game->world, unit, &recipients);
 
     // Nur hier kann der Bestand eines Spielers auf null fallen. Spielt der
     // Besitzer nicht (mehr) mit, gibt es niemanden, der verliert.

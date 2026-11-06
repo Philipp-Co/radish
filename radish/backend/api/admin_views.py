@@ -242,7 +242,8 @@ class AdminEquipmentDetailView(_CatalogAdminMixin, generics.RetrieveUpdateDestro
 class AdminTerrainTypeListView(generics.ListAPIView):
     """
     Alle Tile-Typen mit ihren Werten, in der Reihenfolge des Spiels, unter
-    {"terrain": [...]}. Angelegt werden sie nur von der Migration -- es gibt
+    {"terrain": [...]}. Angelegt werden sie nur aus dem Dump
+    api/fixtures/seed.json (siehe management/commands/seed.py) -- es gibt
     genau die, die das Spiel kennt, deshalb kein POST.
     """
 

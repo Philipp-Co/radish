@@ -1,12 +1,14 @@
 #!/bin/sh
 
-# Schlaegt migrate fehl (z.B. Postgres noch nicht bereit), bricht der Container
-# ab, statt daphne mit nicht migrierter Datenbank zu starten. Compose startet
-# ihn dann neu (restart: unless-stopped in docker-compose.yaml), bis die
-# Datenbank erreichbar ist.
+# Migriert wird vorher vom Service "backend-migrate" (siehe
+# docker-compose.yaml, docker/backend-migrate/), das Backend darf das Schema
+# gar nicht aendern (Benutzer radish_app, siehe
+# docker/backend-db/init/01-roles.sh). Hier nur die Pruefung: fehlt eine
+# Migration (oder ist die Datenbank nicht erreichbar), bricht der Container
+# ab, statt daphne auf einem veralteten Schema zu starten.
 set -e
 
-python manage.py migrate --noinput
+python manage.py migrate --check
 
 # Timeouts/Limits bewusst explizit statt Daphne-Default:
 # --websocket_timeout -1: WebSocket-Verbindungen sollen beliebig lange

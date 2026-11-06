@@ -117,7 +117,7 @@ static void pruefe_figur_steht_auf(RAD_Game_t *game, RAD_UnitId_t id, int32_t x,
 
 static RAD_UnitId_t spawne(RAD_Game_t *game, int32_t x, int32_t y)
 {
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_PLAYER, x, y, NULL);
     if(id != RAD_UNIT_NONE)
     {
         RAD_WorldUnitById(&game->world, id)->movement = BEWEGUNG;
@@ -700,6 +700,123 @@ void test_deploy_nicht_auf_unbegehbares_feld(void)
     TEST_ASSERT_TRUE(RAD_GameAddTile(game, 3, 4, 0, RAD_TILE_TYPE_WATER_DEEP));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_ERROR_IMPASSABLE, RAD_GameCheckDeployUnit(game, ziehender, figur, 3, 4));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameCheckDeployUnit(game, ziehender, figur, 2, 4));
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Wer von einem Zug erfaehrt, bestimmt das Spiel (control/move_unit.c), und
+/// die Welt reicht es an die Abos je Spieler weiter: bisher nur an den Besitzer
+/// -- beim gelungenen Zug wie beim abgelehnten. Der Abonnent ohne Empfaenger
+/// bekommt beide wie immer.
+///
+void test_move_meldet_dem_besitzer(void)
+{
+    const RAD_UserId_t ziehender = (RAD_UserId_t)0x4711;
+    const RAD_UserId_t anderer = (RAD_UserId_t)0x0815;
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, anderer));
+    setze_gelaende(game);
+
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, ziehender, figur));
+
+    RAD_ZugMitschrift_t alle, vom_ziehenden, vom_anderen;
+    abonniere_zug(events, &alle);
+    vom_ziehenden = (RAD_ZugMitschrift_t){ .moved = 0, .mit_figur = false };
+    vom_anderen = (RAD_ZugMitschrift_t){ .moved = 0, .mit_figur = false };
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, ziehender, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_ziehenden,
+        .moved = notiere_zug
+    }));
+    TEST_ASSERT_TRUE(RAD_EventManagerSubscribeToUnitEventsOf(events, anderer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_anderen,
+        .moved = notiere_zug
+    }));
+
+    const int16_t felder[][2] = { { 2, 2 }, { 3, 2 }, { 3, 3 } };
+    RAD_Path_t weg = weg_aus(felder, 3);
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 3, 3);
+    TEST_ASSERT_TRUE(RAD_WorldUnitById(&game->world, figur)->turn.moved);
+    TEST_ASSERT_TRUE(RAD_WorldIsConsistent(&game->world));
+    TEST_ASSERT_EQUAL_INT(1, vom_ziehenden.moved);
+    TEST_ASSERT_EQUAL_INT(3, vom_ziehenden.pfad.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(0, vom_ziehenden.ergebnis);
+    TEST_ASSERT_EQUAL_INT(0, vom_anderen.moved);
+    TEST_ASSERT_EQUAL_INT(1, alle.moved);
+
+    // Ein zweiter Zug im selben Zug wird abgelehnt -- und trotzdem gemeldet.
+    const int16_t weiter[][2] = { { 3, 3 }, { 3, 4 } };
+    weg = weg_aus(weiter, 2);
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 3, 3);
+    TEST_ASSERT_EQUAL_INT(2, vom_ziehenden.moved);
+    TEST_ASSERT_EQUAL_INT(0, vom_ziehenden.pfad.number_of_steps);
+    TEST_ASSERT_NOT_EQUAL(0, vom_ziehenden.ergebnis);
+    TEST_ASSERT_EQUAL_INT(0, vom_anderen.moved);
+    TEST_ASSERT_EQUAL_INT(2, alle.moved);
+
+    RAD_DestroyGame(&game);
+    RAD_DestroyEventManager(&events);
+}
+
+///
+/// Wer dem Zug zusieht, bekommt den Teil des Weges, den er sieht -- als eigene
+/// Fassung, der Abonnent ohne Empfaenger sieht den Zug trotzdem nur einmal.
+///
+void test_move_beobachter_sieht_einen_teil_des_weges(void)
+{
+    const RAD_UserId_t ziehender = (RAD_UserId_t)0x4711;
+    const RAD_UserId_t anderer = (RAD_UserId_t)0x0815;
+    RAD_EventManager_t *events = RAD_CreateEventManager();
+    RAD_Game_t *game = RAD_CreateGame(events, ziehender);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, ziehender));
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameAddPlayer(game, anderer));
+    setze_gelaende(game);
+
+    const RAD_UnitId_t figur = spawne(game, 2, 2);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, ziehender, figur));
+    const RAD_UnitId_t posten = spawne(game, 4, 3);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_OK, RAD_GameBindUnit(game, anderer, posten));
+    RAD_WorldUnitById(&game->world, posten)->sight_range = 2;
+
+    RAD_ZugMitschrift_t alle, vom_ziehenden, vom_anderen;
+    abonniere_zug(events, &alle);
+    vom_ziehenden = (RAD_ZugMitschrift_t){ .moved = 0, .mit_figur = false };
+    vom_anderen = (RAD_ZugMitschrift_t){ .moved = 0, .mit_figur = false };
+    RAD_EventManagerSubscribeToUnitEventsOf(events, ziehender, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_ziehenden, .moved = notiere_zug
+    });
+    RAD_EventManagerSubscribeToUnitEventsOf(events, anderer, (RAD_EventsUnitChangedCallback_t){
+        .user_argument = &vom_anderen, .moved = notiere_zug
+    });
+
+    // (2, 2) ist drei Felder vom Posten entfernt, der Rest hoechstens zwei; (2, 2)
+    // kommt trotzdem mit, als Randfeld vor dem ersten, das er sieht.
+    const int16_t felder[][2] = { { 2, 2 }, { 3, 2 }, { 4, 2 }, { 5, 2 } };
+    RAD_Path_t weg = weg_aus(felder, 4);
+    ziehe(game, figur, &weg);
+
+    pruefe_figur_steht_auf(game, figur, 5, 2);
+    TEST_ASSERT_EQUAL_INT(1, alle.moved);
+    TEST_ASSERT_EQUAL_INT(4, alle.pfad.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(1, vom_ziehenden.moved);
+    TEST_ASSERT_EQUAL_INT(4, vom_ziehenden.pfad.number_of_steps);
+
+    TEST_ASSERT_EQUAL_INT(1, vom_anderen.moved);
+    TEST_ASSERT_EQUAL_INT(0, vom_anderen.ergebnis);
+    TEST_ASSERT_EQUAL_INT(4, vom_anderen.pfad.number_of_steps);
+    TEST_ASSERT_EQUAL_INT(2, vom_anderen.pfad.steps_to[0].x);
+    TEST_ASSERT_EQUAL_INT(3, vom_anderen.pfad.steps_to[1].x);
+    TEST_ASSERT_EQUAL_INT(4, vom_anderen.pfad.steps_to[2].x);
+    TEST_ASSERT_EQUAL_INT(5, vom_anderen.pfad.steps_to[3].x);
+    TEST_ASSERT_EQUAL_INT(figur, vom_anderen.id);
 
     RAD_DestroyGame(&game);
     RAD_DestroyEventManager(&events);

@@ -40,6 +40,7 @@ static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int
 static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX]);
 static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
 static bool RAD_ReadSignedValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
+static bool RAD_ReadByteValue(const RAD_GameStartTokens_t *t, int32_t index, uint8_t *value);
 static bool RAD_ReadBool(const RAD_GameStartTokens_t *t, int32_t index, bool *value);
 static bool RAD_IsIdentifierCharacter(char c);
 static int32_t RAD_SubtreeEnd(const RAD_GameStartTokens_t *t, int32_t index);
@@ -547,7 +548,7 @@ static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_
     unit->x = -1;
     unit->y = -1;
 
-    enum { TYP, BEWEGUNG, TRANSPORT, ZIELE, ENTITAETEN, ALLE = (1u << 5) - 1 };
+    enum { TYP, BEWEGUNG, SICHTWEITE, TRANSPORT, ZIELE, ENTITAETEN, ALLE = (1u << 6) - 1 };
     uint32_t found = 0;
 
     int32_t key = index + 1;
@@ -565,6 +566,11 @@ static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_
         {
             result = RAD_ReadValue(t, value, &unit->movement) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
             found |= RAD_FOUND(BEWEGUNG);
+        }
+        else if(RAD_KeyIs(t, key, "sichtweite"))
+        {
+            result = RAD_ReadByteValue(t, value, &unit->sight_range) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
+            found |= RAD_FOUND(SICHTWEITE);
         }
         else if(RAD_KeyIs(t, key, "transportkapazitaet"))
         {
@@ -834,6 +840,8 @@ static const struct { const char *name; RAD_TileType_t type; } RAD_TERRAIN_NAMES
     { "city",          RAD_TILE_TYPE_CITY },
     { "road",          RAD_TILE_TYPE_ROAD },
     { "fortification", RAD_TILE_TYPE_FORTIFICATION },
+    { "dragons_teeth", RAD_TILE_TYPE_DRAGONS_TEETH },
+    { "high_grass",    RAD_TILE_TYPE_HIGH_GRASS },
 };
 
 ///
@@ -999,6 +1007,24 @@ static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t
     }
 
     *value = (int16_t)parsed;
+    return true;
+}
+
+///
+/// Wie RAD_ReadValue, aber nur 0..255 -- fuer die Sichtweite, die im Spiel ein
+/// Byte ist (RAD_Unit_t.sight_range). Gelesen wird ueber RAD_ReadValue, damit es
+/// das Zahlenlesen nur einmal gibt; was darueber liegt, verbietet schon das
+/// Schema und ist deshalb ein Formfehler wie eine negative Zahl.
+///
+static bool RAD_ReadByteValue(const RAD_GameStartTokens_t *t, int32_t index, uint8_t *value)
+{
+    int16_t parsed = 0;
+    if(!RAD_ReadValue(t, index, &parsed) || (parsed > UINT8_MAX))
+    {
+        return false;
+    }
+
+    *value = (uint8_t)parsed;
     return true;
 }
 

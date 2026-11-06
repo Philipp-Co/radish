@@ -2,10 +2,12 @@
 #define __RAD_VIEW_ISO_MAP_VIEW_H__
 
 #include <SDL2/SDL.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <radish/model/focus.h>
 #include <radish/model/world.h>
 #include <radish/rendering/iso_map.h>
+#include <radish/io/net_session.h>
 
 ///
 /// Ein rechteckiger Bereich im Fenster mit der Iso-Map (rendering/iso_map.h):
@@ -65,20 +67,35 @@ typedef struct RAD_IsoMapView RAD_IsoMapView_t;
 /// Pixeln an, die "map" zeichnet, "world" beobachtet und "focus" schreibt
 /// (RAD_IsoMapViewHandleMouseMotion); NULL, wenn kein Speicher da ist oder die
 /// Welt keinen Beobachter mehr annimmt. "map", "world" und "focus" duerfen nicht
-/// NULL sein und muessen die IsoMapView ueberleben. RAD_DestroyIsoMapView laesst
+/// NULL sein und muessen die IsoMapView ueberleben, ebenso "session": aus ihr
+/// kommt die eigene Spieler-Id, von der aus der Nebel liegt
+/// (control/visibility.h). RAD_DestroyIsoMapView laesst
 /// alle drei stehen -- "focus" auf nichts gesetzt -- und nullt den Zeiger des
 /// Aufrufers.
 ///
 /// Am besten, bevor etwas in der Welt steht -- sonst entgeht ihr, was schon da
 /// ist.
 ///
-RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map, const RAD_ClientWorld_t *world, RAD_ClientFocus_t *focus);
+RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map,
+                                       const RAD_ClientWorld_t *world, RAD_ClientFocus_t *focus,
+                                       const RAD_IoNetSession_t *session);
 void RAD_DestroyIsoMapView(RAD_IsoMapView_t **iso_map_view);
 
 ///
 /// Zeichnet die IsoMapView mit "renderer". Einmal je Frame zu rufen.
 ///
 void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer);
+
+///
+/// Ob sie gerade abspielt, was ein Ereignis vom Server ausgeloest hat: einen
+/// Zug, einen Schuss samt Zielen (RAD_IsoMapViewFire) oder eine Explosion, die
+/// wartet oder laeuft. Ein Zielen ohne Schuss (RAD_IsoMapViewAim) zaehlt nicht
+/// -- das ist die Vorschau, waehrend der Spieler ein Ziel waehlt.
+///
+/// Was durchgelaufen ist, raeumt erst RAD_UpdateIsoMapView ab; bis dahin zaehlt
+/// es noch.
+///
+bool RAD_IsoMapViewIsBusy(const RAD_IsoMapView_t *iso_map_view);
 
 ///
 /// Wertet eine Mausbewegung aus (view/view.h). Das Iso-Objekt unter dem Zeiger

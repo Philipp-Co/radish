@@ -253,7 +253,7 @@ void test_players_zuordnen_und_loesen(void)
 {
     lege_spiel_an();
     RAD_GameAddPlayer(game, 0x10);
-    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 1, 1);
+    const RAD_UnitId_t id = RAD_WorldSpawnUnit(&game->world, RAD_UNIT_TYPE_NPC, 1, 1, NULL);
     const RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, id);
     RAD_Player_t *player = RAD_GameFindPlayer(game, 0x10);
 
@@ -282,7 +282,7 @@ void test_players_wiederkehr_findet_seine_einheiten(void)
     RAD_UnitId_t auf_dem_feld = RAD_UNIT_NONE;
     RAD_GameAddUnit(game, 0x10, &values, &in_reserve);
     RAD_GameAddUnit(game, 0x10, &values, &auf_dem_feld);
-    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, auf_dem_feld, 0, 0));
+    TEST_ASSERT_TRUE(RAD_WorldDeployUnit(&game->world, auf_dem_feld, 0, 0, NULL));
 
     RAD_GameRemovePlayer(game, 0x10);
     TEST_ASSERT_NULL(RAD_GameFindPlayer(game, 0x10));

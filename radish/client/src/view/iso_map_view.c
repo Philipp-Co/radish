@@ -2,6 +2,7 @@
 #include <radish/rendering/iso_effect.h>
 #include <radish/rendering/iso_unit_images.h>
 #include <radish/view/animations/unit_animation.h>
+#include <radish/control/visibility.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -28,6 +29,12 @@
 /// explodiert nicht.
 ///
 #define RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX 8
+
+///
+/// Wie lange ein Feld braucht, um ganz in den Nebel zu fallen oder ganz aus ihm
+/// zu kommen (RAD_IsoMapViewApplyFog).
+///
+#define RAD_ISO_MAP_VIEW_FOG_FADE_MS 180.0f
 
 ///
 /// Ein Zug, den die IsoMapView selbst darstellt (RAD_IsoMapViewOnUnitMoved).
@@ -128,6 +135,20 @@ struct RAD_IsoMapView
     /// Das Feld der Welt zu "focus_object" (model/focus.h). Gehoert dem Aufrufer.
     ///
     RAD_ClientFocus_t *focus;
+
+    ///
+    /// Die Verbindung, aus der die eigene Spieler-Id kommt (own_player_id) --
+    /// von ihr aus liegt der Nebel (RAD_IsoMapViewApplyFog). Gehoert dem Aufrufer.
+    ///
+    const RAD_IoNetSession_t *session;
+
+    ///
+    /// Die Helligkeit jedes Feldes, wie sie gerade gezeichnet wird -- sie laeuft
+    /// je Bild auf das zu, was die Sicht verlangt (RAD_IsoMapViewApplyFog) --,
+    /// und wann zuletzt geblendet wurde; negativ, solange noch nie.
+    ///
+    float light[RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];
+    float fog_ms;
 };
 
 
@@ -138,6 +159,7 @@ static void RAD_IsoMapViewDetachMovingEntities(RAD_IsoMapView_t *iso_map_view, c
 static void RAD_IsoMapViewFaceEnemy(RAD_IsoMapView_t *iso_map_view, const RAD_ClientTile_t *tile);
 static void RAD_IsoMapViewFinishMove(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewMove_t *move);
 static void RAD_IsoMapViewStopAim(RAD_IsoMapViewAim_t *aim);
+static void RAD_IsoMapViewApplyFog(RAD_IsoMapView_t *iso_map_view, float now_ms);
 static void RAD_IsoMapViewUpdateExplosions(RAD_IsoMapView_t *iso_map_view, float now_ms);
 static void RAD_IsoMapViewStopExplosion(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewExplosion_t *explosion);
 static RAD_IsoEntity_t* RAD_IsoMapViewEntityAt(const RAD_IsoMapView_t *iso_map_view, int32_t x, int32_t y,
@@ -145,7 +167,9 @@ static RAD_IsoEntity_t* RAD_IsoMapViewEntityAt(const RAD_IsoMapView_t *iso_map_v
 static float RAD_IsoMapViewNow(void);
 
 
-RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map, const RAD_ClientWorld_t *world, RAD_ClientFocus_t *focus)
+RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map,
+                                       const RAD_ClientWorld_t *world, RAD_ClientFocus_t *focus,
+                                       const RAD_IoNetSession_t *session)
 {
     RAD_IsoMapView_t *iso_map_view = malloc(sizeof(struct RAD_IsoMapView));
     if(iso_map_view == NULL)
@@ -158,8 +182,17 @@ RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int3
         .map = map,
         .world = world,
         .focus_object = NULL,
-        .focus = focus
+        .focus = focus,
+        .session = session,
+        .fog_ms = -1.0f
     };
+    for(int32_t y = 0; y < RAD_ISO_MAP_SIZE; ++y)
+    {
+        for(int32_t x = 0; x < RAD_ISO_MAP_SIZE; ++x)
+        {
+            iso_map_view->light[y][x] = 255.0f;
+        }
+    }
 
     if(!RAD_IsoMapViewObserveWorld(iso_map_view))
     {
@@ -254,6 +287,12 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
 
     RAD_IsoMapViewUpdateExplosions(iso_map_view, now_ms);
 
+    // Der Nebel je Bild neu: die Sicht haengt an jedem Zug, jedem Aufstellen und
+    // jeder Einheit, die kommt oder geht -- und sie zu rechnen kostet weniger,
+    // als all das zu beobachten (control/visibility.h). Nach den Zuegen oben,
+    // damit sie von dort aus sieht, wo die Figur in diesem Bild steht.
+    RAD_IsoMapViewApplyFog(iso_map_view, now_ms);
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderFillRect(renderer, &iso_map_view->area);
 
@@ -267,6 +306,39 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
     RAD_RenderIsoMap(renderer, iso_map_view->map);
 
     SDL_RenderSetClipRect(renderer, was_clipping ? &previous_clip : NULL);
+}
+
+bool RAD_IsoMapViewIsBusy(const RAD_IsoMapView_t *iso_map_view)
+{
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_MOVES_MAX; ++i)
+    {
+        if(iso_map_view->moves[i].active)
+        {
+            return true;
+        }
+    }
+
+    // Nur ein Zielen, das feuert: das ohne Schuss ist die Vorschau aus der
+    // ContextMenuView und kommt nicht vom Server.
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_AIMS_MAX; ++i)
+    {
+        const RAD_IsoMapViewAim_t *aim = &iso_map_view->aims[i];
+        float fire_ms;
+        if(aim->active && (aim->animation != NULL) && RAD_UnitAnimationFireMs(aim->animation, &fire_ms))
+        {
+            return true;
+        }
+    }
+
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX; ++i)
+    {
+        if(iso_map_view->explosions[i].active)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void RAD_IsoMapViewHandleMouseMotion(RAD_IsoMapView_t *iso_map_view, const SDL_MouseMotionEvent *motion)
@@ -794,6 +866,16 @@ static void RAD_IsoMapViewOnUnitAttacked(void *user_argument, const RAD_ClientWo
 }
 
 ///
+/// Ein eigener Angriff, den der Server abgelehnt hat: der Turm, den der Spieler
+/// schon aufs Ziel gerichtet hat, laeuft nach vorn zurueck.
+///
+static void RAD_IsoMapViewOnAttackRejected(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit)
+{
+    (void)world;
+    RAD_IsoMapViewReleaseAim((RAD_IsoMapView_t*)user_argument, unit);
+}
+
+///
 /// Kommt vor dem "changed" von Start- und Zielfeld (RAD_ClientWorldMoveEntity):
 /// die Einheit steht noch auf steps[0], die Iso-Map zeigt sie noch dort.
 ///
@@ -1030,7 +1112,8 @@ static bool RAD_IsoMapViewObserveWorld(RAD_IsoMapView_t *iso_map_view)
         .reserve_created = RAD_IsoMapViewOnReserveCreated,
         .size_changed = RAD_IsoMapViewOnWorldSizeChanged,
         .unit_moved = RAD_IsoMapViewOnUnitMoved,
-        .unit_attacked = RAD_IsoMapViewOnUnitAttacked
+        .unit_attacked = RAD_IsoMapViewOnUnitAttacked,
+        .attack_rejected = RAD_IsoMapViewOnAttackRejected
     });
 }
 
@@ -1055,5 +1138,65 @@ static void RAD_IsoMapViewStopObservingWorld(RAD_IsoMapView_t *iso_map_view)
     for(size_t i = 0; i < RAD_CLIENT_WORLD_PLAYERS; ++i)
     {
         RAD_ClientReserveUnsubscribe(&world->reserves[i], iso_map_view);
+    }
+}
+
+///
+/// Legt den Nebel auf die Iso-Map: jedes Feld, das keine eigene Einheit sieht,
+/// wird abgedunkelt gezeichnet (RAD_IsoObject_t.light), auf allen Ebenen. Solange
+/// der Client seine Spieler-Id nicht kennt, liegt keiner (RAD_ControlVisibility).
+///
+/// **Die Sicht wandert mit:** eine eigene Einheit, die gerade faehrt, sieht von
+/// dem Feld aus, auf dem sie zu sehen ist -- in der Welt steht sie da schon am
+/// Ziel. Gerundet auf das naechste Feld.
+///
+/// **Und blendet weich:** jedes Feld laeuft je Bild ein Stueck auf seine
+/// Helligkeit zu, ueber RAD_ISO_MAP_VIEW_FOG_FADE_MS von ganz hell bis in den
+/// Nebel. Beim ersten Bild steht sie gleich, wo sie hingehoert.
+///
+static void RAD_IsoMapViewApplyFog(RAD_IsoMapView_t *iso_map_view, float now_ms)
+{
+    RAD_ControlUnitPosition_t positions[RAD_ISO_MAP_VIEW_MOVES_MAX];
+    size_t number_of_positions = 0;
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_MOVES_MAX; ++i)
+    {
+        const RAD_IsoMapViewMove_t *move = &iso_map_view->moves[i];
+        if(move->active && (move->entity != NULL))
+        {
+            positions[number_of_positions++] = (RAD_ControlUnitPosition_t){
+                .unit = move->unit,
+                .x = (int32_t)floorf(move->entity->x + 0.5f),
+                .y = (int32_t)floorf(move->entity->y + 0.5f)
+            };
+        }
+    }
+
+    bool visible[RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];
+    const RAD_ClientPlayerId_t player = (iso_map_view->session != NULL)
+        ? (RAD_ClientPlayerId_t)iso_map_view->session->own_player_id
+        : RAD_CLIENT_PLAYER_NONE;
+    RAD_ControlVisibility(iso_map_view->world, player, positions, number_of_positions, visible);
+
+    // Wie weit in diesem Bild geblendet wird; beim ersten ganz.
+    const float full = 255.0f - (float)RAD_ISO_OBJECT_FOG_LIGHT;
+    const float step = (iso_map_view->fog_ms < 0.0f)
+        ? full
+        : full * (now_ms - iso_map_view->fog_ms) / RAD_ISO_MAP_VIEW_FOG_FADE_MS;
+    iso_map_view->fog_ms = now_ms;
+
+    for(int32_t y = 0; y < RAD_ISO_MAP_SIZE; ++y)
+    {
+        for(int32_t x = 0; x < RAD_ISO_MAP_SIZE; ++x)
+        {
+            const float target = visible[y][x] ? 255.0f : (float)RAD_ISO_OBJECT_FOG_LIGHT;
+            float light = iso_map_view->light[y][x];
+            light = (light < target) ? fminf(light + step, target) : fmaxf(light - step, target);
+            iso_map_view->light[y][x] = light;
+
+            for(int32_t layer = 0; layer < 3; ++layer)
+            {
+                iso_map_view->map->data[layer][y][x].light = (uint8_t)(light + 0.5f);
+            }
+        }
     }
 }

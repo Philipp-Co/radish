@@ -55,6 +55,8 @@ static RAD_ClientTileType_t RAD_IoNetTileTypeToClient(RAD_NetTileType_t type)
         case RAD_NET_TILE_TYPE_CITY:          return RAD_CLIENT_TILE_TYPE_CITY;
         case RAD_NET_TILE_TYPE_ROAD:          return RAD_CLIENT_TILE_TYPE_ROAD;
         case RAD_NET_TILE_TYPE_FORTIFICATION: return RAD_CLIENT_TILE_TYPE_FORTIFICATION;
+        case RAD_NET_TILE_TYPE_DRAGONS_TEETH: return RAD_CLIENT_TILE_TYPE_DRAGONS_TEETH;
+        case RAD_NET_TILE_TYPE_HIGH_GRASS:    return RAD_CLIENT_TILE_TYPE_HIGH_GRASS;
         case RAD_NET_TILE_TYPE_UNKNOWN:       return RAD_CLIENT_TILE_TYPE_UNKNOWN;
     }
     return RAD_CLIENT_TILE_TYPE_UNKNOWN;
@@ -87,6 +89,7 @@ void RAD_IoNetUnitToClient(const RAD_NetUnit_t *unit, RAD_ClientUnit_t *out)
 {
     RAD_ClientUnitInit(out, unit->unit, unit->owner, unit->name);
     out->movement = RAD_IoNetValue(unit->movement);
+    out->sight_range = RAD_IoNetValue(unit->sight_range);
     out->deployed = unit->deployed;
     out->moved = unit->moved;
     out->attacked = unit->attacked;
