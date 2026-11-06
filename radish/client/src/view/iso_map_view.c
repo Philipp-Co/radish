@@ -156,6 +156,8 @@ static bool RAD_IsoMapViewObserveWorld(RAD_IsoMapView_t *iso_map_view);
 static void RAD_IsoMapViewStopObservingWorld(RAD_IsoMapView_t *iso_map_view);
 static void RAD_IsoMapViewClearFocus(RAD_IsoMapView_t *iso_map_view);
 static void RAD_IsoMapViewDetachMovingEntities(RAD_IsoMapView_t *iso_map_view, const RAD_ClientTile_t *tile);
+static void RAD_IsoMapViewApplyTile(RAD_IsoMapView_t *iso_map_view, const RAD_ClientTile_t *tile);
+static int32_t RAD_IsoMapViewPlayerOf(const RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit);
 static void RAD_IsoMapViewFaceEnemy(RAD_IsoMapView_t *iso_map_view, const RAD_ClientTile_t *tile);
 static void RAD_IsoMapViewFinishMove(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewMove_t *move);
 static void RAD_IsoMapViewStopAim(RAD_IsoMapViewAim_t *aim);
@@ -165,6 +167,7 @@ static void RAD_IsoMapViewStopExplosion(RAD_IsoMapView_t *iso_map_view, RAD_IsoM
 static RAD_IsoEntity_t* RAD_IsoMapViewEntityAt(const RAD_IsoMapView_t *iso_map_view, int32_t x, int32_t y,
                                                RAD_ClientUnitId_t unit);
 static float RAD_IsoMapViewNow(void);
+static void RAD_IsoMapViewLogAttackResult(const RAD_ClientAttackResult_t *result);
 
 
 RAD_IsoMapView_t* RAD_CreateIsoMapView(int32_t x, int32_t y, int32_t width, int32_t height, RAD_IsoMap_t *map,
@@ -406,7 +409,7 @@ static void RAD_IsoMapViewOnTileChanged(void *user_argument, const RAD_ClientTil
     RAD_IsoMapView_t *iso_map_view = (RAD_IsoMapView_t*)user_argument;
     printf("[IsoMapView] Feld (%d, %d) geaendert, Typ=%s\n", (int)tile->x, (int)tile->y, RAD_ClientTileTypeText(tile->type));
 
-    RAD_IsoMapApplyTile(iso_map_view->map, tile);
+    RAD_IsoMapViewApplyTile(iso_map_view, tile);
     RAD_IsoMapViewDetachMovingEntities(iso_map_view, tile);
     RAD_IsoMapViewFaceEnemy(iso_map_view, tile);
 }
@@ -430,7 +433,7 @@ static void RAD_IsoMapViewOnTileCreated(void *user_argument, const RAD_ClientWor
     RAD_IsoMapView_t *iso_map_view = (RAD_IsoMapView_t*)user_argument;
     printf("[IsoMapView] Feld (%d, %d) neu, Typ=%s\n", (int)tile->x, (int)tile->y, RAD_ClientTileTypeText(tile->type));
 
-    RAD_IsoMapApplyTile(iso_map_view->map, tile);
+    RAD_IsoMapViewApplyTile(iso_map_view, tile);
     RAD_IsoMapViewDetachMovingEntities(iso_map_view, tile);
     RAD_IsoMapViewFaceEnemy(iso_map_view, tile);
 
@@ -481,6 +484,38 @@ static void RAD_IsoMapViewOnReserveCreated(void *user_argument, const RAD_Client
     }))
     {
         printf("[IsoMapView] Reserve fuer 0x%llx nicht beobachtbar\n", (unsigned long long)reserve->owner);
+    }
+}
+
+///
+/// Die Mitspieler sind da oder anders: jede Figur bekommt den Ring ihres
+/// Besitzers neu, auf dem Feld (RAD_IsoMapViewApplyTile) wie im Zug.
+///
+static void RAD_IsoMapViewOnPlayersChanged(void *user_argument, const RAD_ClientWorld_t *world)
+{
+    RAD_IsoMapView_t *iso_map_view = (RAD_IsoMapView_t*)user_argument;
+    printf("[IsoMapView] Mitspieler geaendert (%d)\n", (int)world->number_of_players);
+
+    for(int32_t y = 0; y < RAD_ISO_MAP_SIZE; ++y)
+    {
+        for(int32_t x = 0; x < RAD_ISO_MAP_SIZE; ++x)
+        {
+            const RAD_ClientTile_t *tile = RAD_ClientWorldTileAt(world, x, y);
+            if((tile != NULL) && (tile->unit != NULL))
+            {
+                RAD_IsoMapViewApplyTile(iso_map_view, tile);
+                RAD_IsoMapViewDetachMovingEntities(iso_map_view, tile);
+            }
+        }
+    }
+
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_MOVES_MAX; ++i)
+    {
+        RAD_IsoMapViewMove_t *move = &iso_map_view->moves[i];
+        if(move->active)
+        {
+            move->entity->player = RAD_IsoMapViewPlayerOf(iso_map_view, move->unit);
+        }
     }
 }
 
@@ -809,9 +844,11 @@ void RAD_IsoMapViewAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, 
     RAD_IsoMapViewTurnTurret(iso_map_view, unit, true, target_x, target_y, false, RAD_ISO_EFFECT_SPRITE_NONE, NULL);
 }
 
-void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y)
+void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y,
+                        bool explode)
 {
-    printf("[IsoMapView] Einheit %d feuert auf (%d, %d)\n", (int)unit, (int)target_x, (int)target_y);
+    printf("[IsoMapView] Einheit %d feuert auf (%d, %d)%s\n", (int)unit, (int)target_x, (int)target_y,
+           explode ? "" : " ohne Treffer");
 
     // Wo sie steht, bevor der Turm sich dreht: ein Zug, der noch laeuft, endet
     // dort, wo sie feuert.
@@ -834,8 +871,9 @@ void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit,
         located = RAD_IsoMapViewFindEntity(iso_map_view, unit, &x, &y);
     }
 
-    // Welche Explosion, zuerst: so lange bleibt der Turm auf dem Ziel.
-    const RAD_IsoEffectSprite_t explosion = RAD_IsoEffectRandomExplosion();
+    // Welche Explosion, zuerst: so lange bleibt der Turm auf dem Ziel. Ohne
+    // keine -- dann haelt er nur die Mindestzeit (RAD_IsoMapViewFireHoldMs).
+    const RAD_IsoEffectSprite_t explosion = explode ? RAD_IsoEffectRandomExplosion() : RAD_ISO_EFFECT_SPRITE_NONE;
 
     float fire_ms = 0.0f;
     if(!RAD_IsoMapViewTurnTurret(iso_map_view, unit, true, target_x, target_y, true, explosion, &fire_ms))
@@ -844,7 +882,10 @@ void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit,
         fire_ms = RAD_IsoMapViewNow();
     }
 
-    RAD_IsoMapViewExplode(iso_map_view, explosion, located, x, y, target_x, target_y, fire_ms);
+    if(explode)
+    {
+        RAD_IsoMapViewExplode(iso_map_view, explosion, located, x, y, target_x, target_y, fire_ms);
+    }
 }
 
 void RAD_IsoMapViewReleaseAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit)
@@ -858,11 +899,40 @@ void RAD_IsoMapViewReleaseAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t
 /// sie feuert (RAD_IsoMapViewFire). Hat der Spieler hier schon gezielt, steht
 /// der Turm schon; er bleibt kurz und laeuft dann zurueck.
 ///
-static void RAD_IsoMapViewOnUnitAttacked(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
-                                         RAD_ClientPosition_t target)
+/// Explodieren laesst sie das Zielfeld nur, wenn wenigstens ein Schuss getroffen
+/// hat -- oder wenn dort niemand stand: dann wird nicht gewuerfelt, gezeigt wird
+/// der Angriff trotzdem. Alles Weitere, was er bewirkt hat, steht vorerst nur
+/// im Log.
+///
+static void RAD_IsoMapViewOnUnitAttacked(void *user_argument, const RAD_ClientWorld_t *world,
+                                         const RAD_ClientAttackResult_t *result)
 {
     (void)world;
-    RAD_IsoMapViewFire((RAD_IsoMapView_t*)user_argument, unit, target.x, target.y);
+    RAD_IsoMapViewLogAttackResult(result);
+    const bool explode = (result->hits > 0) || (result->victim == RAD_CLIENT_UNIT_ID_NONE);
+    RAD_IsoMapViewFire((RAD_IsoMapView_t*)user_argument, result->attacker, result->target.x, result->target.y, explode);
+}
+
+///
+/// Schreibt, was ein Angriff bewirkt hat, ins Log: die Zaehler des ganzen
+/// Angriffs und darunter eine Zeile je Waffe.
+///
+static void RAD_IsoMapViewLogAttackResult(const RAD_ClientAttackResult_t *result)
+{
+    printf("[IsoMapView] Angriff von Einheit %d auf (%d, %d), Ziel %d: %u Schuesse, %u Treffer, %u durch, "
+           "%u Lebenspunkte, %u gefallen%s\n",
+           (int)result->attacker, (int)result->target.x, (int)result->target.y, (int)result->victim,
+           (unsigned)result->shots, (unsigned)result->hits, (unsigned)result->penetrations,
+           (unsigned)result->wounds, (unsigned)result->members_killed,
+           result->victim_destroyed ? ", Ziel zerstoert" : "");
+    for(uint32_t i = 0; i < result->number_of_weapons; ++i)
+    {
+        const RAD_ClientAttackWeapon_t *weapon = &result->weapons[i];
+        printf("[IsoMapView]    Mitglied %u, Waffe %u: %u Schuesse, %u Treffer, %u durch, %u Lebenspunkte, %u gefallen\n",
+               (unsigned)weapon->member, (unsigned)weapon->weapon,
+               (unsigned)weapon->shots, (unsigned)weapon->hits, (unsigned)weapon->penetrations,
+               (unsigned)weapon->wounds, (unsigned)weapon->members_killed);
+    }
 }
 
 ///
@@ -1005,6 +1075,29 @@ static void RAD_IsoMapViewOnUnitMoved(void *user_argument, const RAD_ClientWorld
 }
 
 ///
+/// Die Stelle des Besitzers der Einheit "unit" unter den Mitspielern -- der Ring
+/// ihrer Figur (rendering/entity.h) --, RAD_ISO_ENTITY_PLAYER_NONE, wenn die Welt
+/// die Einheit oder ihren Besitzer nicht kennt.
+///
+static int32_t RAD_IsoMapViewPlayerOf(const RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit)
+{
+    const RAD_ClientUnit_t *found = RAD_ClientUnitRepositoryFindConst(RAD_ClientWorldUnits(iso_map_view->world), unit);
+    const int32_t player = (found != NULL) ? RAD_ClientWorldPlayerIndex(iso_map_view->world, found->owner) : -1;
+    return (player >= 0) ? player : RAD_ISO_ENTITY_PLAYER_NONE;
+}
+
+///
+/// Traegt das Feld "tile" in die Iso-Map ein (RAD_IsoMapApplyTile), mit dem Ring
+/// fuer den Besitzer seiner Einheit.
+///
+static void RAD_IsoMapViewApplyTile(RAD_IsoMapView_t *iso_map_view, const RAD_ClientTile_t *tile)
+{
+    const int32_t player = (tile->unit != NULL) ? RAD_IsoMapViewPlayerOf(iso_map_view, tile->unit->id)
+                                                : RAD_ISO_ENTITY_PLAYER_NONE;
+    RAD_IsoMapApplyTile(iso_map_view->map, tile, player);
+}
+
+///
 /// Haelt das Zielfeld laufender Zuege frei: RAD_IsoMapApplyTile legt dort eine
 /// Entitaet an, sobald die Welt die Einheit darauf meldet -- direkt nach
 /// "unit_moved" und bei jeder weiteren Aenderung des Feldes. Solange der Zug
@@ -1091,7 +1184,7 @@ static void RAD_IsoMapViewFinishMove(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapV
 
     if(!arrived && (tile != NULL))
     {
-        RAD_IsoMapApplyTile(iso_map_view->map, tile);
+        RAD_IsoMapViewApplyTile(iso_map_view, tile);
     }
 }
 
@@ -1113,7 +1206,8 @@ static bool RAD_IsoMapViewObserveWorld(RAD_IsoMapView_t *iso_map_view)
         .size_changed = RAD_IsoMapViewOnWorldSizeChanged,
         .unit_moved = RAD_IsoMapViewOnUnitMoved,
         .unit_attacked = RAD_IsoMapViewOnUnitAttacked,
-        .attack_rejected = RAD_IsoMapViewOnAttackRejected
+        .attack_rejected = RAD_IsoMapViewOnAttackRejected,
+        .players_changed = RAD_IsoMapViewOnPlayersChanged
     });
 }
 

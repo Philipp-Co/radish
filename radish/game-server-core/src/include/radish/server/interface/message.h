@@ -257,7 +257,9 @@ RAD_NetCodecResult_t RAD_SerializeUnitMovedEventToMessage(RAD_UnitId_t unit,
 /// bewirkt hat (RAD_AttackResult_t). Geschickt wird es, wenn das Spiel einen
 /// angenommenen Angriff meldet (RAD_OnUnitAttacked_t). x und y liegen in der Welt
 /// und gehen als uint32 hinaus wie beim Aufstellen; ein Ziel nur, wenn eines da
-/// war (has_target). Groesse und Fehler wie bei der Reserve.
+/// war (has_target). Groesse und Fehler wie bei der Reserve. Die Eintraege je
+/// Waffe (weapons) fallen weg, wenn die Nachricht mit ihnen nicht in "capacity"
+/// passt -- die Zaehler des ganzen Angriffs gehen immer hinaus.
 ///
 RAD_NetCodecResult_t RAD_SerializeUnitAttackedEventToMessage(const RAD_AttackResult_t *result,
                                                               uint8_t *out_message,

@@ -601,7 +601,8 @@ static void RAD_ViewHandleLeftClick(RAD_RootView_t *view)
 ///
 /// Setzt die ContextMenuView mittig ueber ihr Feld
 /// (RAD_ContextMenuViewAnchorTile), samt Kamera -- sie wandert also mit, wenn die Kamera sich bewegt. false,
-/// wenn sie nicht zu sehen ist: unsichtbar (RAD_ContextMenuViewIsVisible),
+/// wenn sie nicht zu sehen ist: unsichtbar (RAD_ContextMenuViewIsVisible) und
+/// nicht mehr schrumpfend,
 /// oder ihr Feld wird nicht (mehr) gezeichnet; dann bleibt sie, wo sie war,
 /// und bekommt weder Ereignisse noch wird sie gezeichnet. Sichtbar bleibt sie
 /// dabei.

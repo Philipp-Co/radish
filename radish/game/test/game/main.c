@@ -48,6 +48,8 @@ void test_kampf_ein_mitglied_faellt_und_die_anderen_ruecken_auf(void);
 void test_kampf_die_einheit_faellt_und_der_angriff_endet(void);
 void test_kampf_die_letzte_einheit_faellt_und_das_spiel_endet(void);
 void test_kampf_jede_waffe_in_reichweite_feuert(void);
+void test_kampf_zaehlt_je_waffe(void);
+void test_kampf_nach_dem_fall_keine_waffe_mehr(void);
 void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void);
 void test_kampf_trifft_auch_eigene_einheiten(void);
 void test_kampf_derselbe_seed_derselbe_kampf(void);
@@ -185,6 +187,8 @@ int main(void)
     RUN_TEST(test_kampf_die_einheit_faellt_und_der_angriff_endet);
     RUN_TEST(test_kampf_die_letzte_einheit_faellt_und_das_spiel_endet);
     RUN_TEST(test_kampf_jede_waffe_in_reichweite_feuert);
+    RUN_TEST(test_kampf_zaehlt_je_waffe);
+    RUN_TEST(test_kampf_nach_dem_fall_keine_waffe_mehr);
     RUN_TEST(test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt);
     RUN_TEST(test_kampf_trifft_auch_eigene_einheiten);
     RUN_TEST(test_kampf_derselbe_seed_derselbe_kampf);

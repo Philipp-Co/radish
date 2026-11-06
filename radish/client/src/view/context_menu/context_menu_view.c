@@ -51,6 +51,12 @@
 #define RAD_CONTEXT_MENU_VIEW_ITEM_GAP 32
 
 ///
+/// Wie lange sie sich auf- bzw. abbaut, in Millisekunden
+/// (RAD_ContextMenuViewScale).
+///
+#define RAD_CONTEXT_MENU_VIEW_ANIMATION_MS 200
+
+///
 /// Farben der Markierung des Weges (RAD_UpdateContextMenuViewOverlay):
 /// seine Felder durchscheinend gelb, das Ziel kraeftiger.
 ///
@@ -99,6 +105,18 @@ typedef struct
     int32_t min_range;
     int32_t max_range;
 } RAD_ContextMenuViewWeaponRange_t;
+
+///
+/// Ob sie sich gerade aufbaut oder abbaut (RAD_ContextMenuViewSyncState):
+/// OPENING waechst sie vom Punkt zu ihrer Groesse, CLOSING schrumpft sie
+/// wieder zum Punkt, NONE steht sie, wie sie ist -- ganz oder gar nicht.
+///
+typedef enum
+{
+    RAD_CONTEXT_MENU_VIEW_ANIMATION_NONE = 0,
+    RAD_CONTEXT_MENU_VIEW_ANIMATION_OPENING,
+    RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING
+} RAD_ContextMenuViewAnimation_t;
 
 ///
 /// Die Struktur steht hier und nicht im Header, wie bei view/view.c.
@@ -150,6 +168,29 @@ struct RAD_ContextMenuView
     /// davon ab, baut RAD_ContextMenuViewSyncState sie neu.
     ///
     RAD_ContextMenuState_t items_state;
+
+    ///
+    /// Das Auf- und Abbauen (RAD_ContextMenuViewAnimation_t): seit wann, nach
+    /// SDL_GetTicks64, und wie gross sie dabei zuletzt gezeichnet wurde -- 0
+    /// ein Punkt, 1 ganz (RAD_ContextMenuViewScale). Ring, Abstand und Groesse
+    /// der Eintraege gehen damit mal. Waehrend CLOSING stehen noch die
+    /// Eintraege des Zustands, aus dem sie sich schliesst; neu gebaut werden
+    /// sie erst, wenn sie ganz geschrumpft ist
+    /// (RAD_ContextMenuViewFinishAnimation).
+    ///
+    RAD_ContextMenuViewAnimation_t animation;
+    uint64_t animation_start_ms;
+    float scale;
+
+    ///
+    /// Ob sie beim letzten RAD_ContextMenuViewSyncState zu sehen war
+    /// (RAD_ContextMenuViewIsVisible) -- daran erkennt sie, ob sie sich
+    /// oeffnet oder schliesst --, und ueber welchem Feld sie da stand
+    /// (RAD_ContextMenuViewAnchorTile). Dort schrumpft sie auch.
+    ///
+    bool was_visible;
+    int32_t shown_tile_x;
+    int32_t shown_tile_y;
 
     ///
     /// Was zum Deployen gebraucht wird (RAD_ContextMenuViewRunAction): das
@@ -242,6 +283,12 @@ static void RAD_ContextMenuViewReadWeaponRanges(RAD_ContextMenuView_t *context_m
 static void RAD_ContextMenuViewSelectTarget(RAD_ContextMenuView_t *context_menu_view, const RAD_ClientTile_t *tile);
 static void RAD_ContextMenuViewReleaseAim(RAD_ContextMenuView_t *context_menu_view);
 static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_view);
+static void RAD_ContextMenuViewStateAnchor(const RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuState_t state, int32_t *x, int32_t *y);
+static float RAD_ContextMenuViewProgress(const RAD_ContextMenuView_t *context_menu_view, uint64_t now);
+static float RAD_ContextMenuViewScale(const RAD_ContextMenuView_t *context_menu_view, uint64_t now);
+static bool RAD_ContextMenuViewIsDrawn(const RAD_ContextMenuView_t *context_menu_view, uint64_t now);
+static void RAD_ContextMenuViewFinishAnimation(RAD_ContextMenuView_t *context_menu_view, uint64_t now);
+static void RAD_ContextMenuViewApplyScale(RAD_ContextMenuView_t *context_menu_view, float scale);
 static void RAD_ContextMenuViewFillRing(SDL_Renderer *renderer, float center_x, float center_y, float inner_radius, float outer_radius, SDL_Color color);
 static void RAD_ContextMenuViewFillTile(SDL_Renderer *renderer, float center_x, float center_y, SDL_Color color);
 static bool RAD_ContextMenuViewInRange(const RAD_ContextMenuView_t *context_menu_view, int32_t distance);
@@ -281,6 +328,12 @@ RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t cente
         .deployment_y = 0,
         .state_machine = NULL,
         .items_state = RAD_CONTEXT_MENU_STATE_IDLE,
+        .animation = RAD_CONTEXT_MENU_VIEW_ANIMATION_NONE,
+        .animation_start_ms = 0,
+        .scale = 1.0f,
+        .was_visible = false,
+        .shown_tile_x = 0,
+        .shown_tile_y = 0,
         .tile_x = 0,
         .tile_y = 0,
         .deploy_unit = RAD_NET_ENTITY_NONE,
@@ -447,31 +500,42 @@ bool RAD_ContextMenuViewSelectedTile(const RAD_ContextMenuView_t *context_menu_v
 
 bool RAD_ContextMenuViewAnchorTile(const RAD_ContextMenuView_t *context_menu_view, int32_t *x, int32_t *y)
 {
-    if(!RAD_ContextMenuViewIsVisible(context_menu_view))
+    // Auch waehrend sie schrumpft: dort, wo sie zuletzt zu sehen war.
+    if(!RAD_ContextMenuViewIsDrawn(context_menu_view, SDL_GetTicks64()))
     {
         return false;
     }
 
+    *x = context_menu_view->shown_tile_x;
+    *y = context_menu_view->shown_tile_y;
+    return true;
+}
+
+///
+/// Das Feld, ueber dem sie im Zustand "state" steht
+/// (RAD_ContextMenuViewAnchorTile); nur fuer einen Zustand, in dem sie zu
+/// sehen ist. RAD_ContextMenuViewSyncState merkt es sich.
+///
+static void RAD_ContextMenuViewStateAnchor(const RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuState_t state, int32_t *x, int32_t *y)
+{
     // Steht der Weg, oeffnet sie sich ueber seinem Ziel; steht das Ziel des
     // Angriffs, ueber diesem.
-    const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(context_menu_view->state_machine);
     const RAD_NetPath_t *path = &context_menu_view->move_path;
     if(state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_MOVE_ACKNOWLEDGEMENT && path->number_of_steps > 0)
     {
         *x = path->steps_to[path->number_of_steps - 1].x;
         *y = path->steps_to[path->number_of_steps - 1].y;
-        return true;
+        return;
     }
     if(state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT)
     {
         *x = context_menu_view->target_x;
         *y = context_menu_view->target_y;
-        return true;
+        return;
     }
 
     *x = context_menu_view->tile_x;
     *y = context_menu_view->tile_y;
-    return true;
 }
 
 void RAD_ContextMenuViewSetReserve(RAD_ContextMenuView_t *context_menu_view,
@@ -560,15 +624,22 @@ void RAD_UpdateContextMenuView(RAD_ContextMenuView_t *context_menu_view, SDL_Ren
 {
     // Was zu sehen ist, folgt aus dem Zustand: in IDLE nichts, sonst Ring und
     // die Eintraege des Zustands, in SELECT_ENTITY_FROM_RESERVE dazu die
-    // UnitDeploymentView (RAD_ContextMenuViewSyncState).
-    if(!RAD_ContextMenuViewIsVisible(context_menu_view))
+    // UnitDeploymentView (RAD_ContextMenuViewSyncState). Schrumpft sie, noch
+    // Ring und Eintraege des Zustands, aus dem sie sich schliesst.
+    const uint64_t now = SDL_GetTicks64();
+    RAD_ContextMenuViewFinishAnimation(context_menu_view, now);
+    if(!RAD_ContextMenuViewIsDrawn(context_menu_view, now))
     {
         return;
     }
 
+    // Auf- oder abbauend: Ring, Abstand und Eintraege so gross wie gerade.
+    const float scale = RAD_ContextMenuViewScale(context_menu_view, now);
+    RAD_ContextMenuViewApplyScale(context_menu_view, scale);
+
     const float center_x = (float)context_menu_view->center_x;
     const float center_y = (float)context_menu_view->center_y;
-    const float radius = (float)context_menu_view->radius;
+    const float radius = (float)context_menu_view->radius * scale;
 
     // Mit Alpha gemischt, damit eine durchscheinende Farbe auch durchscheint;
     // ohne Textur nimmt SDL_RenderGeometry den Blend-Modus des Renderers.
@@ -578,7 +649,7 @@ void RAD_UpdateContextMenuView(RAD_ContextMenuView_t *context_menu_view, SDL_Ren
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
     // Innen nicht unter den Mittelpunkt: ein breiterer Ring wird zur Scheibe.
-    const float half_width = 0.5f * (float)context_menu_view->ring_width;
+    const float half_width = 0.5f * (float)context_menu_view->ring_width * scale;
     const float inner_radius = (radius > half_width) ? radius - half_width : 0.0f;
     RAD_ContextMenuViewFillRing(renderer, center_x, center_y, inner_radius, radius + half_width, context_menu_view->color);
 
@@ -808,7 +879,8 @@ static float RAD_ContextMenuViewItemStep(const RAD_ContextMenuView_t *context_me
 
 ///
 /// Setzt den Mittelpunkt von "item" (view/context_menu/context_menu_item.h): auf den Radius,
-/// an seinen Winkel. Nach jeder Aenderung des Mittelpunkts der ContextMenuView
+/// an seinen Winkel -- beide mal ihrer Groesse ("scale"), die auch seine ist.
+/// Nach jeder Aenderung des Mittelpunkts oder der Groesse der ContextMenuView
 /// und fuer jeden neuen Eintrag zu rufen.
 ///
 static void RAD_ContextMenuViewPlaceItem(const RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuItem_t *item)
@@ -816,11 +888,13 @@ static void RAD_ContextMenuViewPlaceItem(const RAD_ContextMenuView_t *context_me
     // 0 Grad ist oben, also -90 Grad fuer cosf/sinf. Die y-Achse zeigt nach
     // unten, ein wachsender Winkel dreht also im Uhrzeigersinn.
     const float angle = (RAD_ContextMenuItemAngle(item) - 90.0f) * (float)M_PI / 180.0f;
+    const float radius = (float)context_menu_view->radius * context_menu_view->scale;
     RAD_ContextMenuItemSetCenter(
         item,
-        (float)context_menu_view->center_x + (float)context_menu_view->radius * cosf(angle),
-        (float)context_menu_view->center_y + (float)context_menu_view->radius * sinf(angle)
+        (float)context_menu_view->center_x + radius * cosf(angle),
+        (float)context_menu_view->center_y + radius * sinf(angle)
     );
+    RAD_ContextMenuItemSetScale(item, context_menu_view->scale);
 }
 
 ///
@@ -1140,17 +1214,57 @@ static void RAD_ContextMenuViewReleaseAim(RAD_ContextMenuView_t *context_menu_vi
 /// einblenden liest die Reserve neu --, und zwar bei (deployment_x,
 /// deployment_y).
 ///
+/// Wird sie dabei sichtbar (RAD_ContextMenuViewIsVisible), baut sie sich vom
+/// Punkt aus auf (OPENING), auch wenn sie gerade noch schrumpfte; wird sie
+/// unsichtbar, schrumpft sie wieder zum Punkt (CLOSING), mit den Eintraegen,
+/// die sie hatte -- war sie noch nicht ganz aufgebaut, von da aus, wo sie
+/// stand. Von einem sichtbaren Zustand in den naechsten wechselt sie ohne.
+///
 static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_view)
 {
-    const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(context_menu_view->state_machine);
+    RAD_ContextMenuView_t *v = context_menu_view;
+    const uint64_t now = SDL_GetTicks64();
+    RAD_ContextMenuViewFinishAnimation(v, now);
+
+    const RAD_ContextMenuState_t state = RAD_ContextMenuStateMachineState(v->state_machine);
     if(state != RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT)
     {
-        RAD_ContextMenuViewReleaseAim(context_menu_view);
+        RAD_ContextMenuViewReleaseAim(v);
     }
-    if(state != context_menu_view->items_state)
+
+    const bool visible = RAD_ContextMenuViewIsVisible(v);
+    if(visible)
     {
-        RAD_ContextMenuViewFillItems(context_menu_view, state);
+        // Steht sie, wo sie war -- schon ganz oder im Aufbau --, waechst
+        // sie einfach weiter; sonst beginnt sie als Punkt.
+        if(!v->was_visible || v->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING)
+        {
+            v->animation = RAD_CONTEXT_MENU_VIEW_ANIMATION_OPENING;
+            v->animation_start_ms = now;
+            v->scale = 0.0f;
+        }
+        RAD_ContextMenuViewStateAnchor(v, state, &v->shown_tile_x, &v->shown_tile_y);
+        if(state != v->items_state)
+        {
+            RAD_ContextMenuViewFillItems(v, state);
+        }
     }
+    else if(v->was_visible)
+    {
+        // Rueckwaerts: so weit, wie sie aufgebaut war, ist das Schrumpfen
+        // schon gelaufen. Die Eintraege bleiben, bis sie ein Punkt ist.
+        const float shown = (v->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_OPENING)
+            ? RAD_ContextMenuViewProgress(v, now)
+            : 1.0f;
+        const uint64_t elapsed = (uint64_t)((1.0f - shown) * (float)RAD_CONTEXT_MENU_VIEW_ANIMATION_MS);
+        v->animation = RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING;
+        v->animation_start_ms = (now > elapsed) ? now - elapsed : 0;
+    }
+    else if(v->animation != RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING && state != v->items_state)
+    {
+        RAD_ContextMenuViewFillItems(v, state);
+    }
+    v->was_visible = visible;
 
     RAD_UnitDeploymentView_t *deployment = context_menu_view->unit_deployment_view;
     const bool want_open = state == RAD_CONTEXT_MENU_STATE_SELECT_ENTITY_FROM_RESERVE;
@@ -1164,6 +1278,93 @@ static void RAD_ContextMenuViewSyncState(RAD_ContextMenuView_t *context_menu_vie
         RAD_UnitDeploymentViewSetPosition(deployment, context_menu_view->deployment_x, context_menu_view->deployment_y);
     }
     RAD_UnitDeploymentViewSetVisible(deployment, want_open);
+}
+
+///
+/// Wie weit das Auf- bzw. Abbauen zur Zeit "now" (SDL_GetTicks64) gelaufen
+/// ist: 0 am Anfang, 1 am Ende, in der Zeit gleichmaessig. Ohne Animation 1.
+///
+static float RAD_ContextMenuViewProgress(const RAD_ContextMenuView_t *context_menu_view, uint64_t now)
+{
+    if(context_menu_view->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_NONE
+       || now >= context_menu_view->animation_start_ms + RAD_CONTEXT_MENU_VIEW_ANIMATION_MS)
+    {
+        return 1.0f;
+    }
+    if(now <= context_menu_view->animation_start_ms)
+    {
+        return 0.0f;
+    }
+    return (float)(now - context_menu_view->animation_start_ms) / (float)RAD_CONTEXT_MENU_VIEW_ANIMATION_MS;
+}
+
+///
+/// Wie gross sie zur Zeit "now" ist: 0 ein Punkt, 1 ganz. Der Aufbau ist
+/// anfangs schnell und bremst zum Ende (1 - (1 - t)^3); der Abbau ist
+/// derselbe, rueckwaerts abgespielt. Ohne Animation ganz.
+///
+static float RAD_ContextMenuViewScale(const RAD_ContextMenuView_t *context_menu_view, uint64_t now)
+{
+    const float progress = RAD_ContextMenuViewProgress(context_menu_view, now);
+    const float t = (context_menu_view->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING)
+        ? 1.0f - progress
+        : progress;
+    const float rest = 1.0f - t;
+    return 1.0f - rest * rest * rest;
+}
+
+///
+/// Ob es zur Zeit "now" etwas zu zeichnen gibt: sie ist zu sehen
+/// (RAD_ContextMenuViewIsVisible), oder sie schrumpft noch.
+///
+static bool RAD_ContextMenuViewIsDrawn(const RAD_ContextMenuView_t *context_menu_view, uint64_t now)
+{
+    if(RAD_ContextMenuViewIsVisible(context_menu_view))
+    {
+        return true;
+    }
+    return context_menu_view->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING
+        && RAD_ContextMenuViewProgress(context_menu_view, now) < 1.0f;
+}
+
+///
+/// Beendet ein Auf- oder Abbauen, das zur Zeit "now" durchgelaufen ist: sie
+/// steht dann ganz. Nach dem Abbauen baut sie die Eintraege fuer den Zustand,
+/// in dem sie jetzt ist (RAD_ContextMenuViewFillItems) -- unsichtbar keine.
+///
+static void RAD_ContextMenuViewFinishAnimation(RAD_ContextMenuView_t *context_menu_view, uint64_t now)
+{
+    if(context_menu_view->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_NONE
+       || RAD_ContextMenuViewProgress(context_menu_view, now) < 1.0f)
+    {
+        return;
+    }
+
+    const bool closed = context_menu_view->animation == RAD_CONTEXT_MENU_VIEW_ANIMATION_CLOSING;
+    context_menu_view->animation = RAD_CONTEXT_MENU_VIEW_ANIMATION_NONE;
+    context_menu_view->scale = 1.0f;
+    if(closed)
+    {
+        RAD_ContextMenuViewFillItems(context_menu_view,
+                                     RAD_ContextMenuStateMachineState(context_menu_view->state_machine));
+    }
+    else
+    {
+        RAD_ContextMenuViewApplyScale(context_menu_view, 1.0f);
+    }
+}
+
+///
+/// Setzt ihre Groesse auf "scale" (0 ein Punkt, 1 ganz) und rueckt die
+/// Eintraege danach zurecht (RAD_ContextMenuViewPlaceItem).
+///
+static void RAD_ContextMenuViewApplyScale(RAD_ContextMenuView_t *context_menu_view, float scale)
+{
+    context_menu_view->scale = scale;
+    for(int32_t i = 0; i < context_menu_view->count; i++)
+    {
+        RAD_ContextMenuViewPlaceItem(context_menu_view, context_menu_view->items[i]);
+    }
 }
 
 ///

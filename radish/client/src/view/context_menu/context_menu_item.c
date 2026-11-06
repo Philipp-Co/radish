@@ -31,6 +31,12 @@ struct RAD_ContextMenuItem
     float center_x;
     float center_y;
     int32_t radius;
+
+    ///
+    /// Womit "radius" beim Zeichnen und Treffen malgenommen wird
+    /// (RAD_ContextMenuItemSetScale); 1 heisst: so gross wie angelegt.
+    ///
+    float scale;
     RAD_ContextMenuItemAction_t action;
 
     ///
@@ -45,6 +51,7 @@ struct RAD_ContextMenuItem
 };
 
 
+static float RAD_ContextMenuItemRadius(const RAD_ContextMenuItem_t *item);
 static void RAD_ContextMenuItemFillDisc(SDL_Renderer *renderer, float center_x, float center_y, float radius, SDL_Color color);
 static void RAD_ContextMenuItemFillRing(SDL_Renderer *renderer, float center_x, float center_y, float inner_radius, float outer_radius, SDL_Color color);
 static void RAD_ContextMenuItemFillLine(SDL_Renderer *renderer, const RAD_ContextMenuItem_t *item, float x1, float y1, float x2, float y2, float width, SDL_Color color);
@@ -65,6 +72,7 @@ RAD_ContextMenuItem_t* RAD_CreateContextMenuItem(float angle, int32_t radius)
         .center_x = 0.0f,
         .center_y = 0.0f,
         .radius = radius,
+        .scale = 1.0f,
         .action = RAD_CONTEXT_MENU_ITEM_ACTION_NONE,
         .highlighted = false,
         .hovered = false
@@ -90,6 +98,11 @@ void RAD_ContextMenuItemSetCenter(RAD_ContextMenuItem_t *item, float center_x, f
     item->center_y = center_y;
 }
 
+void RAD_ContextMenuItemSetScale(RAD_ContextMenuItem_t *item, float scale)
+{
+    item->scale = (scale > 0.0f) ? scale : 0.0f;
+}
+
 void RAD_ContextMenuItemSetAction(RAD_ContextMenuItem_t *item, RAD_ContextMenuItemAction_t action)
 {
     item->action = action;
@@ -104,7 +117,7 @@ bool RAD_ContextMenuItemContains(const RAD_ContextMenuItem_t *item, int32_t x, i
 {
     const float dx = (float)x - item->center_x;
     const float dy = (float)y - item->center_y;
-    const float r = (float)item->radius;
+    const float r = RAD_ContextMenuItemRadius(item);
     return dx * dx + dy * dy <= r * r;
 }
 
@@ -152,10 +165,19 @@ void RAD_UpdateContextMenuItem(RAD_ContextMenuItem_t *item, SDL_Renderer *render
 {
     const SDL_Color background = item->highlighted ? RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_COLOR : RAD_CONTEXT_MENU_ITEM_BACKGROUND_COLOR;
 
-    RAD_ContextMenuItemFillDisc(renderer, item->center_x, item->center_y, (float)item->radius, background);
+    RAD_ContextMenuItemFillDisc(renderer, item->center_x, item->center_y, RAD_ContextMenuItemRadius(item), background);
     RAD_ContextMenuItemDrawIcon(item, renderer, RAD_CONTEXT_MENU_ITEM_ICON_COLOR);
 }
 
+
+///
+/// Sein Radius, wie er gezeichnet wird und trifft: "radius" mal "scale", in
+/// Pixeln.
+///
+static float RAD_ContextMenuItemRadius(const RAD_ContextMenuItem_t *item)
+{
+    return (float)item->radius * item->scale;
+}
 
 ///
 /// Zeichnet das Symbol seiner Aktion in "color", in Bruchteilen seines Radius
@@ -170,7 +192,7 @@ void RAD_UpdateContextMenuItem(RAD_ContextMenuItem_t *item, SDL_Renderer *render
 ///
 static void RAD_ContextMenuItemDrawIcon(const RAD_ContextMenuItem_t *item, SDL_Renderer *renderer, SDL_Color color)
 {
-    const float r = (float)item->radius;
+    const float r = RAD_ContextMenuItemRadius(item);
 
     switch(item->action)
     {
@@ -291,7 +313,7 @@ static void RAD_ContextMenuItemFillRing(SDL_Renderer *renderer, float center_x, 
 ///
 static void RAD_ContextMenuItemFillLine(SDL_Renderer *renderer, const RAD_ContextMenuItem_t *item, float x1, float y1, float x2, float y2, float width, SDL_Color color)
 {
-    const float r = (float)item->radius;
+    const float r = RAD_ContextMenuItemRadius(item);
     const float dx = x2 - x1;
     const float dy = y2 - y1;
     const float length = sqrtf(dx * dx + dy * dy);
@@ -322,7 +344,7 @@ static void RAD_ContextMenuItemFillLine(SDL_Renderer *renderer, const RAD_Contex
 ///
 static void RAD_ContextMenuItemFillTriangle(SDL_Renderer *renderer, const RAD_ContextMenuItem_t *item, const float points[6], SDL_Color color)
 {
-    const float r = (float)item->radius;
+    const float r = RAD_ContextMenuItemRadius(item);
     SDL_Vertex vertices[3];
     for(int i = 0; i < 3; i++)
     {

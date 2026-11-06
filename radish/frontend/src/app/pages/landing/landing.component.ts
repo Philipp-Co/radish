@@ -3,58 +3,6 @@ import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth.service';
 
-interface IsoTile {
-  points: string;
-  kind: 'open' | 'cover' | 'blocked';
-}
-
-interface IsoUnit {
-  x: number;
-  y: number;
-  side: 'own' | 'enemy';
-}
-
-// Kantenlaengen einer Raute im isometrischen Raster (halbe Breite/Hoehe).
-const TILE_HW = 32;
-const TILE_HH = 16;
-const GRID_SIZE = 6;
-const ORIGIN_X = GRID_SIZE * TILE_HW;
-const ORIGIN_Y = 8;
-
-// Rein dekorative Gelaendeverteilung fuer das Hero-Bild.
-const COVER_TILES = new Set(['1,3', '2,3', '4,1']);
-const BLOCKED_TILES = new Set(['3,0', '0,5', '5,4']);
-
-function tileCenter(col: number, row: number): { x: number; y: number } {
-  return {
-    x: ORIGIN_X + (col - row) * TILE_HW,
-    y: ORIGIN_Y + (col + row) * TILE_HH + TILE_HH,
-  };
-}
-
-function buildTiles(): IsoTile[] {
-  const tiles: IsoTile[] = [];
-  for (let row = 0; row < GRID_SIZE; row++) {
-    for (let col = 0; col < GRID_SIZE; col++) {
-      const { x, y } = tileCenter(col, row);
-      const key = `${col},${row}`;
-      tiles.push({
-        points: `${x},${y - TILE_HH} ${x + TILE_HW},${y} ${x},${y + TILE_HH} ${x - TILE_HW},${y}`,
-        kind: BLOCKED_TILES.has(key) ? 'blocked' : COVER_TILES.has(key) ? 'cover' : 'open',
-      });
-    }
-  }
-  return tiles;
-}
-
-function buildUnits(): IsoUnit[] {
-  return [
-    { ...tileCenter(1, 1), side: 'own' },
-    { ...tileCenter(2, 0), side: 'own' },
-    { ...tileCenter(4, 4), side: 'enemy' },
-  ];
-}
-
 @Component({
   selector: 'app-landing',
   standalone: true,
@@ -79,22 +27,13 @@ function buildUnits(): IsoUnit[] {
           </div>
         </div>
 
-        <svg
+        <img
           class="hero-map"
-          viewBox="0 0 384 216"
-          role="img"
-          aria-label="Isometrisches Spielfeld mit Einheiten"
-        >
-          @for (tile of tiles; track $index) {
-            <polygon [attr.points]="tile.points" [class]="'tile tile-' + tile.kind" />
-          }
-          @for (unit of units; track $index) {
-            <g [class]="'unit unit-' + unit.side">
-              <ellipse [attr.cx]="unit.x" [attr.cy]="unit.y + 4" rx="12" ry="5" class="unit-shadow" />
-              <rect [attr.x]="unit.x - 7" [attr.y]="unit.y - 20" width="14" height="22" rx="4" />
-            </g>
-          }
-        </svg>
+          src="landing_page.png"
+          width="558"
+          height="322"
+          alt="Isometrisches Spielfeld mit Einheiten"
+        />
       </section>
 
       <section class="features" aria-label="Was radish ausmacht">
@@ -212,28 +151,6 @@ function buildUnits(): IsoUnit[] {
         width: 100%;
         height: auto;
       }
-      .tile {
-        stroke: var(--bg);
-        stroke-width: 1.5;
-      }
-      .tile-open {
-        fill: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
-      }
-      .tile-cover {
-        fill: color-mix(in srgb, var(--accent) 45%, var(--bg-elevated));
-      }
-      .tile-blocked {
-        fill: var(--border);
-      }
-      .unit-shadow {
-        fill: rgba(0, 0, 0, 0.45);
-      }
-      .unit-own rect {
-        fill: var(--accent-hover);
-      }
-      .unit-enemy rect {
-        fill: var(--danger);
-      }
 
       .features {
         display: grid;
@@ -320,9 +237,6 @@ function buildUnits(): IsoUnit[] {
 export class LandingComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-
-  readonly tiles = buildTiles();
-  readonly units = buildUnits();
 
   primaryLabel(): string {
     return this.auth.isAuthenticated() ? 'Zu meinen Spielen' : 'Einloggen';

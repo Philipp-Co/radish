@@ -80,6 +80,29 @@ typedef void (*RAD_OnUnitSighted_t)(void *user_argument, const RAD_Unit_t *unit,
 typedef void (*RAD_OnUnitLost_t)(void *user_argument, RAD_UnitId_t unit, int32_t x, int32_t y);
 
 ///
+/// Hoechstzahl der Eintraege je Waffe in einem Angriff: jede Waffe jedes
+/// Mitglieds der angreifenden Einheit hoechstens einmal.
+///
+#define RAD_ATTACK_MAX_WEAPONS (RAD_UNIT_MAX_MEMBERS * RAD_UNIT_MAX_WEAPONS)
+
+///
+/// Was eine Waffe in einem Angriff bewirkt hat: die Waffe "weapon" des
+/// Mitglieds "member" der angreifenden Einheit, beides Indizes in ihrer
+/// Reihenfolge beim Angriff. Die Zaehler wie in RAD_AttackResult_t; dazu, wie
+/// viele Mitglieder des Ziels durch ihre Schuesse gefallen sind.
+///
+typedef struct
+{
+    int32_t member;
+    int32_t weapon;
+    int32_t shots;
+    int32_t hits;
+    int32_t penetrations;
+    int32_t wounds;
+    int32_t members_killed;
+} RAD_AttackWeaponResult_t;
+
+///
 /// Was ein Angriff bewirkt hat (control/attack_unit.c). Die Zaehler sind die
 /// Stufen eines Schusses, jede eine Teilmenge der vorigen: abgegeben, getroffen,
 /// durch die Ruestung, gewirkt. Jeder wirkende Schuss kostet das getroffene
@@ -89,6 +112,13 @@ typedef void (*RAD_OnUnitLost_t)(void *user_argument, RAD_UnitId_t unit, int32_t
 /// RAD_UNIT_NONE fuer ein leeres Feld; dann wurde nicht geschossen und alle
 /// Zaehler sind 0. "target_destroyed": sie hat dabei ihr letztes Mitglied
 /// verloren und ist vom Feld (RAD_OnUnitDestroyed_t ist dann schon gemeldet).
+///
+/// "weapons" schluesselt dieselben Zaehler nach Waffen auf: ein Eintrag je
+/// Waffe, die geschossen hat, in der Reihenfolge des Kampfes. Eine Waffe ausser
+/// Reichweite fehlt, ebenso eine, die nach dem Fall des Ziels nicht mehr dran
+/// kam. Die Eintraege zusammen ergeben die Zaehler oben. Fehlt der Schuetze in
+/// einer Meldung (attacker RAD_UNIT_NONE), ist die Liste leer -- sie verriete,
+/// wie er bewaffnet ist.
 ///
 typedef struct
 {
@@ -102,6 +132,8 @@ typedef struct
     int32_t wounds;
     int32_t members_killed;
     bool target_destroyed;
+    int32_t number_of_weapons;
+    RAD_AttackWeaponResult_t weapons[RAD_ATTACK_MAX_WEAPONS];
 } RAD_AttackResult_t;
 
 ///

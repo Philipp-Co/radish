@@ -24,6 +24,8 @@ void test_message_lehnt_ein_angriffsziel_jenseits_von_int16_ab(void);
 void test_message_packt_die_antwort_auf_ein_attack(void);
 void test_message_packt_einen_zug(void);
 void test_message_packt_einen_angriff(void);
+void test_message_packt_einen_angriff_je_waffe(void);
+void test_message_packt_einen_zu_grossen_angriff_ohne_waffen(void);
 void test_message_packt_einen_angriff_ohne_ziel(void);
 void test_message_packt_eine_zerstoerung(void);
 void test_message_packt_eine_aufstellzone(void);
@@ -68,6 +70,8 @@ int main(void)
     RUN_TEST(test_message_packt_die_antwort_auf_ein_attack);
     RUN_TEST(test_message_packt_einen_zug);
     RUN_TEST(test_message_packt_einen_angriff);
+    RUN_TEST(test_message_packt_einen_angriff_je_waffe);
+    RUN_TEST(test_message_packt_einen_zu_grossen_angriff_ohne_waffen);
     RUN_TEST(test_message_packt_einen_angriff_ohne_ziel);
     RUN_TEST(test_message_packt_eine_zerstoerung);
     RUN_TEST(test_message_packt_eine_aufstellzone);

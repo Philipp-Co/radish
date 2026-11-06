@@ -18,6 +18,7 @@ client/command/ bzw. StreamView unter client/stream/), sondern ueber den
 WebSocket (siehe api/consumers.py, EchoConsumer).
 """
 
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
@@ -324,17 +325,40 @@ class GameStartView(APIView):
 
 class GameListView(APIView):
     """
-    Liefert alle Spiele in der Lobby mit Name und Anzahl der bereits
+    Liefert die Spiele in der Lobby mit Name und Anzahl der bereits
     angemeldeten Spieler (1, solange nur der Ersteller da ist, sonst 2).
     Gestartete Spiele fehlen: denen kann ohnehin niemand mehr beitreten.
+
+    Seitenweise, je PAGE_SIZE Spiele, aelteste zuerst (wer am laengsten
+    wartet, steht oben). Die Seite kommt als "?page=" (ab 1); ungueltige
+    Werte ergeben Seite 1, zu grosse die letzte -- so landet ein Client,
+    dessen Seite durch Spielstarts weggefallen ist, nicht im Leeren. Welche
+    Seite tatsaechlich geliefert wurde, steht deshalb mit in der Antwort.
+
+    Mit "?name=" nur das Spiel genau dieses Namens (oder keins) -- dafuer
+    schlaegt die Beitreten-Seite das Punktelimit nach, unabhaengig davon,
+    auf welcher Seite das Spiel stuende.
     """
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
+    PAGE_SIZE = 20
+
     def get(self, request):
-        games = Game.objects.filter(status=GameStatus.LOBBY)
-        serializer = GameListSerializer(games, many=True)
-        return Response({"games": serializer.data})
+        games = Game.objects.filter(status=GameStatus.LOBBY).order_by("id")
+        name = request.query_params.get("name")
+        if name is not None:
+            games = games.filter(name=name)
+        page = Paginator(games, self.PAGE_SIZE).get_page(request.query_params.get("page"))
+        serializer = GameListSerializer(page.object_list, many=True)
+        return Response(
+            {
+                "games": serializer.data,
+                "count": page.paginator.count,
+                "page": page.number,
+                "page_size": self.PAGE_SIZE,
+            }
+        )
 
 
 class CurrentGameView(APIView):

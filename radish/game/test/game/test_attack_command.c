@@ -591,6 +591,82 @@ void test_kampf_jede_waffe_in_reichweite_feuert(void)
     abbauen();
 }
 
+///
+/// **Gezaehlt wird je Waffe** (RAD_AttackWeaponResult_t): ein Eintrag je Waffe,
+/// die geschossen hat, in der Reihenfolge des Kampfes -- die ausser Reichweite
+/// fehlt. Zusammen ergeben die Eintraege die Zaehler des Angriffs.
+///
+void test_kampf_zaehlt_je_waffe(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 11, 2, 0, 0);
+    ziel(4, 2, 1, 100, 0, 11);
+
+    // Wie oben: Mitglied 0 verfehlt mit Waffe 0, seine Waffe 1 reicht nicht,
+    // Mitglied 1 trifft mit seiner einen Waffe immer und kommt immer durch.
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, angreifende);
+    unit->members[0].number_of_weapons = 2;
+    unit->members[0].weapons[1].max_range = 1;
+    unit->members[0].weapons[1].shots = 7;
+    unit->number_of_members = 2;
+    unit->members[1] = unit->members[0];
+    unit->members[1].accuracy = 1;
+    unit->members[1].number_of_weapons = 1;
+    unit->members[1].weapons[0].shots = 3;
+
+    greife_an(angreifende, 4, 2);
+
+    const RAD_AttackResult_t *result = &angriffe.result;
+    TEST_ASSERT_EQUAL_INT(2, result->number_of_weapons);
+
+    TEST_ASSERT_EQUAL_INT(0, result->weapons[0].member);
+    TEST_ASSERT_EQUAL_INT(0, result->weapons[0].weapon);
+    TEST_ASSERT_EQUAL_INT(2, result->weapons[0].shots);
+    TEST_ASSERT_EQUAL_INT(0, result->weapons[0].hits);
+
+    TEST_ASSERT_EQUAL_INT(1, result->weapons[1].member);
+    TEST_ASSERT_EQUAL_INT(0, result->weapons[1].weapon);
+    TEST_ASSERT_EQUAL_INT(3, result->weapons[1].shots);
+    TEST_ASSERT_EQUAL_INT(3, result->weapons[1].hits);
+    TEST_ASSERT_EQUAL_INT(3, result->weapons[1].penetrations);
+    TEST_ASSERT_EQUAL_INT(0, result->weapons[1].wounds);
+
+    TEST_ASSERT_EQUAL_INT(result->shots, result->weapons[0].shots + result->weapons[1].shots);
+    TEST_ASSERT_EQUAL_INT(result->hits, result->weapons[0].hits + result->weapons[1].hits);
+    TEST_ASSERT_EQUAL_INT(result->penetrations,
+                          result->weapons[0].penetrations + result->weapons[1].penetrations);
+
+    abbauen();
+}
+
+///
+/// Faellt das Ziel, kommt keine Waffe mehr dran -- und bekommt keinen Eintrag.
+/// Die Waffe, deren Schuss es fallen liess, zaehlt das gefallene Mitglied.
+///
+void test_kampf_nach_dem_fall_keine_waffe_mehr(void)
+{
+    aufbauen();
+    mitschreiben();
+    const RAD_UnitId_t angreifende = schuetze(2, 2, 1, 4, 0, 0);
+    ziel(4, 2, 1, 1, 0, 0);
+
+    RAD_Unit_t *unit = RAD_WorldUnitById(&game->world, angreifende);
+    unit->number_of_members = 2;
+    unit->members[1] = unit->members[0];
+
+    greife_an(angreifende, 4, 2);
+
+    TEST_ASSERT_TRUE(angriffe.result.target_destroyed);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.number_of_weapons);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.weapons[0].member);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.weapons[0].shots);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.weapons[0].wounds);
+    TEST_ASSERT_EQUAL_INT(1, angriffe.result.weapons[0].members_killed);
+
+    abbauen();
+}
+
 /// Ein leeres Feld: der Angriff zaehlt, aber es wird nicht gewuerfelt.
 void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void)
 {
@@ -605,6 +681,7 @@ void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void)
     TEST_ASSERT_EQUAL_INT(1, angriffe.attacked);
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, angriffe.result.target);
     TEST_ASSERT_EQUAL_INT(0, angriffe.result.shots);
+    TEST_ASSERT_EQUAL_INT(0, angriffe.result.number_of_weapons);
     TEST_ASSERT_EQUAL_UINT64(vorher, game->dice.state);
 
     abbauen();
@@ -940,8 +1017,11 @@ void test_kampf_angriff_meldet_beiden_besitzern(void)
     TEST_ASSERT_EQUAL_INT(0, vom_zuschauer.attacked);
 
     // Ihre Einheit sieht nichts (Sichtweite 0): der Verteidiger erfaehrt, was
-    // ankam, aber nicht von wem.
+    // ankam, aber nicht von wem -- und nicht, womit.
     TEST_ASSERT_EQUAL_INT(RAD_UNIT_NONE, vom_verteidiger.result.attacker);
+    TEST_ASSERT_EQUAL_INT(1, vom_verteidiger.result.shots);
+    TEST_ASSERT_EQUAL_INT(0, vom_verteidiger.result.number_of_weapons);
+    TEST_ASSERT_EQUAL_INT(1, vom_angreifer.result.number_of_weapons);
 
     // Auf ein leeres Feld: nur der Angreifer.
     RAD_WorldUnitById(&game->world, angreifende)->turn.attacked = 0;

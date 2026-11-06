@@ -1374,6 +1374,51 @@ class GameArmyTests(GameTestCase):
 
         self.assertEqual(response.data["games"][0]["points_limit"], 750)
 
+    def open_games(self, count):
+        """count Lobby-Spiele fremder Spieler, je mit eigenem Server."""
+        for index in range(count):
+            server = GameServer.objects.create(
+                name=f"server-{index}", address="10.0.1.1", port=8000 + index, is_occupied=True,
+            )
+            host = Player.objects.create(user=User.objects.create(username=f"host-{index}"))
+            Game.objects.create(
+                name=f"spiel-{index:02d}", password="geheim", server=server, host=host,
+                points_limit=100,
+            )
+
+    def test_game_list_is_paginated(self):
+        self.open_games(25)
+
+        first = self.client.get("/api/client/games/")
+        second = self.client.get("/api/client/games/?page=2")
+
+        self.assertEqual(len(first.data["games"]), 20)
+        self.assertEqual(first.data["count"], 25)
+        self.assertEqual(first.data["page"], 1)
+        self.assertEqual(first.data["page_size"], 20)
+        self.assertEqual(first.data["games"][0]["name"], "spiel-00")
+        self.assertEqual([game["name"] for game in second.data["games"]],
+                         [f"spiel-{index:02d}" for index in range(20, 25)])
+        self.assertEqual(second.data["page"], 2)
+
+    def test_game_list_clamps_invalid_page(self):
+        self.open_games(3)
+
+        too_large = self.client.get("/api/client/games/?page=9")
+        garbage = self.client.get("/api/client/games/?page=abc")
+
+        self.assertEqual(too_large.data["page"], 1)
+        self.assertEqual(len(too_large.data["games"]), 3)
+        self.assertEqual(garbage.data["page"], 1)
+
+    def test_game_list_filters_by_name_across_pages(self):
+        self.open_games(25)
+
+        response = self.client.get("/api/client/games/?name=spiel-23")
+
+        self.assertEqual([game["name"] for game in response.data["games"]], ["spiel-23"])
+        self.assertEqual(response.data["count"], 1)
+
     def test_second_player_takes_army_when_host_leaves(self):
         game = self.open_game()
         self.join(game)

@@ -61,6 +61,59 @@ typedef struct
 } RAD_ClientPosition_t;
 
 ///
+/// Hoechstzahl der Eintraege je Waffe in einem Angriff: jede Waffe jedes
+/// Mitglieds hoechstens einmal.
+///
+#define RAD_CLIENT_ATTACK_WEAPONS_MAX (RAD_CLIENT_UNIT_MEMBERS_MAX * RAD_CLIENT_MEMBER_WEAPONS_MAX)
+
+///
+/// Was eine Waffe in einem Angriff bewirkt hat: die Waffe "weapon" des
+/// Mitglieds "member" der angreifenden Einheit, als Indizes in
+/// RAD_ClientUnit_t.members und RAD_ClientMember_t.weapons. Die Zaehler wie in
+/// RAD_ClientAttackResult_t.
+///
+typedef struct
+{
+    uint32_t member;
+    uint32_t weapon;
+    uint32_t shots;
+    uint32_t hits;
+    uint32_t penetrations;
+    uint32_t wounds;
+    uint32_t members_killed;
+} RAD_ClientAttackWeapon_t;
+
+///
+/// Ein Angriff, wie der Server ihn bestaetigt hat: die Einheit "attacker" hat
+/// das Feld "target" angegriffen -- RAD_CLIENT_UNIT_ID_NONE, wenn der Server
+/// den Schuetzen nicht nennt.
+///
+/// "victim" ist die Einheit, die auf dem Feld stand, RAD_CLIENT_UNIT_ID_NONE
+/// fuer ein leeres Feld. Die Zaehler sind die Stufen ihrer Schuesse, jede eine
+/// Teilmenge der vorigen: abgegeben, getroffen, durch die Ruestung, gewirkt
+/// (= abgezogene Lebenspunkte); dazu die gefallenen Mitglieder und ob das Ziel
+/// zerstoert ist -- dann hat die Welt es schon nicht mehr.
+///
+/// "weapons" schluesselt die Zaehler nach Waffen auf, ein Eintrag je Waffe, die
+/// geschossen hat. Leer, wenn der Schuetze unbekannt ist oder der Server die
+/// Liste nicht mitschicken konnte; die Zaehler oben gelten immer.
+///
+typedef struct
+{
+    RAD_ClientUnitId_t attacker;
+    RAD_ClientPosition_t target;
+    RAD_ClientUnitId_t victim;
+    uint32_t shots;
+    uint32_t hits;
+    uint32_t penetrations;
+    uint32_t wounds;
+    uint32_t members_killed;
+    bool victim_destroyed;
+    uint32_t number_of_weapons;
+    RAD_ClientAttackWeapon_t weapons[RAD_CLIENT_ATTACK_WEAPONS_MAX];
+} RAD_ClientAttackResult_t;
+
+///
 /// Spieler einer Partie, und damit Reserven in der Welt.
 ///
 #define RAD_CLIENT_WORLD_PLAYERS 2
@@ -101,6 +154,16 @@ typedef struct
 typedef struct
 {
     RAD_ClientTile_t tiles[RAD_ISO_MAP_SIZE][RAD_ISO_MAP_SIZE];
+
+    ///
+    /// Wer mitspielt, in der Reihenfolge ihrer Zuege, wie der Server sie
+    /// schickt (game.proto NetPlayersEvent); "number_of_players" belegt. Nur
+    /// ueber RAD_ClientWorldSetPlayers. Die Stelle eines Spielers darin gibt
+    /// seine Farbe vor (RAD_ClientWorldPlayerIndex) -- auf beiden Clients
+    /// dieselbe.
+    ///
+    RAD_ClientPlayerId_t players[RAD_CLIENT_WORLD_PLAYERS];
+    int32_t number_of_players;
 
     ///
     /// Ob der Server dieses Feld schon geschickt hat. Ein unbekanntes Feld ist
@@ -157,7 +220,8 @@ typedef enum
     RAD_CLIENT_WORLD_EVENT_SIZE_CHANGED,
     RAD_CLIENT_WORLD_EVENT_UNIT_MOVED,
     RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED,
-    RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED
+    RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED,
+    RAD_CLIENT_WORLD_EVENT_PLAYERS_CHANGED
 } RAD_ClientWorldEvent_t;
 
 ///
@@ -172,12 +236,17 @@ typedef enum
 /// die Welt ihn ausfuehrt: die Einheit steht dabei noch auf steps[0]. "steps"
 /// gehoert dem Aufrufer und gilt nur waehrend des Callbacks.
 ///
-/// "unit_attacked" meldet, dass eine Einheit das Feld "target" angegriffen hat
-/// (RAD_ClientWorldReportAttack). Die Welt aendert dabei nichts.
+/// "unit_attacked" meldet einen Angriff samt dem, was er bewirkt hat
+/// (RAD_ClientWorldReportAttack). Die Welt aendert dabei nichts. "result"
+/// gehoert dem Aufrufer und gilt nur waehrend des Callbacks.
 ///
 /// "attack_rejected" meldet, dass der Server einen eigenen Angriff der Einheit
 /// "unit" abgelehnt hat (RAD_ClientWorldReportAttackRejected). Die Welt aendert
 /// dabei ebenso nichts.
+///
+/// "players_changed" meldet, dass sich die Mitspieler oder ihre Reihenfolge
+/// geaendert haben (RAD_ClientWorldSetPlayers) -- und damit womoeglich die Farbe
+/// der Einheiten auf dem Feld.
 ///
 typedef struct
 {
@@ -187,9 +256,10 @@ typedef struct
     void (*size_changed)(void *user_argument, const RAD_ClientWorld_t *world);
     void (*unit_moved)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
                        const RAD_ClientPosition_t *steps, size_t count);
-    void (*unit_attacked)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
-                          RAD_ClientPosition_t target);
+    void (*unit_attacked)(void *user_argument, const RAD_ClientWorld_t *world,
+                          const RAD_ClientAttackResult_t *result);
     void (*attack_rejected)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
+    void (*players_changed)(void *user_argument, const RAD_ClientWorld_t *world);
 } RAD_ClientWorldObserver_t;
 
 ///
@@ -260,13 +330,13 @@ void RAD_ClientWorldMoveEntity(RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit
                                const RAD_ClientPosition_t *steps, size_t count);
 
 ///
-/// Meldet "unit_attacked": die Einheit "unit" hat das Feld "target"
-/// angegriffen, wie der Server es bestaetigt hat. Nur fuer die Beobachter --
-/// was der Angriff bewirkt hat, bringen die neuen Staende der Einheiten
+/// Meldet "unit_attacked": ein Angriff, wie der Server ihn bestaetigt hat, mit
+/// dem, was er bewirkt hat ("result"). Nur fuer die Beobachter -- in die Welt
+/// tragen ihn die neuen Staende der Einheiten ein
 /// (io/net_event_handler/unit_attacked.c). Ein Ziel ausserhalb der Welt meldet
 /// sie nicht.
 ///
-void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit, RAD_ClientPosition_t target);
+void RAD_ClientWorldReportAttack(const RAD_ClientWorld_t *world, const RAD_ClientAttackResult_t *result);
 
 ///
 /// Meldet "attack_rejected": der Server hat einen eigenen Angriff der Einheit
@@ -375,6 +445,20 @@ const RAD_ClientReserve_t* RAD_ClientWorldReserve(const RAD_ClientWorld_t *world
 ///
 void RAD_ClientWorldSetCurrentPlayer(RAD_ClientWorld_t *world, RAD_ClientPlayerId_t player);
 RAD_ClientPlayerId_t RAD_ClientWorldCurrentPlayer(const RAD_ClientWorld_t *world);
+
+///
+/// Uebernimmt die Mitspieler "players" in der Reihenfolge ihrer Zuege, wie der
+/// Server sie schickt (io/net_event_handler/players.c). Mehr als
+/// RAD_CLIENT_WORLD_PLAYERS faellt weg, ebenso RAD_CLIENT_PLAYER_NONE. Meldet
+/// "players_changed" -- nur, wenn sich etwas aendert.
+///
+void RAD_ClientWorldSetPlayers(RAD_ClientWorld_t *world, const RAD_ClientPlayerId_t *players, size_t count);
+
+///
+/// Die Stelle von "player" unter den Mitspielern (0 fuer den, der zuerst zieht),
+/// oder -1, wenn er nicht mitspielt oder RAD_CLIENT_PLAYER_NONE ist.
+///
+int32_t RAD_ClientWorldPlayerIndex(const RAD_ClientWorld_t *world, RAD_ClientPlayerId_t player);
 
 ///
 /// Runde und Ausgang des Spiels (siehe oben). Gesetzt aus den Ereignissen des

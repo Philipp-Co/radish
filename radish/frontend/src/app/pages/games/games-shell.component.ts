@@ -1,10 +1,13 @@
-import { Component, HostListener, inject, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Component, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
+import { filter, map } from 'rxjs';
 
 import { AuthService } from '../../core/auth.service';
 
 /**
- * Rahmen um die Unterseiten "Aktuelles Spiel" (current/), "Laufende Spiele"
+ * Rahmen um die Unterseiten "Start" (home/, der Hub nach dem Login),
+ * "Aktuelles Spiel" (current/), "Laufende Spiele"
  * (list/), "Spiel erstellen" (create/), "Spiel beitreten" (join/), "Armee"
  * (armies/, samt armies/new und armies/:id) und,
  * nur fuer Nutzer mit der Keycloak-Realm-Rolle "Radish-Admin", "Admin"
@@ -12,46 +15,25 @@ import { AuthService } from '../../core/auth.service';
  * eingehaengt. Der authGuard sitzt an dieser Elternroute und gilt damit
  * fuer alle Unterseiten mit; admin/ hat zusaetzlich noch adminGuard.
  *
- * Die Navigation sitzt in einem Burgermenue oben links, das als Leiste
- * von links hereinfaehrt. Es schliesst sich nach einem Klick auf einen
- * Eintrag, auf den abgedunkelten Hintergrund oder mit Escape.
+ * Ein eigenes Menue gibt es nicht: navigiert wird ueber die Kacheln im Hub
+ * (siehe HomeComponent). In der Kopfleiste steht links der Logout, rechts
+ * auf allen Unterseiten ausser dem Hub selbst ein Zurueck-Button: meist
+ * "Zum Hub" (home/), auf Unterseiten zweiter Ebene dagegen zu ihrer Liste:
+ * "Spiel beitreten" (join/) zu "Laufende Spiele" (list/), eine einzelne
+ * Armee (armies/:id, armies/new) zu "Armeen" (armies/) -- siehe backLink.
  */
 @Component({
   selector: 'app-games-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterOutlet],
   template: `
     <header class="topbar">
-      <button
-        class="secondary burger"
-        type="button"
-        aria-label="Menü"
-        aria-controls="main-menu"
-        [attr.aria-expanded]="menuOpen()"
-        (click)="toggleMenu()"
-      >
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
-      <h1>radish</h1>
-    </header>
-
-    @if (menuOpen()) {
-      <div class="backdrop" (click)="closeMenu()"></div>
-    }
-
-    <nav id="main-menu" class="drawer" [class.open]="menuOpen()" [attr.inert]="menuOpen() ? null : ''">
-      <a routerLink="current" routerLinkActive="active" (click)="closeMenu()">Aktuelles Spiel</a>
-      <a routerLink="list" routerLinkActive="active" (click)="closeMenu()">Laufende Spiele</a>
-      <a routerLink="create" routerLinkActive="active" (click)="closeMenu()">Spiel erstellen</a>
-      <a routerLink="join" routerLinkActive="active" (click)="closeMenu()">Spiel beitreten</a>
-      <a routerLink="armies" routerLinkActive="active" (click)="closeMenu()">Armee</a>
-      @if (auth.isAdmin()) {
-        <a routerLink="admin" routerLinkActive="active" (click)="closeMenu()">Admin</a>
-      }
       <button class="secondary logout" type="button" (click)="logout()">Logout</button>
-    </nav>
+      <h1>radish</h1>
+      @if (backLink(); as back) {
+        <a class="hub-link" [routerLink]="back.link">← {{ back.label }}</a>
+      }
+    </header>
 
     <main class="page">
       <router-outlet />
@@ -74,66 +56,24 @@ import { AuthService } from '../../core/auth.service';
         margin: 0;
         font-size: 1.25rem;
       }
-      .burger {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 5px;
-        width: 2.5rem;
-        height: 2.5rem;
-        padding: 0 0.55rem;
+      /* Kompakter als die globalen Buttons, gleich gross wie .hub-link. */
+      .logout {
+        padding: 0.45rem 0.9rem;
       }
-      .burger span {
-        display: block;
-        height: 2px;
-        background: var(--text, #d8d8dc);
-        border-radius: 1px;
-      }
-      .burger:hover span {
-        background: var(--accent, #5fb9a3);
-      }
-      .backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 20;
-        background: rgba(0, 0, 0, 0.5);
-      }
-      .drawer {
-        position: fixed;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        z-index: 30;
-        width: min(260px, 80vw);
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-        padding: 1rem 0.75rem;
-        background: var(--bg-elevated, #17171b);
-        border-right: 1px solid var(--border, #2a2a30);
-        transform: translateX(-100%);
-        transition: transform 0.2s ease;
-      }
-      .drawer.open {
-        transform: translateX(0);
-      }
-      .drawer a {
-        padding: 0.6rem 0.75rem;
-        color: var(--text-dim, #8a8a92);
-        text-decoration: none;
+      /* Link im Look der globalen Buttons (siehe styles.css). */
+      .hub-link {
+        margin-left: auto;
+        padding: 0.45rem 0.9rem;
+        border: 1px solid var(--button-hover);
+        border-radius: 6px;
+        background: var(--button-bg);
+        color: var(--button-text);
         font-weight: 600;
-        border-left: 2px solid transparent;
-        border-radius: 4px;
+        text-decoration: none;
+        transition: background 0.15s ease;
       }
-      .drawer a:hover {
-        color: var(--text, #d8d8dc);
-      }
-      .drawer a.active {
-        color: var(--text, #d8d8dc);
-        border-left-color: var(--accent, #5fb9a3);
-      }
-      .drawer .logout {
-        margin-top: auto;
+      .hub-link:hover {
+        background: var(--button-hover);
       }
       .page {
         max-width: 640px;
@@ -147,24 +87,37 @@ import { AuthService } from '../../core/auth.service';
   ],
 })
 export class GamesShellComponent {
-  // Nicht mehr private: das Template liest auth.isAdmin() direkt, um
-  // den Admin-Eintrag nur fuer die Keycloak-Realm-Rolle "Radish-Admin"
-  // anzuzeigen (siehe AuthService.isAdmin).
-  protected readonly auth = inject(AuthService);
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
 
-  protected readonly menuOpen = signal(false);
+  /**
+   * Ziel des Zurueck-Buttons oben rechts: auf dem Hub (home/) keiner,
+   * auf "Spiel beitreten" (join/) zurueck zur Spieleliste und in einer
+   * einzelnen Armee (armies/...) zurueck zur Armeeliste -- jeweils dorthin,
+   * von wo man die Seite geoeffnet hat --, sonst zum Hub.
+   */
+  protected readonly backLink = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => this.backLinkFor(event.urlAfterRedirects)),
+    ),
+    { initialValue: this.backLinkFor(this.router.url) },
+  );
 
-  toggleMenu(): void {
-    this.menuOpen.update((open) => !open);
-  }
-
-  closeMenu(): void {
-    this.menuOpen.set(false);
-  }
-
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.closeMenu();
+  private backLinkFor(url: string): { link: string; label: string } | null {
+    const path = this.router.parseUrl(url).root.children['primary']?.toString();
+    if (path === 'games/home') {
+      return null;
+    }
+    if (path === 'games/join') {
+      return { link: 'list', label: 'Laufende Spiele' };
+    }
+    // Armee-Detail (armies/:id) und neue Armee (armies/new) -- zurueck zur
+    // Armeeliste, von der aus man sie geoeffnet hat.
+    if (path?.startsWith('games/armies/')) {
+      return { link: 'armies', label: 'Armeen' };
+    }
+    return { link: 'home', label: 'Zum Hub' };
   }
 
   logout(): void {

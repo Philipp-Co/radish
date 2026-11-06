@@ -228,6 +228,12 @@ message NetUnitMovedEvent
 // target_destroyed: sie hat dabei ihr letztes Mitglied verloren -- dann kam
 // vorher schon NetUnitDestroyedEvent.
 //
+// weapons schluesselt die Zaehler nach Waffen auf (NetAttackWeaponResult), ein
+// Eintrag je Waffe, die geschossen hat, in der Reihenfolge des Kampfes; ihre
+// Summe ergibt die Zaehler oben. Leer, wenn der Empfaenger den Schuetzen nicht
+// sieht (sie verriete dessen Bewaffnung) oder wenn die Nachricht mit ihr zu
+// gross wuerde -- die Zaehler oben kommen immer.
+//
 // Den neuen Stand beider Einheiten schickt der Server danach als NetUnitEvent:
 // den der angreifenden (attacked) und, wenn es sie noch gibt, den der
 // getroffenen (Mitglieder und Lebenspunkte).
@@ -244,6 +250,23 @@ message NetUnitAttackedEvent
     uint32 wounds = 9;
     uint32 members_killed = 10;
     bool target_destroyed = 11;
+    repeated NetAttackWeaponResult weapons = 12;
+}
+
+// Was eine Waffe in einem Angriff bewirkt hat (RAD_AttackWeaponResult_t im
+// Spiel): die Waffe weapon des Mitglieds member der angreifenden Einheit, beides
+// Indizes in der Reihenfolge, die der Client aus NetUnit kennt. Die Zaehler wie
+// in NetUnitAttackedEvent, members_killed die Mitglieder des Ziels, die durch
+// ihre Schuesse gefallen sind.
+message NetAttackWeaponResult
+{
+    uint32 member = 1;
+    uint32 weapon = 2;
+    uint32 shots = 3;
+    uint32 hits = 4;
+    uint32 penetrations = 5;
+    uint32 wounds = 6;
+    uint32 members_killed = 7;
 }
 
 // Eine Einheit ist zerstoert und vom Feld (x, y) genommen (RAD_OnUnitDestroyed_t

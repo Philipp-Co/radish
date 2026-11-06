@@ -19,7 +19,7 @@ export const routes: Routes = [
   },
   {
     // authGuard steht hier an der Elternroute und gilt damit fuer alle
-    // Unterseiten (current/lobby/list/create/join/armies/admin) mit -- siehe
+    // Unterseiten (home/current/lobby/list/create/join/armies/admin) mit -- siehe
     // GamesShellComponent, das das Menue zwischen ihnen rendert. admin/ hat
     // zusaetzlich noch adminGuard (siehe dort).
     path: 'games',
@@ -27,7 +27,15 @@ export const routes: Routes = [
       import('./pages/games/games-shell.component').then((m) => m.GamesShellComponent),
     canActivate: [authGuard],
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'list' },
+      // Nach dem Login landet man ueber "/games" hier (siehe AuthService.login,
+      // LoginComponent) -- der Hub mit Begruessung und Kacheln zu allen Bereichen.
+      { path: '', pathMatch: 'full', redirectTo: 'home' },
+      {
+        path: 'home',
+        loadComponent: () =>
+          import('./pages/games/home/home.component').then((m) => m.HomeComponent),
+        title: 'radish -- Start',
+      },
       {
         path: 'current',
         loadComponent: () =>

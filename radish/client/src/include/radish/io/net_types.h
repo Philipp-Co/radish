@@ -262,6 +262,29 @@ typedef struct
 } RAD_NetDeployZone_t;
 
 ///
+/// Hoechstzahl der Eintraege je Waffe in einem Angriff: jede Waffe jedes
+/// Mitglieds hoechstens einmal.
+///
+#define RAD_NET_ATTACK_WEAPONS_MAX (RAD_NET_UNIT_MEMBERS_MAX * RAD_NET_MEMBER_WEAPONS_MAX)
+
+///
+/// Was eine Waffe in einem Angriff bewirkt hat (game.proto
+/// NetAttackWeaponResult): die Waffe "weapon" des Mitglieds "member" der
+/// angreifenden Einheit, als Indizes in ihrer Reihenfolge (RAD_NetUnit_t). Die
+/// Zaehler wie in RAD_NetUnitAttacked_t.
+///
+typedef struct
+{
+    uint32_t member;
+    uint32_t weapon;
+    uint32_t shots;
+    uint32_t hits;
+    uint32_t penetrations;
+    uint32_t wounds;
+    uint32_t members_killed;
+} RAD_NetAttackWeapon_t;
+
+///
 /// Eine Einheit hat das Feld "target" angegriffen (game.proto
 /// NetUnitAttackedEvent), in Weltkoordinaten, und was es bewirkt hat. Der Server
 /// schickt es jedem Client fuer jeden Angriff, den er angenommen hat, noch vor
@@ -270,6 +293,10 @@ typedef struct
 /// "victim" ist die Einheit, die auf dem Feld stand, RAD_NET_ENTITY_NONE fuer
 /// ein leeres Feld. Die Zaehler sind die Stufen ihrer Schuesse: abgegeben,
 /// getroffen, durch die Ruestung, gewirkt (= abgezogene Lebenspunkte).
+///
+/// "weapons" schluesselt sie nach Waffen auf (RAD_NetAttackWeapon_t), ein
+/// Eintrag je Waffe, die geschossen hat. Leer, wenn der Schuetze unbekannt ist
+/// oder der Server die Liste nicht mehr in die Nachricht bekam.
 ///
 typedef struct
 {
@@ -282,6 +309,8 @@ typedef struct
     uint32_t wounds;
     uint32_t members_killed;
     bool victim_destroyed;
+    uint32_t number_of_weapons;
+    RAD_NetAttackWeapon_t weapons[RAD_NET_ATTACK_WEAPONS_MAX];
 } RAD_NetUnitAttacked_t;
 
 ///

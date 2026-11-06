@@ -508,10 +508,41 @@ RAD_NetCodecResult_t RAD_SerializeUnitAttackedEventToMessage(const RAD_AttackRes
     unit_attacked.members_killed = (uint32_t)result->members_killed;
     unit_attacked.target_destroyed = result->target_destroyed;
 
+    // Je Waffe ein Eintrag; mehr als RAD_ATTACK_MAX_WEAPONS kann das Spiel nicht
+    // melden, und mehr wird auch nicht gelesen.
+    NetAttackWeaponResult weapons[RAD_ATTACK_MAX_WEAPONS];
+    NetAttackWeaponResult *weapon_pointers[RAD_ATTACK_MAX_WEAPONS];
+    size_t number_of_weapons = 0;
+    for(int32_t i = 0; (i < result->number_of_weapons) && (i < RAD_ATTACK_MAX_WEAPONS); ++i)
+    {
+        const RAD_AttackWeaponResult_t *counts = &result->weapons[i];
+        net_attack_weapon_result__init(&weapons[i]);
+        weapons[i].member = (uint32_t)counts->member;
+        weapons[i].weapon = (uint32_t)counts->weapon;
+        weapons[i].shots = (uint32_t)counts->shots;
+        weapons[i].hits = (uint32_t)counts->hits;
+        weapons[i].penetrations = (uint32_t)counts->penetrations;
+        weapons[i].wounds = (uint32_t)counts->wounds;
+        weapons[i].members_killed = (uint32_t)counts->members_killed;
+        weapon_pointers[i] = &weapons[i];
+        ++number_of_weapons;
+    }
+    unit_attacked.n_weapons = number_of_weapons;
+    unit_attacked.weapons = weapon_pointers;
+
     NetGameEvent game_event = NET_GAME_EVENT__INIT;
     game_event.event_case = NET_GAME_EVENT__EVENT_UNIT_ATTACKED;
     game_event.unit_attacked = &unit_attacked;
 
+    // Passt es mit den Waffen nicht, dann ohne: die Zaehler des ganzen Angriffs
+    // muss der Empfaenger bekommen, sonst sieht er den Angriff gar nicht.
+    const RAD_NetCodecResult_t packed = RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
+    if((packed != RAD_NET_CODEC_ERROR_BUFFER_TOO_SMALL) || (unit_attacked.n_weapons == 0))
+    {
+        return packed;
+    }
+    unit_attacked.n_weapons = 0;
+    unit_attacked.weapons = NULL;
     return RAD_PackGameEvent(&game_event, out_message, capacity, out_size);
 }
 

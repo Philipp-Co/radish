@@ -577,7 +577,7 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
                 return RAD_NET_CODEC_ERROR_UNEXPECTED_MESSAGE;
             }
 
-            const RAD_NetUnitAttacked_t attacked = {
+            RAD_NetUnitAttacked_t attacked = {
                 .entity = (RAD_NetEntityId_t)unit_attacked->unit_id,
                 .target = { .x = (int16_t)unit_attacked->x, .y = (int16_t)unit_attacked->y },
                 .victim = unit_attacked->has_target ? (RAD_NetEntityId_t)unit_attacked->target_id : RAD_NET_ENTITY_NONE,
@@ -588,6 +588,29 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
                 .members_killed = unit_attacked->members_killed,
                 .victim_destroyed = unit_attacked->target_destroyed
             };
+
+            // Je Waffe: was kein Mitglied und keine Waffe einer Einheit sein kann,
+            // ist kein Eintrag -- uebersprungen, und mehr als das Feld fasst auch.
+            for(size_t i = 0; (i < unit_attacked->n_weapons) && (attacked.number_of_weapons < RAD_NET_ATTACK_WEAPONS_MAX); ++i)
+            {
+                const NetAttackWeaponResult *weapon = unit_attacked->weapons[i];
+                if((weapon == NULL)
+                   || (weapon->member >= RAD_NET_UNIT_MEMBERS_MAX)
+                   || (weapon->weapon >= RAD_NET_MEMBER_WEAPONS_MAX))
+                {
+                    continue;
+                }
+
+                attacked.weapons[attacked.number_of_weapons++] = (RAD_NetAttackWeapon_t){
+                    .member = weapon->member,
+                    .weapon = weapon->weapon,
+                    .shots = weapon->shots,
+                    .hits = weapon->hits,
+                    .penetrations = weapon->penetrations,
+                    .wounds = weapon->wounds,
+                    .members_killed = weapon->members_killed
+                };
+            }
             RAD_NetEventManagerPublishUnitAttacked(events, &attacked);
             return RAD_NET_CODEC_OK;
         }

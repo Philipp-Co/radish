@@ -45,6 +45,14 @@ typedef struct
     RAD_IsoUnitSprite_t sprite;
 
     ///
+    /// Wem sie gehoert, als Stelle unter den Mitspielern
+    /// (RAD_ClientWorldPlayerIndex): 0 zeichnet einen blauen Ring unter ihr, 1
+    /// einen gelben, RAD_ISO_ENTITY_PLAYER_NONE keinen. Gesetzt von der Iso-Map
+    /// mit dem Feld (RAD_IsoMapApplyTile).
+    ///
+    int32_t player;
+
+    ///
     /// Wohin sie schaut. Nur der Client weiss davon, das Spiel kennt keine
     /// Blickrichtung: gesetzt beim Aufstellen und bei jedem Schritt eines Zuges
     /// (view/iso_map_view.c). "facing_set" ist false, bis jemand sie gesetzt hat.
@@ -72,6 +80,9 @@ typedef struct
     float turret_angle;
 } RAD_IsoEntity_t;
 
+/// RAD_IsoEntity_t.player fuer eine Figur ohne bekannten Besitzer.
+#define RAD_ISO_ENTITY_PLAYER_NONE (-1)
+
 ///
 /// Zeichnet die Figur "entity" mit "renderer" auf ein Feld, dessen Raute bei
 /// (screen_x, screen_y) beginnt -- in Bildschirmkoordinaten, Kamera und Ebene
@@ -82,7 +93,8 @@ typedef struct
 /// der Drehung, waehrend einer Drehung das dazwischen, mit gedrehtem Turm das
 /// aus dessen Atlas (rendering/iso_unit_images.h), so gesetzt, dass die Figur
 /// auf der Mitte der Raute steht; darunter ein weicher, flacher Schatten, wenn das Bild
-/// keinen eigenen mitbringt. Ohne Bild, oder solange es nicht
+/// keinen eigenen mitbringt. Unter allem ein Ring in der Farbe ihres Besitzers
+/// (entity->player), flach auf der Raute -- auch unter dem Rechteck. Ohne Bild, oder solange es nicht
 /// geladen ist, ein gruenes Rechteck, so breit und hoch wie ein Feld, das eine
 /// halbe Feldhoehe ueber der Raute beginnt.
 ///

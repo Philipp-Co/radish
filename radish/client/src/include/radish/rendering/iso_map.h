@@ -96,14 +96,16 @@ RAD_IsoObject_t* RAD_MapAddIsoObject(RAD_IsoMap_t *map, int32_t x, int32_t y, in
 /// geaendert. Das Iso-Objekt wird beim ersten Mal angelegt und danach nur
 /// aktualisiert. Wie es aussieht, richtet sich bei jedem Aufruf nach seinem Typ
 /// (RAD_IsoTileApplyType); die Figur in RAD_ISO_UNIT_DEPTH folgt der Einheit des Feldes,
-/// ihr Bild deren Typ (RAD_IsoUnitSpriteOf), Hinter- und Vordergrund bleiben unberuehrt, und ein Siegfeld
-/// wird als solches gezeichnet (RAD_IsoObject_t.victory). Ausserhalb des
-/// Rasters wird verworfen.
+/// ihr Bild deren Typ (RAD_IsoUnitSpriteOf), ihr Ring "player" -- die Stelle
+/// ihres Besitzers unter den Mitspielern, RAD_ISO_ENTITY_PLAYER_NONE fuer keinen
+/// (rendering/entity.h); ohne Einheit bleibt er ungenutzt. Hinter- und
+/// Vordergrund bleiben unberuehrt, und ein Siegfeld wird als solches gezeichnet
+/// (RAD_IsoObject_t.victory). Ausserhalb des Rasters wird verworfen.
 ///
 /// **Alle Felder liegen auf Ebene 0.** Das Model kennt keine Hoehe, die Karte
 /// ist also flach.
 ///
-void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile);
+void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile, int32_t player);
 
 ///
 /// Nimmt das Feld (x, y) aus der Zeichenliste, in allen Ebenen, und gibt seine

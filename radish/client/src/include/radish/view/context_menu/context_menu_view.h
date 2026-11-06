@@ -173,6 +173,17 @@
 /// Ihr Mittelpunkt und alles andere bleiben dabei, wie sie sind. Eine
 /// Feldauswahl meldet der Aufrufer (RAD_ContextMenuViewOnTileSelected).
 ///
+/// **Sie baut sich auf und ab**: wird sie sichtbar, beginnt sie als Punkt
+/// auf ihrem Mittelpunkt und waechst in 200 Millisekunden zu ihrer Groesse --
+/// Ring, Ringbreite, Abstand und Groesse der Eintraege wachsen gleich mit,
+/// erst schnell, zum Ende langsamer. Wird sie unsichtbar -- geschlossen, oder
+/// fuer Weg und Ziel aus dem Weg --, laeuft dasselbe rueckwaerts: sie
+/// schrumpft ueber ihrem letzten Feld wieder zum Punkt, mit den Eintraegen,
+/// die sie hatte, und nimmt dabei keine Maus-Ereignisse mehr an. Waehrend
+/// sie waechst, nimmt sie sie schon, so gross, wie die Eintraege gerade sind.
+/// Von einem sichtbaren Zustand in den naechsten wechselt sie ohne. Die
+/// UnitDeploymentView baut sich nicht mit auf und ab.
+///
 /// **Den Renderer haelt sie nicht selbst**, sie bekommt ihn bei jedem Update
 /// (view/view.h).
 ///
@@ -254,9 +265,10 @@ bool RAD_ContextMenuViewSelectedTile(const RAD_ContextMenuView_t *context_menu_v
 /// Das Feld, ueber dem sie steht, in Weltkoordinaten: das ausgewaehlte, in
 /// WAITING_FOR_MOVE_ACKNOWLEDGEMENT das Ziel des Weges, in
 /// WAITING_FOR_ATTACK_ACKNOWLEDGEMENT das Ziel des Angriffs. Der Aufrufer setzt
-/// ihren Mittelpunkt darauf (RAD_ContextMenuViewSetCenter). false, wenn sie
-/// nicht zu sehen ist (RAD_ContextMenuViewIsVisible); dann bleiben "x" und
-/// "y", wie sie sind.
+/// ihren Mittelpunkt darauf (RAD_ContextMenuViewSetCenter). Waehrend sie
+/// schrumpft (siehe oben), das Feld, ueber dem sie zuletzt zu sehen war.
+/// false, wenn sie weder zu sehen ist (RAD_ContextMenuViewIsVisible) noch
+/// schrumpft; dann bleiben "x" und "y", wie sie sind.
 ///
 bool RAD_ContextMenuViewAnchorTile(const RAD_ContextMenuView_t *context_menu_view, int32_t *x, int32_t *y);
 
@@ -288,7 +300,8 @@ void RAD_ContextMenuViewSetColor(RAD_ContextMenuView_t *context_menu_view, SDL_C
 void RAD_ContextMenuViewSetAiming(RAD_ContextMenuView_t *context_menu_view, RAD_ContextMenuViewAiming_t aiming);
 
 ///
-/// Wie viele Eintraege sie gerade hat (siehe oben).
+/// Wie viele Eintraege sie gerade hat (siehe oben) -- waehrend sie schrumpft,
+/// noch die des Zustands, aus dem sie sich schliesst.
 ///
 int32_t RAD_ContextMenuViewItemCount(const RAD_ContextMenuView_t *context_menu_view);
 
@@ -316,7 +329,9 @@ bool RAD_ContextMenuViewHandleMouseButton(RAD_ContextMenuView_t *context_menu_vi
 
 ///
 /// Zeichnet den Ring, darueber die Eintraege und darueber die
-/// UnitDeploymentView mit "renderer" -- unsichtbar: nichts. Einmal je Frame zu rufen.
+/// UnitDeploymentView mit "renderer", so gross, wie sie sich gerade auf- oder
+/// abbaut (siehe oben) -- unsichtbar und nicht mehr schrumpfend: nichts.
+/// Einmal je Frame zu rufen.
 ///
 void RAD_UpdateContextMenuView(RAD_ContextMenuView_t *context_menu_view, SDL_Renderer *renderer);
 

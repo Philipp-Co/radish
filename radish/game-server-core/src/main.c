@@ -832,6 +832,14 @@ static void log_unit_attacked(void *user_argument, const RAD_AttackResult_t *res
            (int)result->shots, (int)result->hits, (int)result->penetrations,
            (int)result->wounds, (int)result->members_killed,
            result->target_destroyed ? ", Ziel zerstoert" : "");
+    for(int32_t i = 0; (i < result->number_of_weapons) && (i < RAD_ATTACK_MAX_WEAPONS); ++i)
+    {
+        const RAD_AttackWeaponResult_t *counts = &result->weapons[i];
+        printf("  Mitglied %d, Waffe %d: %d Schuesse, %d Treffer, %d durch, %d Schaden, %d gefallen\n",
+               (int)counts->member, (int)counts->weapon,
+               (int)counts->shots, (int)counts->hits, (int)counts->penetrations,
+               (int)counts->wounds, (int)counts->members_killed);
+    }
 }
 
 static void log_unit_sighted(void *user_argument, const RAD_Unit_t *unit, int32_t x, int32_t y)

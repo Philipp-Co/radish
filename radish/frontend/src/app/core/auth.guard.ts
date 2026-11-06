@@ -19,7 +19,7 @@ export const authGuard: CanActivateFn = (_route, state) => {
  * Schuetzt /games/admin zusaetzlich zu authGuard (das an der Elternroute
  * "games" sitzt und hier deshalb schon vorausgesetzt werden kann): nur mit
  * der Keycloak-Realm-Rolle "Radish-Admin" (siehe AuthService.isAdmin) geht
- * es weiter, sonst zurueck zur Spieleliste -- anders als authGuard also
+ * es weiter, sonst zurueck zum Hub (home/) -- anders als authGuard also
  * nicht zu /login, der Nutzer ist ja bereits angemeldet, ihm fehlt nur die
  * Rolle. Die eigentliche Durchsetzung passiert ohnehin serverseitig (siehe
  * radish/backend/api/permissions.py, HasAdminRole); das hier verhindert nur,
@@ -34,5 +34,5 @@ export const adminGuard: CanActivateFn = () => {
     return true;
   }
 
-  return router.createUrlTree(['/games/list']);
+  return router.createUrlTree(['/games/home']);
 };

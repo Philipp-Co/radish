@@ -1,9 +1,25 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Subscription, interval, startWith, switchMap } from 'rxjs';
+import {
+  EMPTY,
+  Subject,
+  Subscription,
+  catchError,
+  interval,
+  map,
+  merge,
+  startWith,
+  switchMap,
+} from 'rxjs';
 
-import { ApiService, GameListEntry } from '../../../core/api.service';
+import { ApiService, GameListEntry, GameListPage } from '../../../core/api.service';
 
+/**
+ * Offene Spiele in der Lobby, seitenweise (siehe radish/backend/api/
+ * client_views.py, GameListView -- dort auch die Seitengroesse). Unten
+ * blaettert man mit "Zurueck"/"Weiter"; das Polling laedt immer die gerade
+ * gewaehlte Seite neu.
+ */
 @Component({
   selector: 'app-games-list',
   standalone: true,
@@ -35,6 +51,26 @@ import { ApiService, GameListEntry } from '../../../core/api.service';
             </li>
           }
         </ul>
+
+        <nav class="pagination" aria-label="Seiten">
+          <button
+            class="secondary"
+            type="button"
+            [disabled]="page() <= 1"
+            (click)="goToPage(page() - 1)"
+          >
+            ← Zurueck
+          </button>
+          <span class="muted">Seite {{ page() }} von {{ pageCount() }}</span>
+          <button
+            class="secondary"
+            type="button"
+            [disabled]="page() >= pageCount()"
+            (click)="goToPage(page() + 1)"
+          >
+            Weiter →
+          </button>
+        </nav>
       }
     </section>
   `,
@@ -62,6 +98,15 @@ import { ApiService, GameListEntry } from '../../../core/api.service';
       .game-list li span:first-child {
         flex: 1;
       }
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border);
+      }
     `,
   ],
 })
@@ -72,28 +117,40 @@ export class GamesListComponent implements OnInit, OnDestroy {
   readonly games = signal<GameListEntry[]>([]);
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
+  readonly page = signal(1);
+  private readonly count = signal(0);
+  private readonly pageSize = signal(1);
+  readonly pageCount = computed(() => Math.max(1, Math.ceil(this.count() / this.pageSize())));
 
+  /** Seitenwechsel per Button -- laedt sofort statt erst beim naechsten Poll. */
+  private readonly pageRequests = new Subject<number>();
   private pollSubscription: Subscription | null = null;
 
   ngOnInit(): void {
     // Kein Server-Push fuer die Spieleliste (anders als das aktuelle Spiel,
     // siehe CurrentGameComponent/GameSocketService, die ueber den WebSocket
     // laufen) -- deshalb einfaches Polling alle 5s statt eines Live-Updates.
-    this.pollSubscription = interval(5000)
-      .pipe(
+    // switchMap verwirft dabei eine noch laufende Abfrage fuer eine alte Seite.
+    this.pollSubscription = merge(
+      interval(5000).pipe(
         startWith(0),
-        switchMap(() => this.api.listGames()),
+        map(() => this.page()),
+      ),
+      this.pageRequests,
+    )
+      .pipe(
+        switchMap((page) =>
+          // Fehler je Abfrage abfangen, damit das Polling weiterlaeuft.
+          this.api.listGames(page).pipe(
+            catchError(() => {
+              this.errorMessage.set('Spieleliste konnte nicht geladen werden.');
+              this.loading.set(false);
+              return EMPTY;
+            }),
+          ),
+        ),
       )
-      .subscribe({
-        next: (response) => {
-          this.games.set(response.games);
-          this.loading.set(false);
-        },
-        error: () => {
-          this.errorMessage.set('Spieleliste konnte nicht geladen werden.');
-          this.loading.set(false);
-        },
-      });
+      .subscribe((response) => this.applyPage(response));
   }
 
   ngOnDestroy(): void {
@@ -102,16 +159,23 @@ export class GamesListComponent implements OnInit, OnDestroy {
 
   refresh(): void {
     this.loading.set(true);
-    this.api.listGames().subscribe({
-      next: (response) => {
-        this.games.set(response.games);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.errorMessage.set('Spieleliste konnte nicht geladen werden.');
-        this.loading.set(false);
-      },
-    });
+    this.errorMessage.set(null);
+    this.pageRequests.next(this.page());
+  }
+
+  goToPage(page: number): void {
+    this.page.set(page);
+    this.pageRequests.next(page);
+  }
+
+  private applyPage(response: GameListPage): void {
+    this.games.set(response.games);
+    this.count.set(response.count);
+    this.pageSize.set(response.page_size);
+    // Das Backend liefert bei einer weggefallenen Seite die letzte vorhandene.
+    this.page.set(response.page);
+    this.errorMessage.set(null);
+    this.loading.set(false);
   }
 
   /** Fuehrt auf die Beitreten-Seite, mit dem gewaehlten Namen vorbelegt. */

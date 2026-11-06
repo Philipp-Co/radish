@@ -7,6 +7,12 @@ import { apiErrorMessage } from '../../../core/api-error';
 import { ApiService, GameListEntry } from '../../../core/api.service';
 import { ArmyPickerComponent } from '../army-picker.component';
 
+/**
+ * Beitreten zu einem offenen Spiel. Nur ueber "Beitreten" in der Spieleliste
+ * erreichbar (siehe GamesListComponent.joinGame), die den Namen als
+ * "?name=" mitgibt -- der Name steht damit fest und ist hier nicht aenderbar.
+ * Ohne Namen geht es direkt zurueck zur Liste.
+ */
 @Component({
   selector: 'app-game-join',
   standalone: true,
@@ -20,15 +26,15 @@ import { ArmyPickerComponent } from '../army-picker.component';
       }
 
       <form (ngSubmit)="joinGame()">
-        <label>
-          Name
-          <input type="text" name="name" [(ngModel)]="name" required />
+        <div class="game-name">
+          <span class="muted">Spiel</span>
+          <strong>{{ name }}</strong>
           @if (game(); as found) {
             <span class="muted hint">
               Gespielt wird mit {{ found.points_limit }} Punkten ({{ found.player_count }}/2 Spieler).
             </span>
           }
-        </label>
+        </div>
         <label>
           Passwort
           <input type="password" name="password" [(ngModel)]="password" required />
@@ -47,7 +53,8 @@ import { ArmyPickerComponent } from '../army-picker.component';
         flex-direction: column;
         gap: 0.75rem;
       }
-      label {
+      label,
+      .game-name {
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
@@ -67,23 +74,28 @@ export class GameJoinComponent implements OnInit {
   readonly joining = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
-  // Aus der Spieleliste vorbelegt, wenn man dort "Beitreten" gewaehlt hat
-  // (siehe GamesListComponent.joinGame) -- bleibt trotzdem frei aenderbar,
-  // falls man den Namen bereits kennt statt ihn aus der Liste zu waehlen.
-  name = this.route.snapshot.queryParamMap.get('name') ?? '';
+  /** Fest aus der Spieleliste uebernommen, siehe Docstring oben. */
+  readonly name = this.route.snapshot.queryParamMap.get('name')?.trim() ?? '';
   password = '';
   armyId: number | null = null;
 
-  /** Offene Spiele, um das Punktelimit zum eingegebenen Namen anzuzeigen. */
-  private readonly games = signal<GameListEntry[]>([]);
+  /**
+   * Das offene Spiel zu diesem Namen, um dessen Punktelimit anzuzeigen. Die
+   * Spieleliste ist seitenweise (siehe GamesListComponent), deshalb wird per
+   * Namensfilter gezielt nachgeschlagen. Schlaegt das fehl, fehlt nur der
+   * Hinweis -- beitreten geht trotzdem.
+   */
+  readonly game = signal<GameListEntry | null>(null);
 
   ngOnInit(): void {
-    this.api.listGames().subscribe({ next: (response) => this.games.set(response.games) });
-  }
-
-  /** Das Spiel zum eingegebenen Namen, falls es in der Liste steht. */
-  game(): GameListEntry | undefined {
-    return this.games().find((entry) => entry.name === this.name.trim());
+    if (!this.name) {
+      void this.router.navigate(['/games/list']);
+      return;
+    }
+    this.api.findGame(this.name).subscribe({
+      next: (game) => this.game.set(game),
+      error: () => this.game.set(null),
+    });
   }
 
   joinGame(): void {

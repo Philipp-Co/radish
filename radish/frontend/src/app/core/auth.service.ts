@@ -50,22 +50,32 @@ const REFRESH_MARGIN_MS = 30_000;
 const REFRESH_RETRY_MS = 10_000;
 
 /**
+ * Die Klaims aus dem Access-Token, die die UI ausliest -- Rollen fuer
+ * AuthService.roles, Namen fuer AuthService.displayName.
+ */
+interface TokenClaims {
+  realm_access?: { roles?: string[] };
+  given_name?: string;
+  name?: string;
+  preferred_username?: string;
+}
+
+/**
  * Dekodiert den JWT-Payload (Base64url, per Definition kein valides
- * Base64 -- "-"/"_" statt "+"/"/", ohne Padding) und liest daraus
- * "realm_access.roles". atob() gibt Latin1-Bytes zurueck, deshalb der
- * Umweg ueber encodeURIComponent/decodeURIComponent fuer korrektes UTF-8
+ * Base64 -- "-"/"_" statt "+"/"/", ohne Padding). atob() gibt Latin1-Bytes
+ * zurueck, deshalb der Umweg ueber encodeURIComponent/decodeURIComponent fuer korrektes UTF-8
  * (Namen/Rollen koennen Umlaute o.ae. enthalten). Bei fehlendem/kaputtem
- * Token oder Payload wird bewusst still [] zurueckgegeben statt zu werfen --
+ * Token oder Payload wird bewusst still {} zurueckgegeben statt zu werfen --
  * das hier ist nur eine UI-Anzeigeentscheidung, kein Sicherheitscheck
  * (siehe Kommentar bei AuthService.roles).
  */
-function decodeRealmRoles(accessToken: string | null): string[] {
+function decodeClaims(accessToken: string | null): TokenClaims {
   if (!accessToken) {
-    return [];
+    return {};
   }
   const payloadSegment = accessToken.split('.')[1];
   if (!payloadSegment) {
-    return [];
+    return {};
   }
   try {
     const normalized = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
@@ -76,10 +86,9 @@ function decodeRealmRoles(accessToken: string | null): string[] {
         .map((char) => '%' + char.charCodeAt(0).toString(16).padStart(2, '0'))
         .join(''),
     );
-    const claims = JSON.parse(json) as { realm_access?: { roles?: string[] } };
-    return claims.realm_access?.roles ?? [];
+    return JSON.parse(json) as TokenClaims;
   } catch {
-    return [];
+    return {};
   }
 }
 
@@ -119,6 +128,8 @@ export class AuthService {
     return !!current && current.expiresAt > Date.now();
   });
 
+  private readonly claims = computed(() => decodeClaims(this.tokens()?.accessToken ?? null));
+
   /**
    * Keycloak-Realm-Rollen aus dem Access-Token (Klaim "realm_access.roles"),
    * z.B. "Player" oder "Radish-Admin" (siehe docker/keycloak/realm-radish.json).
@@ -129,7 +140,17 @@ export class AuthService {
    * ohnehin serverseitig (siehe radish/backend/api/permissions.py,
    * HasAdminRole), das hier entscheidet nur ueber die UI-Sichtbarkeit.
    */
-  readonly roles = computed(() => decodeRealmRoles(this.tokens()?.accessToken ?? null));
+  readonly roles = computed(() => this.claims().realm_access?.roles ?? []);
+
+  /**
+   * Anzeigename fuer die Begruessung (siehe HomeComponent): Vorname, sonst
+   * voller Name, sonst Benutzername -- je nachdem, was Keycloak ueber den
+   * Scope "profile" in den Token schreibt. null, wenn nichts davon drinsteht.
+   */
+  readonly displayName = computed(() => {
+    const claims = this.claims();
+    return claims.given_name || claims.name || claims.preferred_username || null;
+  });
 
   /** Ob der angemeldete Nutzer die Keycloak-Realm-Rolle "Radish-Admin" hat. */
   readonly isAdmin = computed(() => this.roles().includes('Radish-Admin'));

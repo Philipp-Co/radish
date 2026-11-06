@@ -10,6 +10,18 @@ export interface GameListEntry {
 }
 
 /**
+ * Eine Seite der Spieleliste, siehe radish/backend/api/client_views.py,
+ * GameListView. page ist die tatsaechlich gelieferte Seite (ab 1) -- das
+ * Backend korrigiert eine zu grosse oder ungueltige Seite selbst.
+ */
+export interface GameListPage {
+  games: GameListEntry[];
+  count: number;
+  page: number;
+  page_size: number;
+}
+
+/**
  * Wo ein Spiel steht, siehe radish/backend/api/models.py, GameStatus: in
  * der Lobby, oder laufend, sobald der Host es gestartet und die
  * Spielinstanz es aufgesetzt hat.
@@ -285,8 +297,15 @@ export interface CatalogFilter {
 export class ApiService {
   constructor(private readonly http: HttpClient) {}
 
-  listGames(): Observable<{ games: GameListEntry[] }> {
-    return this.http.get<{ games: GameListEntry[] }>('/api/client/games/');
+  listGames(page = 1): Observable<GameListPage> {
+    return this.http.get<GameListPage>('/api/client/games/', { params: { page } });
+  }
+
+  /** Das offene Spiel genau dieses Namens, egal auf welcher Seite es stuende. */
+  findGame(name: string): Observable<GameListEntry | null> {
+    return this.http
+      .get<GameListPage>('/api/client/games/', { params: { name } })
+      .pipe(map((response) => response.games[0] ?? null));
   }
 
   /** Die Armee muss dem Spieler gehoeren und darf hoechstens pointsLimit kosten. */

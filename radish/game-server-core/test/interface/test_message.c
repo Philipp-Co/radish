@@ -658,6 +658,82 @@ void test_message_packt_einen_angriff(void)
 }
 
 ///
+/// Die Eintraege je Waffe (NetAttackWeaponResult) gehen mit, in ihrer
+/// Reihenfolge und mit Mitglied und Waffe als Indizes.
+///
+void test_message_packt_einen_angriff_je_waffe(void)
+{
+    const RAD_AttackResult_t result = {
+        .attacker = 7, .target = 9, .x = 4, .y = 6,
+        .shots = 5, .hits = 3, .penetrations = 2, .wounds = 1, .members_killed = 1,
+        .number_of_weapons = 2,
+        .weapons = {
+            { .member = 0, .weapon = 1, .shots = 2 },
+            { .member = 3, .weapon = 0, .shots = 3, .hits = 3, .penetrations = 2, .wounds = 1, .members_killed = 1 }
+        }
+    };
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitAttackedEventToMessage(&result, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetUnitAttackedEvent *angriff = message->event->game->unit_attacked;
+    TEST_ASSERT_EQUAL_size_t(2, angriff->n_weapons);
+
+    TEST_ASSERT_EQUAL_UINT32(0, angriff->weapons[0]->member);
+    TEST_ASSERT_EQUAL_UINT32(1, angriff->weapons[0]->weapon);
+    TEST_ASSERT_EQUAL_UINT32(2, angriff->weapons[0]->shots);
+    TEST_ASSERT_EQUAL_UINT32(0, angriff->weapons[0]->hits);
+
+    TEST_ASSERT_EQUAL_UINT32(3, angriff->weapons[1]->member);
+    TEST_ASSERT_EQUAL_UINT32(0, angriff->weapons[1]->weapon);
+    TEST_ASSERT_EQUAL_UINT32(3, angriff->weapons[1]->shots);
+    TEST_ASSERT_EQUAL_UINT32(3, angriff->weapons[1]->hits);
+    TEST_ASSERT_EQUAL_UINT32(2, angriff->weapons[1]->penetrations);
+    TEST_ASSERT_EQUAL_UINT32(1, angriff->weapons[1]->wounds);
+    TEST_ASSERT_EQUAL_UINT32(1, angriff->weapons[1]->members_killed);
+
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
+/// Passt der Angriff mit allen Eintraegen je Waffe nicht in die Nachricht, geht
+/// er ohne sie hinaus -- die Zaehler des ganzen Angriffs kommen immer an.
+///
+void test_message_packt_einen_zu_grossen_angriff_ohne_waffen(void)
+{
+    RAD_AttackResult_t result = {
+        .attacker = 7, .target = 9, .x = 4, .y = 6,
+        .number_of_weapons = RAD_ATTACK_MAX_WEAPONS
+    };
+    for(int32_t i = 0; i < RAD_ATTACK_MAX_WEAPONS; ++i)
+    {
+        result.weapons[i] = (RAD_AttackWeaponResult_t){
+            .member = i / RAD_UNIT_MAX_WEAPONS, .weapon = i % RAD_UNIT_MAX_WEAPONS,
+            .shots = 32767, .hits = 32767, .penetrations = 32767, .wounds = 32767, .members_killed = 1
+        };
+        result.shots += 32767;
+    }
+
+    uint8_t buffer[256];
+    uint16_t size = 0;
+    TEST_ASSERT_EQUAL_INT(RAD_NET_CODEC_OK,
+        RAD_SerializeUnitAttackedEventToMessage(&result, buffer, sizeof(buffer), &size));
+
+    NetServerMessage *message = net_server_message__unpack(NULL, size, buffer);
+    TEST_ASSERT_NOT_NULL(message);
+    const NetUnitAttackedEvent *angriff = message->event->game->unit_attacked;
+    TEST_ASSERT_EQUAL_size_t(0, angriff->n_weapons);
+    TEST_ASSERT_EQUAL_UINT32(7, angriff->unit_id);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)result.shots, angriff->shots);
+
+    net_server_message__free_unpacked(message, NULL);
+}
+
+///
 /// Ein Angriff ins Leere: ohne Ziel, und die Id bleibt 0 statt eines
 /// umgedeuteten RAD_UNIT_NONE.
 ///

@@ -40,7 +40,8 @@
 /// Spieler ein Ziel gewaehlt hat -- und bei jedem Angriff, den die Welt meldet
 /// ("unit_attacked"). Auch das kennt nur der Client (RAD_IsoEntity_t.turret_angle).
 ///
-/// **Mit dem Schuss explodiert das Zielfeld** (RAD_IsoMapViewFire): sobald der
+/// **Mit dem Schuss explodiert das Zielfeld** (RAD_IsoMapViewFire), wenn der
+/// Angriff getroffen hat oder dem leeren Feld galt: sobald der
 /// Turm auf dem Ziel steht, laeuft dort einmal eine Explosion durch
 /// (rendering/iso_effect.h), zufaellig eine von mehreren
 /// (RAD_IsoEffectRandomExplosion), im Bild fuer die Richtung, aus der der
@@ -129,7 +130,12 @@ void RAD_IsoMapViewAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, 
 /// ohne drehbaren Turm sofort -- auch ohne Figur, dann im Bild fuer
 /// RAD_ISO_FACING_X_MINUS.
 ///
-void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y);
+/// Ohne "explode" explodiert nichts: der Turm dreht und feuert wie sonst und
+/// bleibt RAD_IsoUnitFireHoldMs auf dem Ziel -- fuer einen Schuss, der nicht
+/// getroffen hat.
+///
+void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y,
+                        bool explode);
 
 ///
 /// Dreht den Turm der Figur von "unit" nach vorn zurueck, etwa wenn ein Ziel

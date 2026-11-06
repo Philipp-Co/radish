@@ -75,6 +75,14 @@ float RAD_ContextMenuItemAngle(const RAD_ContextMenuItem_t *item);
 void RAD_ContextMenuItemSetCenter(RAD_ContextMenuItem_t *item, float center_x, float center_y);
 
 ///
+/// Wie gross er ist, als Bruchteil seines Radius aus RAD_CreateContextMenuItem:
+/// 1 ganz, 0 ein Punkt; negativ zaehlt als 0. Sein Kreis, sein Symbol und
+/// was er trifft (RAD_ContextMenuItemContains) wachsen und schrumpfen damit.
+/// So baut die ContextMenuView sich auf und ab. Anfangs 1.
+///
+void RAD_ContextMenuItemSetScale(RAD_ContextMenuItem_t *item, float scale);
+
+///
 /// Seine Aktion bei einem Klick, setzen und abfragen.
 ///
 void RAD_ContextMenuItemSetAction(RAD_ContextMenuItem_t *item, RAD_ContextMenuItemAction_t action);
@@ -82,7 +90,8 @@ RAD_ContextMenuItemAction_t RAD_ContextMenuItemAction(const RAD_ContextMenuItem_
 
 
 ///
-/// Ob der Punkt (x, y) in seinem Kreis liegt, Rand eingeschlossen.
+/// Ob der Punkt (x, y) in seinem Kreis liegt, Rand eingeschlossen -- so gross,
+/// wie er gerade ist (RAD_ContextMenuItemSetScale).
 ///
 bool RAD_ContextMenuItemContains(const RAD_ContextMenuItem_t *item, int32_t x, int32_t y);
 

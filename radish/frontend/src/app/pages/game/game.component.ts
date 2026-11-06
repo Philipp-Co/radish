@@ -20,7 +20,7 @@ import { GameCanvasComponent } from '../../shared/game-canvas/game-canvas.compon
     <main class="page">
       <header class="page-header">
         <h1>Spiel: {{ gameName }}</h1>
-        <a routerLink="/games">Zurueck zur Uebersicht</a>
+        <a routerLink="/games/home">Zurueck zum Hub</a>
       </header>
       <app-game-canvas [gameName]="gameName" />
     </main>

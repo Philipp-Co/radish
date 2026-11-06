@@ -38,7 +38,7 @@
 #define RAD_MODEL_OBSERVERS_MAX 4
 
 /// Ereignisse je Modell, das groesste Ereignis-Enum gibt sie vor.
-#define RAD_MODEL_EVENTS_MAX 6
+#define RAD_MODEL_EVENTS_MAX 7
 
 ///
 /// Ein Callback ohne seinen Typ. Nie so zu rufen -- erst zurueck in den Typ, mit

@@ -28,6 +28,10 @@
 /// ist sie zerstoert (RAD_GameDestroyUnit), und der Angriff ist zu Ende -- die
 /// uebrigen Schuesse werden nicht gewuerfelt.
 ///
+/// **Gezaehlt wird je Waffe** (RAD_AttackWeaponResult_t): jede Waffe, die
+/// schiesst, bekommt einen Eintrag im Ergebnis, und erst ihre Summe ergibt die
+/// Zaehler des ganzen Angriffs.
+///
 /// **Die Deckung** ist die des Feldes, auf dem das Ziel steht
 /// (RAD_Terrain_t.cover). Sie erschwert nur den Treffer, nicht die Stufen danach,
 /// und eine Summe ueber 10 macht das Ziel mit dem W10 unerreichbar -- gewollt.
@@ -47,7 +51,8 @@ static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y);
 static bool RAD_GameWeaponReaches(const RAD_Weapon_t *weapon, int32_t distance);
 static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y);
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
-                             int32_t cover, RAD_Unit_t *target, RAD_AttackResult_t *result);
+                             int32_t cover, RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts);
+static void RAD_GameAddWeaponResult(RAD_AttackResult_t *result, const RAD_AttackWeaponResult_t *counts);
 static void RAD_GameRemoveMember(RAD_Unit_t *unit, int32_t member);
 
 bool RAD_GameAttack(RAD_Game_t *game, RAD_UnitId_t id, int16_t x, int16_t y, RAD_Command_t *output)
@@ -181,14 +186,20 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
         for(int32_t w = 0; (target != NULL) && (w < shooter->number_of_weapons) && (w < RAD_UNIT_MAX_WEAPONS); ++w)
         {
             const RAD_Weapon_t *weapon = &shooter->weapons[w];
-            if(!RAD_GameWeaponReaches(weapon, distance))
+            if(!RAD_GameWeaponReaches(weapon, distance) || (weapon->shots <= 0))
             {
                 continue;
             }
 
+            // Ein Eintrag je Waffe, die schiesst -- hoechstens einer je Waffe
+            // jedes Mitglieds, das Feld reicht also (RAD_ATTACK_MAX_WEAPONS).
+            RAD_AttackWeaponResult_t *counts = &result.weapons[result.number_of_weapons++];
+            counts->member = m;
+            counts->weapon = w;
+
             for(int32_t shot = 0; (target != NULL) && (shot < weapon->shots); ++shot)
             {
-                RAD_GameFireShot(game, shooter, weapon, cover, target, &result);
+                RAD_GameFireShot(game, shooter, weapon, cover, target, counts);
 
                 // Ohne Mitglied keine Einheit: vom Feld, und der Angriff ist aus.
                 if(target->number_of_members == 0)
@@ -198,6 +209,7 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
                     target = NULL;
                 }
             }
+            RAD_GameAddWeaponResult(&result, counts);
         }
     }
 
@@ -211,6 +223,7 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
     {
         RAD_AttackResult_t without_attacker = result;
         without_attacker.attacker = RAD_UNIT_NONE;
+        without_attacker.number_of_weapons = 0;
         RAD_WorldNotifyUnitAttacked(&game->world, &without_attacker, &anonymous);
     }
 }
@@ -218,13 +231,13 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
 ///
 /// Ein Schuss von "shooter" mit "weapon" auf "target", das mit der Deckung
 /// "cover" steht, durch die vier Stufen oben. Jede Stufe, die er schafft, zaehlt
-/// in "result"; an der ersten, die er nicht schafft, ist er zu Ende. "target" hat
-/// wenigstens ein Mitglied.
+/// in "counts", dem Eintrag seiner Waffe; an der ersten, die er nicht schafft,
+/// ist er zu Ende. "target" hat wenigstens ein Mitglied.
 ///
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
-                             int32_t cover, RAD_Unit_t *target, RAD_AttackResult_t *result)
+                             int32_t cover, RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts)
 {
-    result->shots++;
+    counts->shots++;
 
     // 1. Trifft er das Feld, gegen die Deckung darauf? Getroffen ist dann eines der
     // Mitglieder, die noch da sind.
@@ -232,7 +245,7 @@ static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, 
     {
         return;
     }
-    result->hits++;
+    counts->hits++;
     const int32_t victim_index = RAD_DiceRoll(&game->dice, target->number_of_members) - 1;
     RAD_UnitMember_t *victim = &target->members[victim_index];
 
@@ -241,22 +254,34 @@ static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, 
     {
         return;
     }
-    result->penetrations++;
+    counts->penetrations++;
 
     // 3. Wirkt er gegen den Widerstand?
     if(RAD_DiceD10(&game->dice) + weapon->strength < victim->toughness)
     {
         return;
     }
-    result->wounds++;
+    counts->wounds++;
 
     // 4. Ein Lebenspunkt weniger -- und bei keinem mehr ist das Mitglied weg.
     victim->health--;
     if(victim->health <= 0)
     {
         RAD_GameRemoveMember(target, victim_index);
-        result->members_killed++;
+        counts->members_killed++;
     }
+}
+
+///
+/// Zaehlt den Eintrag einer Waffe in die Zaehler des ganzen Angriffs.
+///
+static void RAD_GameAddWeaponResult(RAD_AttackResult_t *result, const RAD_AttackWeaponResult_t *counts)
+{
+    result->shots += counts->shots;
+    result->hits += counts->hits;
+    result->penetrations += counts->penetrations;
+    result->wounds += counts->wounds;
+    result->members_killed += counts->members_killed;
 }
 
 ///

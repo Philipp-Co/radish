@@ -15,7 +15,7 @@ static int RAD_MapDepthComparator(const void *a, const void *b);
 #define RAD_ISO_MAP_LAYERS 3
 
 static void RAD_IsoMapRemoveObject(RAD_IsoMap_t *map, RAD_IsoObject_t *object);
-static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit);
+static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit, int32_t player);
 
 static void RAD_IsoMapFreeEntities(RAD_IsoObject_t *object);
 static bool RAD_IsoMapInBounds(int32_t x, int32_t y);
@@ -449,7 +449,7 @@ void RAD_IsoMapRemoveEffect(RAD_IsoMap_t *map, const RAD_IsoEffect_t *effect)
     }
 }
 
-void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile)
+void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile, int32_t player)
 {
     const int32_t x = tile->x;
     const int32_t y = tile->y;
@@ -487,7 +487,7 @@ void RAD_IsoMapApplyTile(RAD_IsoMap_t *map, const RAD_ClientTile_t *tile)
     // Ein Siegfeld zeichnet sich selbst anders (RAD_RenderIsoObject).
     map->data[layer][y][x].victory = tile->victory;
 
-    RAD_IsoMapSetEntity(map, x, y, tile->unit);
+    RAD_IsoMapSetEntity(map, x, y, tile->unit, player);
 }
 
 void RAD_IsoMapRemoveTile(RAD_IsoMap_t *map, uint32_t x, uint32_t y)
@@ -541,8 +541,9 @@ static void RAD_IsoMapRemoveObject(RAD_IsoMap_t *map, RAD_IsoObject_t *object)
 /// stehen auf Ebene 0, in RAD_ISO_UNIT_DEPTH; die anderen Tiefen bleiben, wie
 /// sie sind. Das Bild der Figur folgt dem Typ der Einheit (RAD_IsoUnitSpriteOf);
 /// kommt eine andere Einheit aufs Feld, gilt ihre Blickrichtung als nicht gesetzt.
+/// Ihr Ring ist "player" (rendering/entity.h).
 ///
-static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit)
+static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const RAD_ClientUnit_t *unit, int32_t player)
 {
     RAD_IsoEntity_t **entity = &map->data[0][y][x].entities[RAD_ISO_UNIT_DEPTH];
 
@@ -575,6 +576,7 @@ static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const R
 
     (*entity)->id = unit->id;
     (*entity)->sprite = RAD_IsoUnitSpriteOf(unit->name);
+    (*entity)->player = player;
 }
 
 ///
