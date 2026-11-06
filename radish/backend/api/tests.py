@@ -100,7 +100,7 @@ def create_test_catalog():
 class ServerListTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create(username="technischer-server-user")
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.user, token=SERVER_TOKEN)
 
     def test_list_returns_all_registered_servers(self):
         GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
@@ -153,7 +153,9 @@ class ServerRegisterTests(APITestCase):
     """
 
     def setUp(self):
-        self.client.force_authenticate(user=User.objects.create(username="technischer-server-user"))
+        self.client.force_authenticate(
+            user=User.objects.create(username="technischer-server-user"), token=SERVER_TOKEN
+        )
 
     def payload(self, **overrides):
         return {
@@ -191,6 +193,83 @@ class ServerRegisterTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("instance_name", response.data)
+
+
+class ServerViewPermissionTests(APITestCase):
+    """
+    ServerView ist nur fuer den Server-Account (HasServerRole): wer einen
+    Server registriert, bestimmt, wohin das Backend die Zucchini-Codes und
+    die UDP-Pakete der Spieler schickt. Ein Spieler (oder Admin) bekommt 403
+    -- fuer Auflisten, Registrieren und Loeschen.
+    """
+
+    def setUp(self):
+        GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
+        self.user = User.objects.create(username="spieler")
+
+    def test_player_cannot_list_servers(self):
+        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+
+        self.assertEqual(self.client.get("/api/servers/").status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            self.client.get("/api/servers/server-a/").status_code, status.HTTP_403_FORBIDDEN
+        )
+
+    def test_player_cannot_register_server(self):
+        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+
+        response = self.client.post(
+            "/api/servers/",
+            {
+                "name": "boese",
+                "address": "10.0.0.66",
+                "port": 9999,
+                "control_url": "http://attacker.example",
+                "instance_name": "game-instance-1",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(GameServer.objects.filter(name="boese").exists())
+
+    def test_player_cannot_delete_server(self):
+        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+
+        response = self.client.delete("/api/servers/server-a/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(GameServer.objects.filter(name="server-a").exists())
+
+    def test_admin_cannot_register_server(self):
+        self.client.force_authenticate(user=self.user, token=ADMIN_TOKEN)
+
+        response = self.client.post(
+            "/api/servers/", {"name": "x", "address": "a", "port": 1}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_server_account_can_delete_server(self):
+        self.client.force_authenticate(user=self.user, token=SERVER_TOKEN)
+
+        response = self.client.delete("/api/servers/server-a/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(GameServer.objects.filter(name="server-a").exists())
+
+
+class LoginCallbackTests(APITestCase):
+    """auth_views.LoginCallbackView: der error-Parameter darf nicht als HTML zurueckkommen."""
+
+    def test_error_parameter_is_not_reflected_as_html(self):
+        payload = "<script>alert(1)</script>"
+
+        response = self.client.get("/api/login/callback/", {"error": payload})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(response["Content-Type"].startswith("text/plain"))
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
 
 
 class AdminServerListTests(APITestCase):

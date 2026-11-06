@@ -43,7 +43,16 @@ class LoginCallbackView(View):
     def get(self, request):
         error = request.GET.get("error")
         if error:
-            return HttpResponseBadRequest(f"Keycloak meldet einen Fehler: {error}")
+            # "error" kommt ungeprueft aus der URL -- jeder kann einen Link
+            # auf login/callback/?error=<script>... bauen. Als text/plain
+            # statt Djangos Default text/html, sonst fuehrte der Browser das
+            # auf der Origin des Frontends aus (reflected XSS).
+            # SecurityMiddleware setzt X-Content-Type-Options: nosniff, der
+            # Browser raet den Typ also nicht doch wieder zu HTML um.
+            return HttpResponseBadRequest(
+                f"Keycloak meldet einen Fehler: {error}",
+                content_type="text/plain; charset=utf-8",
+            )
 
         expected_state = request.session.pop("keycloak_login_state", None)
         state = request.GET.get("state")

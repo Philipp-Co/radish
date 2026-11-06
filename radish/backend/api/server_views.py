@@ -32,13 +32,17 @@ class ServerView(APIView):
     dieselbe Klasse unter zwei Pfaden eingehaengt (siehe urls.py):
     "servers/" fuer POST/GET, "servers/<name>/" fuer DELETE.
 
-    Wie beim Registrieren nur IsAuthenticated (keine HasPlayerRole): das
-    ist fuer den technischen Server-Account gedacht (siehe permissions.py),
-    nicht fuer Spieler-Clients -- die Antwort enthaelt bewusst Adresse und
-    Port, anders als z.B. GameDetailSerializer fuer Spiele.
+    Nur fuer den technischen Server-Account (HasServerRole, siehe
+    permissions.py), nicht fuer Spieler-Clients: wer einen Server
+    registriert, bestimmt, wohin das Backend beim Spielstart die geheimen
+    Zucchini-Codes schickt (control_url) und wohin der WebSocket-Consumer
+    UDP-Pakete leitet (address/port). Ein Spieler darf das weder setzen
+    noch fremde Server loeschen (das loescht per CASCADE auch laufende
+    Spiele), und die Antwort enthaelt Adresse, Port und Steuer-URL.
+    Admins sehen die Server ueber admin_views.AdminServerListView.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasServerRole]
 
     def get(self, request, name=None):
         """
