@@ -417,6 +417,10 @@ eigener nginx-Container mehr davor.
 |---|---|---|
 | `backend` | 8000 → 8000 | Django: liefert `radish/frontend/` unter `/`, `radish/web/` unter `/wasm/` und die Matchmaking-/Login-API unter `/api/` |
 | `game-server` | 9999–10002/udp | vier Instanzen aus Zucchini an der UDP-Strecke und dem Spielserver daran, je ein Port |
+| `backend-db` | 5433 → 5432 | Postgres des Backends (siehe [Datenbank](#datenbank)) |
+| `backend-migrate` | — | bringt das Schema auf Stand, füllt eine neue Datenbank mit den Katalogen und endet |
+| `keycloak` | 8081 → 8080 | Login, Rollen und Tokens für Spieler, Admins und Spielserver |
+| `keycloak-db` | — | Postgres von Keycloak, getrennt von `backend-db` |
 
 Das `backend`-Image baut beides selbst: den Wasm-Client in einem eigenen
 Emscripten-Stage (`emscripten/emsdk`, dieselbe Version wie `emsdk/`) und
@@ -426,6 +430,79 @@ Emscripten-Build oder ein `npm install` auf dem Host ist dafür nicht nötig; ei
 lokal gebautes `radish/web/client.*` geht nicht ins Image. Der erste Bau lädt das
 Emscripten-Image (rund 750 MB) und übersetzt die SDL-Ports, danach liegen sie im
 Layer-Cache.
+
+### Datenbank
+
+Das Backend ändert das Schema seiner Datenbank nicht selbst. Das erledigt vorher
+ein eigener, kurzlebiger Dienst, und jeder der drei Beteiligten meldet sich mit
+einem eigenen Benutzer an:
+
+1. **`backend-db`** legt beim ersten Start, also nur auf einem leeren Volume,
+   zwei Benutzer an ([01-roles.sh](docker/backend-db/init/01-roles.sh)):
+   `radish_owner` besitzt die Datenbank und darf das Schema ändern,
+   `radish_app` darf nur Daten lesen und schreiben. Der `POSTGRES_USER`
+   `radish` bleibt Admin, nur für lokale Entwicklung und Tests.
+2. **`backend-migrate`** startet, sobald die Datenbank bereit ist, als
+   `radish_owner`. Er führt `migrate` aus, lädt danach je nach `RADISH_DB_SEED`
+   die Kataloge und endet ([entrypoint.sh](docker/backend-migrate/entrypoint.sh)).
+   Das Image enthält nur, was dafür nötig ist: Models, Migrationen, den Dump und
+   eigene Settings ([settings_migrate.py](radish/backend/config/settings_migrate.py)).
+   Es bringt weder Frontend noch Wasm-Client noch die Views mit.
+3. **`backend`** startet erst, wenn der Migrator erfolgreich beendet ist, und
+   meldet sich als `radish_app` an. Beim Start prüft es nur mit
+   `migrate --check`, dass keine Migration fehlt, und bricht sonst ab
+   ([entrypoint.sh](docker/backend/entrypoint.sh)).
+
+Die Passwörter in [docker-compose.yaml](docker-compose.yaml) sind Werte für die
+lokale Entwicklung. Produktiv müssen sie durch eigene ersetzt werden, und zwar
+paarweise: `RADISH_DB_OWNER_PASSWORD` bei `backend-db` zu `DJANGO_DB_PASSWORD`
+bei `backend-migrate`, `RADISH_DB_APP_PASSWORD` zu dem bei `backend`. Weil das
+Init-Skript nur auf einem leeren Volume läuft, wirkt eine Änderung daran erst
+nach `docker compose down -v`. Das löscht auch Keycloaks Datenbank.
+
+#### Migrationen
+
+Die Migrationen in `radish/backend/api/migrations/` enthalten nur das Schema,
+keine Datensätze. Eine neue entsteht wie gewohnt aus den Models und wird beim
+nächsten `docker compose up --build` vom Migrator eingespielt:
+
+```bash
+cd radish/backend
+python manage.py makemigrations api
+```
+
+#### Startdaten
+
+Was in einer neuen Datenbank stehen soll, liegt in
+[api/fixtures/seed.json](radish/backend/api/fixtures/seed.json): nur die
+Kataloge, die ein Admin pflegt, also Spezies, Einheitentypen mit ihren Profilen,
+Waffen, Ausrüstung und Gelände. Benutzer, Spieler, Armeen, Spiele und
+Spielserver-Instanzen entstehen im Betrieb und stehen nicht darin.
+
+Wann der Migrator den Dump lädt, bestimmt `RADISH_DB_SEED` bei
+`backend-migrate` ([seed.py](radish/backend/api/management/commands/seed.py)):
+
+| Wert | Verhalten |
+|---|---|
+| `if-empty` (Default) | lädt nur, wenn alle Katalog-Tabellen leer sind, also in eine neue Datenbank; eine gepflegte bleibt unberührt |
+| `always` | lädt bei jedem Start und überschreibt Datensätze mit gleichem Primärschlüssel; nur für Test- und Demo-Umgebungen |
+| `never` | lädt nie |
+
+Ohne die Kataloge fehlen unter anderem die Geländetypen, und jeder Spielstart
+scheitert.
+
+Nach dem Pflegen der Kataloge wird der Dump aus der laufenden `backend-db`
+(localhost:5433) neu geschrieben, geprüft und committet. Dafür reicht eine lokale
+Python-Umgebung mit
+[requirements-migrate.txt](radish/backend/requirements-migrate.txt):
+
+```bash
+scripts/db-dump-seed.sh
+```
+
+Das Skript ([db-dump-seed.sh](scripts/db-dump-seed.sh)) nennt die
+Katalog-Models ausdrücklich. Ein neues Model kommt also erst in den Dump, wenn
+es dort eingetragen ist.
 
 ### Das Backend-Image
 
