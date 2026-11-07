@@ -1,5 +1,6 @@
 emsdk/
 __pycache__/
+.mypy_cache/
 zucchini/
 build/
 build-host/

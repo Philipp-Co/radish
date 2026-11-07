@@ -31,6 +31,11 @@ const TILES: HubTile[] = [
     title: 'Armee',
     description: 'Armeen zusammenstellen und ausruesten.',
   },
+  {
+    link: '/games/how-to',
+    title: 'How To',
+    description: 'Wie man Einheiten zieht und angreift.',
+  },
 ];
 
 const ADMIN_TILE: HubTile = {

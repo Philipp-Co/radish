@@ -44,7 +44,7 @@ typedef struct
     /// hat, setzt das Backend vor die Nachricht, und ein user_id, das der Client
     /// hineinschreibt, liest der Server nicht (protobuf/command.proto). Den
     /// geheimen Zucchini-Code, der vor jeder Nachricht steht, kennt der Client
-    /// gar nicht: auch den setzt das Backend (radish/backend/api/access.py).
+    /// gar nicht: auch den setzt das Backend (radish/backend/api/domain/servers/access.py).
     ///
     RAD_NetUserId_t own_player_id;
 

@@ -5,11 +5,11 @@ import { ApiService, GameServerEntry } from '../../../core/api.service';
 
 /**
  * Adminseite: listet alle aktuell angemeldeten Game-Server auf (siehe
- * radish/backend/api/admin_views.py, AdminServerListView). Nur erreichbar
+ * radish/backend/api/interfaces/admin/views/admin_views.py, AdminServerListView). Nur erreichbar
  * mit der Keycloak-Realm-Rolle "Radish-Admin" -- der Tab dorthin ist in
  * games-shell.component.ts an AuthService.isAdmin() geknuepft, die Route
  * selbst zusaetzlich an adminGuard (siehe app.routes.ts, core/auth.guard.ts),
- * und serverseitig durchgesetzt ueber permissions.HasAdminRole. Ohne
+ * und serverseitig durchgesetzt ueber has_admin_role.HasAdminRole. Ohne
  * Server-Push (siehe Docstring von GamesListComponent) deshalb, wie dort,
  * einfaches Polling alle 5s statt eines Live-Updates.
  */

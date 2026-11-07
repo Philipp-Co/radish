@@ -25,7 +25,11 @@
 #define WINDOW_WIDTH (SCREEN_WIDTH)
 #define WINDOW_HEIGHT (SCREEN_HEIGHT)
 #define MAX_INPUT_LENGTH 64
-#define FONT_PATH "/assets/LiberationSansBold.ttf"
+///
+/// Dieselbe Schrift wie im Frontend: Michroma (assets/fonts/michroma/), nur der
+/// Schnitt 400 -- wie dort.
+///
+#define FONT_PATH "/assets/fonts/michroma/Michroma-Regular.ttf"
 #define FONT_SIZE 16
 
 ///
@@ -60,7 +64,7 @@ static RAD_ClientWorld_t world;
 
 ///
 /// Was gerade im Fokus steht (model/focus.h). Schreibt die IsoMapView, liest
-/// die TerrainInfoView; anfangs nichts.
+/// die RootView fuer die UnitInfoView; anfangs nichts.
 ///
 static RAD_ClientFocus_t focus = { .tile = NULL };
 
@@ -97,7 +101,7 @@ static RAD_IoNetEventHandlerContext_t net_event_context = { .session = &net_sess
 
 ///
 /// Setzt die eigene Spieler-Id aus der Kennung, die das Backend beim Verbinden
-/// schickt ({"type": "identity"}, radish/backend/api/consumers.py). Gerufen von
+/// schickt ({"type": "identity"}, radish/backend/api/interfaces/player/views/consumers.py). Gerufen von
 /// der einbettenden Seite (frontend/src/app/shared/game-canvas/
 /// game-canvas.component.ts) ueber Module.ccall. Eine Kennung, die keine ist,
 /// laesst die bisherige Id stehen.

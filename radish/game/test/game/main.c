@@ -53,7 +53,7 @@ void test_kampf_nach_dem_fall_keine_waffe_mehr(void);
 void test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt(void);
 void test_kampf_trifft_auch_eigene_einheiten(void);
 void test_kampf_derselbe_seed_derselbe_kampf(void);
-void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void);
+void test_kampf_deckung_erschwert_den_treffer_nicht(void);
 void test_kampf_zerstoerung_meldet_dem_besitzer(void);
 void test_kampf_angriff_meldet_beiden_besitzern(void);
 void test_kampf_wer_sieht_erfaehrt_mehr(void);
@@ -192,7 +192,7 @@ int main(void)
     RUN_TEST(test_kampf_auf_ein_leeres_feld_wird_nicht_gewuerfelt);
     RUN_TEST(test_kampf_trifft_auch_eigene_einheiten);
     RUN_TEST(test_kampf_derselbe_seed_derselbe_kampf);
-    RUN_TEST(test_kampf_deckung_des_zielfeldes_erschwert_den_treffer);
+    RUN_TEST(test_kampf_deckung_erschwert_den_treffer_nicht);
     RUN_TEST(test_kampf_zerstoerung_meldet_dem_besitzer);
     RUN_TEST(test_kampf_angriff_meldet_beiden_besitzern);
     RUN_TEST(test_kampf_wer_sieht_erfaehrt_mehr);

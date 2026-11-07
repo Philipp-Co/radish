@@ -1,7 +1,7 @@
 services:
   # Das Django-Backend unter radish/backend/: Matchmaking-API (Game/GameServer/
   # Player) sowie Login/Logout und JWT-Absicherung gegen Keycloak (siehe
-  # radish/backend/api/auth_views.py, api/authentication.py). Redet nicht mit
+  # radish/backend/api/interfaces/auth/views/auth_views.py, api/interfaces/auth/authentication.py). Redet nicht mit
   # game-server -- das uebernehmen die Clients selbst per UDP/WebRTC, dieser
   # Service verwaltet nur, wer mit wem in welchem Spiel steckt. Liefert
   # ausserdem das komplette Frontend aus: das Angular-Frontend
@@ -151,7 +151,7 @@ services:
     environment:
       # Fuer register_instance.py (siehe docker/game-server/): meldet die
       # laufende Instanz beim Backend an-/ab (POST/DELETE api/servers/,
-      # siehe radish/backend/api/server_views.py). Programm-eigene
+      # siehe radish/backend/api/interfaces/servers/views/server_views.py). Programm-eigene
       # Variablen, deshalb mit RADISH_ prefixed -- anders als z.B.
       # KEYCLOAK_BASE_URL beim Service "backend" oben, das folgt Keycloaks
       # eigener Konvention.
@@ -171,7 +171,7 @@ services:
       # eindeutig. Die Namen der Instanzen sind es nur im Container; beim
       # Backend meldet sich jede deshalb als "<Kennung>-<Instanzname>", z.B.
       # "gs1-game-instance-1" (GameServer.name ist unique, siehe
-      # radish/backend/api/models.py und game-instance-entrypoint.sh).
+      # radish/backend/api/models/game_server.py und game-instance-entrypoint.sh).
       RADISH_GAME_SERVER_ID: "gs1"
       # War hier lange 127.0.0.1, in der Annahme, das reiche fuer "rein
       # lokales docker compose up". Das stimmt aber nicht: backend und
@@ -179,7 +179,7 @@ services:
       # backend dessen eigener Loopback, nicht der von game-server. Das
       # Backend schickte UDP-Pakete deshalb an sich selbst statt an
       # game-server und bekam dafuer "Connection refused" (siehe
-      # radish/backend/api/consumers.py, _UdpProtocol.error_received).
+      # radish/backend/api/interfaces/player/views/consumers.py, _UdpProtocol.error_received).
       #
       # Jetzt einfach der Docker-Compose-Servicename: ueber Docker-DNS aus
       # dem backend-Container heraus aufloesbar, unabhaengig davon, welche
@@ -187,7 +187,7 @@ services:
       # unten definierten "default"-Netz (siehe networks: am Dateiende)
       # ist dafuer nicht mehr noetig, schadet als zusaetzlicher, stabiler
       # Zugang aber auch nicht und bleibt deshalb stehen. Ging vorher
-      # nicht: GameServer.address (radish/backend/api/models.py) war ein
+      # nicht: GameServer.address (radish/backend/api/models/game_server.py) war ein
       # GenericIPAddressField und haette den Servicenamen als ungueltig
       # abgelehnt -- jetzt ein CharField, das jede Adresse annimmt (siehe
       # dortigen Kommentar). Fuer einen echten (Nicht-Docker-)Host muss
@@ -196,7 +196,7 @@ services:
       RADISH_GAME_SERVER_ADDRESS: "game-server"
       # Instanz-API dieses Containers (Django unter supervisord, Port 8000
       # im Container), ueber die das Backend ein Spiel aus der Lobby heraus
-      # startet bzw. abbricht (siehe radish/backend/api/instance_client.py).
+      # startet bzw. abbricht (siehe radish/backend/api/domain/servers/instance_client.py).
       RADISH_GAME_SERVER_CONTROL_URL: "http://game-server:8000"
       # Verzeichnis, ueber das Django (instances/views.py) und radish_server
       # die Spielstart-Datei austauschen -- je Instanz ein Unterverzeichnis

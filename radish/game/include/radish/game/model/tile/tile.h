@@ -48,9 +48,8 @@ typedef struct
     int16_t movement_modifier;
 
     ///
-    /// CV: die Deckung, die das Feld einer Einheit darauf gibt. Ein Schuss auf sie
-    /// trifft erst mit einem W10 von Genauigkeit plus Deckung
-    /// (control/attack_unit.c) -- ab einer Summe ueber 10 gar nicht.
+    /// CV: die Deckung, die das Feld einer Einheit darauf gibt. Wird gefuehrt und
+    /// an die Clients geschickt, wirkt im Kampf aber nicht (control/attack_unit.c).
     ///
     int16_t cover;
 
@@ -61,7 +60,7 @@ typedef struct
     /// Ob das Feld die direkte Sicht auf die Felder dahinter versperrt. Liegt es
     /// zwischen Schuetze und Ziel, ist kein Angriff moeglich
     /// (RAD_GameHasLineOfSight, control/attack_unit.c). Auf das Feld selbst sieht
-    /// man -- eine Einheit darauf hat dann seine Deckung.
+    /// man.
     ///
     bool blocks_sight;
 } RAD_Terrain_t;

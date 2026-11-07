@@ -743,28 +743,21 @@ void test_kampf_derselbe_seed_derselbe_kampf(void)
 }
 
 ///
-/// **Deckung erschwert den Treffer** (RAD_Terrain_t.cover): gezaehlt wird die des
-/// Zielfeldes, nicht die des Schuetzen. Genauigkeit 1 trifft offen immer; mit
-/// Deckung 10 braucht es eine 11, und die wuerfelt kein W10.
+/// **Deckung erschwert den Treffer nicht** (RAD_Terrain_t.cover): weder die des
+/// Zielfeldes noch die des Schuetzen. Genauigkeit 1 trifft immer -- auch mit
+/// Deckung 10, die frueher eine 11 verlangt haette.
 ///
-void test_kampf_deckung_des_zielfeldes_erschwert_den_treffer(void)
+void test_kampf_deckung_erschwert_den_treffer_nicht(void)
 {
     aufbauen();
     mitschreiben();
-    const RAD_UnitId_t offen = schuetze(2, 2, 1, 5, 0, 0);
-    ziel(4, 2, 1, 3, 11, 0);
-
-    // Deckung unter dem Schuetzen zaehlt nicht.
-    RAD_WorldTileAt(&game->world, 2, 2)->terrain.cover = 10;
-    greife_an(offen, 4, 2);
-    TEST_ASSERT_EQUAL_INT(5, angriffe.result.hits);
-
     const RAD_UnitId_t gedeckt = schuetze(2, 4, 1, 5, 0, 0);
     ziel(4, 4, 1, 3, 11, 0);
+    RAD_WorldTileAt(&game->world, 2, 4)->terrain.cover = 10;
     RAD_WorldTileAt(&game->world, 4, 4)->terrain.cover = 10;
     greife_an(gedeckt, 4, 4);
     TEST_ASSERT_EQUAL_INT(5, angriffe.result.shots);
-    TEST_ASSERT_EQUAL_INT(0, angriffe.result.hits);
+    TEST_ASSERT_EQUAL_INT(5, angriffe.result.hits);
 
     abbauen();
 }

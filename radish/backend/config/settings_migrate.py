@@ -9,7 +9,7 @@ channels, rest_framework), die das Migrator-Image nicht mitbringt.
 INSTALLED_APPS enthaelt genau die Apps mit Migrationen. Fehlt hier eine, die
 config/settings.py hat, legt der Migrator ihre Tabellen nie an und das
 Backend bricht beim Start ab (`migrate --check` in
-docker/backend/entrypoint.sh) -- api/tests.py.MigratorSettingsTests prueft
+docker/backend/entrypoint.sh) -- api/tests/models/test_migrator_settings.py prueft
 das schon vorher.
 """
 
@@ -17,8 +17,8 @@ from .database import database
 
 INSTALLED_APPS = [
     # SimpleAdminConfig statt 'django.contrib.admin': ohne Autodiscover, das
-    # sonst die admin.py aller Apps importiert -- api/admin.py liegt nicht im
-    # Image. Die App selbst braucht es fuer ihre Tabelle django_admin_log.
+    # sonst die admin.py aller Apps importiert -- der Migrator braucht keine.
+    # Die App selbst braucht es fuer ihre Tabelle django_admin_log.
     'django.contrib.admin.apps.SimpleAdminConfig',
     'django.contrib.auth',
     'django.contrib.contenttypes',

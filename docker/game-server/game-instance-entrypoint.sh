@@ -72,7 +72,7 @@ export RADISH_GAME_FINISHED_COMMAND=/usr/local/bin/register_instance.py
 
 # Die Whitelist bleibt hier leer. Zucchini nimmt nur Pakete an, deren Code
 # darin steht, und die Codes vergibt das Backend je Spieler beim Spielstart
-# (radish/backend/api/access.py); eingetragen werden sie erst dann, vom
+# (radish/backend/api/domain/servers/access.py); eingetragen werden sie erst dann, vom
 # Django dieses Containers (radish/game-server/instances/views.py). Bis
 # dahin kommt nichts durch -- es gibt ja auch noch kein Spiel.
 

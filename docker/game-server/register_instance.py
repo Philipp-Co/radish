@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Meldet diese Game-Instanz beim Backend an- bzw. wieder ab (siehe
-radish/backend/api/server_views.py: POST/DELETE api/servers/) und meldet
+radish/backend/api/interfaces/servers/views/server_views.py: POST/DELETE api/servers/) und meldet
 das Ende eines Spiels (POST api/servers/<name>/game-finished/).
 
     register_instance.py register
@@ -84,7 +84,7 @@ def register():
     ausser bei 400 (Name schon vergeben), siehe unten.
     """
     name = _env("RADISH_GAME_SERVER_NAME")
-    # Muss keine IP sein -- radish/backend/api/models.py, GameServer.address
+    # Muss keine IP sein -- radish/backend/api/models/game_server.py, GameServer.address
     # ist ein CharField und nimmt z.B. auch einen Docker-Compose-
     # Servicenamen wie "game-server" an (siehe docker-compose.yaml).
     address = _env("RADISH_GAME_SERVER_ADDRESS")
@@ -92,7 +92,7 @@ def register():
     backend_url = _env("RADISH_BACKEND_URL")
     # HTTP-Adresse der Instanz-API dieses Containers (radish/game-server/
     # instances/views.py), ueber die das Backend Spiele startet/abbricht --
-    # siehe GameServer.control_url in radish/backend/api/models.py.
+    # siehe GameServer.control_url in radish/backend/api/models/game_server.py.
     control_url = _env("RADISH_GAME_SERVER_CONTROL_URL")
     # Name der Instanz in diesem Container (Zucchini-Name, Pfadteil der
     # Instanz-API) -- anders als "name" nur hier eindeutig, siehe

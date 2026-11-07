@@ -1,6 +1,6 @@
 # Django-Backend (radish/backend/): die Matchmaking-API (Game/GameServer/
 # Player unter api/client/, api/servers/) sowie Login/Logout und die
-# JWT-Absicherung gegen Keycloak (siehe api/auth_views.py, api/authentication.py).
+# JWT-Absicherung gegen Keycloak (siehe api/interfaces/auth/views/auth_views.py, api/interfaces/auth/authentication.py).
 # Liefert ausserdem das gesamte Frontend aus -- das Angular-Frontend
 # (radish/frontend/, Login/Spielübersicht/Spielansicht) unter "/" und den
 # Wasm-Client (radish/web/) unter "/wasm/" (siehe radish/backend/web/) --
@@ -19,8 +19,8 @@
 # Laufzeitbibliotheken.
 #
 # ASGI statt WSGI: config/asgi.py routet HTTP weiter an Django wie
-# bisher, WebSocket-Verbindungen (siehe radish/backend/api/routing.py,
-# api/consumers.py) laufen ueber Channels. Ausgeliefert wird beides ueber
+# bisher, WebSocket-Verbindungen (siehe radish/backend/api/interfaces/routing.py,
+# api/interfaces/player/views/consumers.py) laufen ueber Channels. Ausgeliefert wird beides ueber
 # Daphne (siehe entrypoint.sh) -- weiterhin kein Reverse-Proxy davor.
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend-src
@@ -93,7 +93,7 @@ WORKDIR /app
 
 # Ohne das puffert Python stdout blockweise, sobald es nicht an ein
 # Terminal haengt (also praktisch immer in Docker) -- print()-Ausgaben
-# aus dem Anwendungscode (siehe api/consumers.py) wuerden sonst erst mit
+# aus dem Anwendungscode (siehe api/interfaces/player/views/consumers.py) wuerden sonst erst mit
 # grosser Verzoegerung oder gar nicht in "docker compose logs" auftauchen,
 # waehrend Daphnes eigene Zugriffslogs (WSCONNECT/WSREJECT/...) ueber das
 # logging-Modul laufen und davon nicht betroffen sind.

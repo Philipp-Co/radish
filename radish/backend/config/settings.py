@@ -71,7 +71,7 @@ INSTALLED_APPS = [
     # Muss vor 'django.contrib.staticfiles' stehen: sobald 'daphne' hier
     # gelistet ist, ersetzt es Djangos eingebauten `manage.py runserver`
     # durch Daphnes ASGI-Dev-Server, der auch WebSockets bedient (siehe
-    # config/asgi.py, api/routing.py) -- damit verhaelt sich lokales
+    # config/asgi.py, api/interfaces/routing.py) -- damit verhaelt sich lokales
     # `manage.py runserver` genauso wie der Container (siehe
     # docker/backend/entrypoint.sh, dort laeuft direkt Daphne).
     'daphne',
@@ -118,7 +118,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # config/wsgi.py bleibt bestehen, ausgeliefert wird das Backend aber ueber
 # ASGI (config/asgi.py, siehe auch docker/backend/entrypoint.sh) -- nur
-# darueber laufen WebSocket-Verbindungen (api/routing.py).
+# darueber laufen WebSocket-Verbindungen (api/interfaces/routing.py).
 ASGI_APPLICATION = 'config.asgi.application'
 
 # In-Memory reicht, solange genau ein Backend-Prozess laeuft (aktuell ein
@@ -226,7 +226,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # kaemen die "django.*"-Meldungen im DEBUG-Modus doppelt.
 #
 #   DJANGO_LOG_LEVEL=DEBUG   auch die Meldungen pro UDP-Datagramm und
-#                            Client-Nachricht (api/consumers.py)
+#                            Client-Nachricht (api/interfaces/player/views/consumers.py)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -284,13 +284,13 @@ KEYCLOAK_POST_LOGOUT_REDIRECT_URI = os.environ.get(
 # DRF-Absicherung der uebrigen Endpunkte (servers/, client/*) ueber
 # djangorestframework-simplejwt -- aber nicht im ueblichen Modus, in dem
 # Django selbst Token-Paare ausstellt. Stattdessen validiert
-# KeycloakJWTAuthentication (siehe api/authentication.py) direkt die von
+# KeycloakJWTAuthentication (siehe api/interfaces/auth/authentication.py) direkt die von
 # Keycloak ausgestellten Access-Tokens: Django ist reiner Resource-Server,
 # das Login/Logout unter api/login/, api/logout/ bleibt unabhaengig davon
 # session-basiert (siehe auth_views.py).
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "api.authentication.KeycloakJWTAuthentication",
+        "api.interfaces.auth.authentication.KeycloakJWTAuthentication",
     ],
 }
 
@@ -305,7 +305,7 @@ SIMPLE_JWT = {
     "ISSUER": f"{KEYCLOAK_BASE_URL}/realms/{KEYCLOAK_REALM}",
     # Keycloaks Access-Tokens tragen "sub" (nicht simplejwts uebliches
     # "user_id") und werden ueber User.username nachgeschlagen -- passend zu
-    # get_or_create_user_from_claims() in api/keycloak.py.
+    # get_or_create_user_from_claims() in api/interfaces/auth/keycloak.py.
     "USER_ID_CLAIM": "sub",
     "USER_ID_FIELD": "username",
     # simplejwt prueft standardmaessig eine eigene "token_type"-Klaim, die

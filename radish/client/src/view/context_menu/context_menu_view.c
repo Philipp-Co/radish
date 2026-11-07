@@ -771,7 +771,7 @@ static void RAD_ContextMenuViewClearItems(RAD_ContextMenuView_t *context_menu_vi
 ///     unsichtbar.
 ///   - EMPTY_TILE_SELECTED, SELECT_ENTITY_FROM_RESERVE, DEPLOY_FROM_RESERVE:
 ///     Deploy (RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY).
-///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, blau hervorgehoben -- wenn
+///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, gold hervorgehoben -- wenn
 ///     das ausgewaehlte Feld in der eigenen Aufstellzone liegt, sonst nicht:
 ///     dann nimmt Deploy es auch nicht an (RAD_ContextMenuViewRunAction).
 ///   - TILE_WITH_OWN_ENTITY_SELECTED: Move (RAD_CONTEXT_MENU_ITEM_ACTION_MOVE),
@@ -779,8 +779,8 @@ static void RAD_ContextMenuViewClearItems(RAD_ContextMenuView_t *context_menu_vi
 ///     (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK), wenn sie noch angreifen darf
 ///     ("may_move", "may_attack"). Jeder an seinem festen Platz, auch wenn der
 ///     andere fehlt.
-///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, blau hervorgehoben.
-///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, blau hervorgehoben.
+///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, gold hervorgehoben.
+///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, gold hervorgehoben.
 ///   - TILE_WITH_FOREIGN_ENTITY_SELECTED, WAITING_FOR_SERVER_RESPONSE: nur
 ///     Schliessen.
 ///
@@ -809,7 +809,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
         {
             RAD_ContextMenuItem_t *deploy = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY);
             // Wartet sie darauf, dass der Spieler das Deployen bestaetigt, ist
-            // Deploy hervorgehoben -- blau, aber nur, wenn es auch hinausgeht.
+            // Deploy hervorgehoben -- gold, aber nur, wenn es auch hinausgeht.
             if(deploy != NULL && state == RAD_CONTEXT_MENU_STATE_WAITING_FOR_USER_ACKNOWLEDGEMENT
                && RAD_ContextMenuViewDeployRejection(context_menu_view, context_menu_view->tile_x, context_menu_view->tile_y) == NULL)
             {
@@ -830,7 +830,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
             break;
         case RAD_CONTEXT_MENU_STATE_WAITING_FOR_ATTACK_ACKNOWLEDGEMENT:
         {
-            // Das Ziel steht: Attack bestaetigt es, hervorgehoben -- blau.
+            // Das Ziel steht: Attack bestaetigt es, hervorgehoben -- gold.
             RAD_ContextMenuItem_t *attack = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK);
             if(attack != NULL)
             {
@@ -840,7 +840,7 @@ static void RAD_ContextMenuViewFillItems(RAD_ContextMenuView_t *context_menu_vie
         }
         case RAD_CONTEXT_MENU_STATE_WAITING_FOR_MOVE_ACKNOWLEDGEMENT:
         {
-            // Der Weg steht: Move bestaetigt ihn, hervorgehoben -- blau.
+            // Der Weg steht: Move bestaetigt ihn, hervorgehoben -- gold.
             RAD_ContextMenuItem_t *move = RAD_ContextMenuViewAddItem(context_menu_view, first_right, RAD_CONTEXT_MENU_ITEM_ACTION_MOVE);
             if(move != NULL)
             {

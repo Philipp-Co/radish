@@ -10,7 +10,7 @@ export interface GameListEntry {
 }
 
 /**
- * Eine Seite der Spieleliste, siehe radish/backend/api/client_views.py,
+ * Eine Seite der Spieleliste, siehe radish/backend/api/interfaces/player/views/client_views.py,
  * GameListView. page ist die tatsaechlich gelieferte Seite (ab 1) -- das
  * Backend korrigiert eine zu grosse oder ungueltige Seite selbst.
  */
@@ -22,7 +22,7 @@ export interface GameListPage {
 }
 
 /**
- * Wo ein Spiel steht, siehe radish/backend/api/models.py, GameStatus: in
+ * Wo ein Spiel steht, siehe radish/backend/api/models/game_status.py, GameStatus: in
  * der Lobby, oder laufend, sobald der Host es gestartet und die
  * Spielinstanz es aufgesetzt hat.
  */
@@ -41,11 +41,11 @@ export interface GameDetail {
   is_host: boolean;
 }
 
-/** Ein registrierter Game-Server, siehe radish/backend/api/admin_views.py. */
+/** Ein registrierter Game-Server, siehe radish/backend/api/interfaces/admin/views/admin_views.py. */
 export interface GameServerEntry {
   id: number;
   name: string;
-  /** Muss keine IP sein -- siehe radish/backend/api/models.py, GameServer.address. */
+  /** Muss keine IP sein -- siehe radish/backend/api/models/game_server.py, GameServer.address. */
   address: string;
   port: number;
   is_occupied: boolean;
@@ -53,7 +53,7 @@ export interface GameServerEntry {
 
 /**
  * Katalog, aus dem Armeen zusammengestellt werden -- siehe
- * radish/backend/api/army_views.py, CatalogView. Nur lesend; gepflegt wird
+ * radish/backend/api/interfaces/player/views/army_views.py, CatalogView. Nur lesend; gepflegt wird
  * er spaeter ueber eigene Admin-Schnittstellen.
  */
 export interface EntityProfile {
@@ -143,7 +143,7 @@ export interface ArmyListEntry {
   species_id: number;
   species_name: string;
   unit_count: number;
-  /** Summe aus den Katalogpreisen, siehe radish/backend/api/models.py, Army.total_cost. */
+  /** Summe aus den Katalogpreisen, siehe radish/backend/api/models/army.py, Army.total_cost. */
   total_cost: number;
 }
 
@@ -187,7 +187,7 @@ export interface ArmyDetail extends ArmyInput {
 
 /**
  * Katalog-Pflege fuer Admins unter api/admin/catalog/ (siehe radish/backend/
- * api/admin_views.py). in_use: der Eintrag steckt in mindestens einer Armee
+ * api/interfaces/admin/views/admin_views.py). in_use: der Eintrag steckt in mindestens einer Armee
  * -- dann sind seine Strukturfelder (Slots, Anzahlgrenzen, schwer) gesperrt
  * und er laesst sich nicht loeschen.
  */
@@ -253,7 +253,7 @@ export interface AdminEquipment extends Equipment {
 
 /**
  * Ein Tile-Typ mit seinen Werten (api/admin/terrain/, siehe radish/backend/
- * api/admin_views.py, AdminTerrainTypeListView). Die Typen stehen fest --
+ * api/interfaces/admin/views/admin_views.py, AdminTerrainTypeListView). Die Typen stehen fest --
  * geaendert werden nur die Werte; sie gelten ab dem naechsten Spielstart.
  */
 export interface AdminTerrainType {
@@ -286,7 +286,7 @@ export interface CatalogFilter {
 
 /**
  * Duenner Wrapper um die Matchmaking-Endpunkte unter api/client/ (siehe
- * radish/backend/api/client_views.py, urls.py). stream/ und state/
+ * radish/backend/api/interfaces/player/views/client_views.py, urls.py). stream/ und state/
  * existieren serverseitig zwar schon (teils noch als Platzhalter, siehe
  * dortige Docstrings), sind hier aber bewusst noch nicht angebunden. Das
  * eigentliche Ingame-Geschehen (frueher: command/) laeuft inzwischen ueber
@@ -339,7 +339,7 @@ export class ApiService {
 
   /**
    * Startet das eigene Spiel aus der Lobby heraus -- nur als Host und erst mit
-   * zweitem Spieler (siehe radish/backend/api/client_views.py, GameStartView).
+   * zweitem Spieler (siehe radish/backend/api/interfaces/player/views/client_views.py, GameStartView).
    * Synchron: die Antwort kommt erst, wenn die Spielinstanz das Spiel aufgesetzt
    * hat, und liefert es dann schon als "running".
    */
@@ -347,14 +347,14 @@ export class ApiService {
     return this.http.post<GameDetail>('/api/client/game/start/', {});
   }
 
-  /** Verlaesst das aktuelle Spiel, siehe radish/backend/api/client_views.py, LeaveGameView. */
+  /** Verlaesst das aktuelle Spiel, siehe radish/backend/api/interfaces/player/views/client_views.py, LeaveGameView. */
   leaveGame(): Observable<{ status: string }> {
     return this.http.post<{ status: string }>('/api/client/game/leave/', {});
   }
 
   /**
    * Alle aktuell angemeldeten Game-Server (Adminbereich, siehe
-   * radish/backend/api/admin_views.py, AdminServerListView -- erfordert die
+   * radish/backend/api/interfaces/admin/views/admin_views.py, AdminServerListView -- erfordert die
    * Keycloak-Realm-Rolle "Radish-Admin").
    */
   listServers(): Observable<{ servers: GameServerEntry[] }> {

@@ -11,6 +11,11 @@
 #define RAD_END_TURN_VIEW_PADDING 4
 
 ///
+/// Dicke des Rahmens, in Pixeln -- innen am Rand, kleiner als der Abstand oben.
+///
+#define RAD_END_TURN_VIEW_BORDER 2
+
+///
 /// Die Texte und Farben je Zustand (view/end_turn_view.h).
 ///
 #define RAD_END_TURN_VIEW_TEXT_OWN_TURN "Zug beenden"
@@ -25,11 +30,19 @@
 ///
 #define RAD_END_TURN_VIEW_TEXT_MAX 64
 
-#define RAD_END_TURN_VIEW_COLOR_ENABLED ((SDL_Color){ 0, 140, 0, 255 })
-#define RAD_END_TURN_VIEW_COLOR_PRESSED ((SDL_Color){ 0, 90, 0, 255 })
-#define RAD_END_TURN_VIEW_COLOR_DISABLED ((SDL_Color){ 80, 80, 80, 255 })
-#define RAD_END_TURN_VIEW_COLOR_DISABLED_TEXT ((SDL_Color){ 180, 180, 180, 255 })
-#define RAD_END_TURN_VIEW_COLOR_TEXT ((SDL_Color){ 255, 255, 255, 255 })
+///
+/// Die Farben der Buttons im Frontend (frontend/src/styles.css): schwarz, Schrift
+/// in --heading, Rahmen in --button-hover; gedrueckt ist der Hintergrund
+/// --button-hover, ebenso unter der Maus (button:hover); der Rahmen behaelt seine
+/// Farbe. Gesperrt ist dort alles halb durchsichtig (opacity: 0.5) --
+/// hier auf schwarzem Grund schon eingerechnet.
+///
+#define RAD_END_TURN_VIEW_COLOR_BACKGROUND ((SDL_Color){ 0x00, 0x00, 0x00, 255 })       // --button-bg
+#define RAD_END_TURN_VIEW_COLOR_PRESSED ((SDL_Color){ 0x66, 0x5b, 0x29, 255 })          // --button-hover
+#define RAD_END_TURN_VIEW_COLOR_TEXT ((SDL_Color){ 0xcc, 0xa3, 0x00, 255 })             // --heading
+#define RAD_END_TURN_VIEW_COLOR_BORDER ((SDL_Color){ 0x66, 0x5b, 0x29, 255 })           // --button-hover
+#define RAD_END_TURN_VIEW_COLOR_DISABLED_TEXT ((SDL_Color){ 0x66, 0x52, 0x00, 255 })    // --heading, halb
+#define RAD_END_TURN_VIEW_COLOR_DISABLED_BORDER ((SDL_Color){ 0x33, 0x2e, 0x15, 255 })  // --button-hover, halb
 
 
 ///
@@ -79,6 +92,11 @@ struct RAD_EndTurnView
     /// losgelassen wurde.
     ///
     bool pressed;
+
+    ///
+    /// Ob der Mauszeiger ueber der Flaeche steht (RAD_EndTurnViewHandleMouseMotion).
+    ///
+    bool hovered;
 };
 
 
@@ -111,7 +129,8 @@ RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, in
         .shown_state = RAD_END_TURN_VIEW_STATE_NO_TURN,
         .shown_round = 0,
         .shown_rounds = 0,
-        .pressed = false
+        .pressed = false,
+        .hovered = false
     };
 
     if(end_turn_view->label == NULL || !RAD_EndTurnViewSync(end_turn_view))
@@ -167,6 +186,17 @@ bool RAD_EndTurnViewHandleMouseButton(RAD_EndTurnView_t *end_turn_view, const SD
     return inside || was_pressed;
 }
 
+void RAD_EndTurnViewHandleMouseMotion(RAD_EndTurnView_t *end_turn_view, const SDL_MouseMotionEvent *motion)
+{
+    const SDL_Point point = { .x = motion->x, .y = motion->y };
+    end_turn_view->hovered = SDL_PointInRect(&point, &end_turn_view->area);
+}
+
+void RAD_EndTurnViewHandleMouseLeave(RAD_EndTurnView_t *end_turn_view)
+{
+    end_turn_view->hovered = false;
+}
+
 void RAD_UpdateEndTurnView(RAD_EndTurnView_t *end_turn_view, SDL_Renderer *renderer)
 {
     // Scheitert es, bleibt der alte Text stehen; der naechste Frame versucht es neu.
@@ -174,13 +204,37 @@ void RAD_UpdateEndTurnView(RAD_EndTurnView_t *end_turn_view, SDL_Renderer *rende
 
     // Die Farbe folgt dem Zustand, wie er jetzt ist -- nicht dem, zu dem der
     // Text zuletzt gesetzt werden konnte.
-    SDL_Color color = RAD_END_TURN_VIEW_COLOR_DISABLED;
-    if(RAD_EndTurnViewState(end_turn_view) == RAD_END_TURN_VIEW_STATE_OWN_TURN)
+    // Der Rahmen ist so hell wie die Schrift: voll, solange man dran ist oder
+    // das Spiel vorbei ist, sonst gedaempft (RAD_EndTurnViewSync).
+    const RAD_EndTurnViewState_t state = RAD_EndTurnViewState(end_turn_view);
+    SDL_Color color = RAD_END_TURN_VIEW_COLOR_BACKGROUND;
+    SDL_Color border = RAD_END_TURN_VIEW_COLOR_DISABLED_BORDER;
+    if(state == RAD_END_TURN_VIEW_STATE_OWN_TURN)
     {
-        color = end_turn_view->pressed ? RAD_END_TURN_VIEW_COLOR_PRESSED : RAD_END_TURN_VIEW_COLOR_ENABLED;
+        // Unter der Maus wie gedrueckt, wie ein Button im Frontend (button:hover).
+        const bool lit = end_turn_view->pressed || end_turn_view->hovered;
+        color = lit ? RAD_END_TURN_VIEW_COLOR_PRESSED : RAD_END_TURN_VIEW_COLOR_BACKGROUND;
+        border = RAD_END_TURN_VIEW_COLOR_BORDER;
+    }
+    else if(state == RAD_END_TURN_VIEW_STATE_FINISHED)
+    {
+        border = RAD_END_TURN_VIEW_COLOR_BORDER;
     }
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     SDL_RenderFillRect(renderer, &end_turn_view->area);
+    // Je Pixel Dicke ein Rechteck, eins weiter innen als das davor -- wie bei
+    // der UnitInfoView.
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    for(int32_t i = 0; i < RAD_END_TURN_VIEW_BORDER; ++i)
+    {
+        const SDL_Rect frame = {
+            .x = end_turn_view->area.x + i,
+            .y = end_turn_view->area.y + i,
+            .w = end_turn_view->area.w - 2 * i,
+            .h = end_turn_view->area.h - 2 * i
+        };
+        SDL_RenderDrawRect(renderer, &frame);
+    }
 
     // Ist die Flaeche kleiner als der Text, schneidet sie ihn ab; danach die
     // Clip-Flaeche des Aufrufers wiederherstellen.

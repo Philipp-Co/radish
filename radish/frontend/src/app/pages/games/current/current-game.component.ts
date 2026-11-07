@@ -9,7 +9,7 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
 
 /**
  * Zeigt das laufende Spiel des angemeldeten Nutzers, falls es eins gibt
- * (siehe api/client/game/current/, radish/backend/api/client_views.py,
+ * (siehe api/client/game/current/, radish/backend/api/interfaces/player/views/client_views.py,
  * CurrentGameView) -- Einstieg, um nach einem Reload oder erneuten Login
  * direkt ins eigene Spiel zurueckzufinden, ohne es in der Liste suchen zu
  * muessen. Bettet dafuer die Canvas-Komponente (siehe shared/game-canvas/)
@@ -159,7 +159,7 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
 
   /**
    * Verlaesst der Gegner ein laufendes Spiel, beendet das Backend es fuer
-   * beide (siehe radish/backend/api/client_views.py, LeaveGameView) -- davon
+   * beide (siehe radish/backend/api/interfaces/player/views/client_views.py, LeaveGameView) -- davon
    * erfaehrt diese Ansicht nur durch Nachfragen. Fehlgeschlagene Abrufe
    * werden beim naechsten Intervall einfach wiederholt.
    */

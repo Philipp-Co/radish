@@ -71,6 +71,12 @@ export const routes: Routes = [
         title: 'radish -- Spiel beitreten',
       },
       {
+        path: 'how-to',
+        loadComponent: () =>
+          import('./pages/games/how-to/how-to.component').then((m) => m.HowToComponent),
+        title: 'radish -- How To',
+      },
+      {
         path: 'armies',
         loadComponent: () =>
           import('./pages/games/armies/list/army-list.component').then(

@@ -10,12 +10,21 @@
 #define RAD_CONTEXT_MENU_ITEM_SEGMENTS 32
 
 ///
-/// Sein Kreis ist schwarz, solange er nicht hervorgehoben ist, und blau, solange
-/// er es ist (RAD_ContextMenuItemSetHighlighted); sein Symbol ist immer weiss.
+/// Wie ein Button im Frontend (frontend/src/styles.css): sein Kreis ist schwarz
+/// (--button-bg), unter der Maus oliv (--button-hover, button:hover), und sein
+/// Symbol hat die Farbe der Schrift (--heading). Am Rand ein Rahmen von
+/// RAD_CONTEXT_MENU_ITEM_BORDER Pixeln in --button-hover, auch unter der Maus --
+/// dort verschwindet er im gleichfarbigen Grund, wie beim Button. Hervorgehoben
+/// (RAD_ContextMenuItemSetHighlighted) ist er gold (--tile-hover) und sein Symbol
+/// schwarz, damit es darauf zu sehen ist -- das geht vor.
 ///
-#define RAD_CONTEXT_MENU_ITEM_BACKGROUND_COLOR ((SDL_Color){ 0, 0, 0, 255 })
-#define RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_COLOR ((SDL_Color){ 0, 96, 255, 255 })
-#define RAD_CONTEXT_MENU_ITEM_ICON_COLOR ((SDL_Color){ 255, 255, 255, 255 })
+#define RAD_CONTEXT_MENU_ITEM_BACKGROUND_COLOR ((SDL_Color){ 0x00, 0x00, 0x00, 255 })  // --button-bg
+#define RAD_CONTEXT_MENU_ITEM_HOVER_COLOR ((SDL_Color){ 0x66, 0x5b, 0x29, 255 })       // --button-hover
+#define RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_COLOR ((SDL_Color){ 0xcc, 0xa7, 0x00, 255 })   // --tile-hover
+#define RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_ICON_COLOR ((SDL_Color){ 0x00, 0x00, 0x00, 255 })
+#define RAD_CONTEXT_MENU_ITEM_ICON_COLOR ((SDL_Color){ 0xcc, 0xa3, 0x00, 255 })        // --heading
+#define RAD_CONTEXT_MENU_ITEM_BORDER_COLOR ((SDL_Color){ 0x66, 0x5b, 0x29, 255 })      // --button-hover
+#define RAD_CONTEXT_MENU_ITEM_BORDER 2.0f
 
 
 ///
@@ -157,16 +166,33 @@ bool RAD_ContextMenuItemHandleMouseButton(RAD_ContextMenuItem_t *item, const SDL
 }
 
 ///
-/// Ein schwarzer Kreis, hervorgehoben blau, und darin das Symbol seiner Aktion
-/// in Weiss (RAD_ContextMenuItemDrawIcon). Den Blend-Modus setzt die
+/// Ein schwarzer Kreis mit olivem Rahmen, unter der Maus oliv, hervorgehoben
+/// gold, und darin das
+/// Symbol seiner Aktion in der Farbe der Schrift (RAD_ContextMenuItemDrawIcon). Den Blend-Modus setzt die
 /// ContextMenuView.
 ///
 void RAD_UpdateContextMenuItem(RAD_ContextMenuItem_t *item, SDL_Renderer *renderer)
 {
-    const SDL_Color background = item->highlighted ? RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_COLOR : RAD_CONTEXT_MENU_ITEM_BACKGROUND_COLOR;
+    SDL_Color background = RAD_CONTEXT_MENU_ITEM_BACKGROUND_COLOR;
+    SDL_Color icon = RAD_CONTEXT_MENU_ITEM_ICON_COLOR;
+    if(item->highlighted)
+    {
+        background = RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_COLOR;
+        icon = RAD_CONTEXT_MENU_ITEM_HIGHLIGHT_ICON_COLOR;
+    }
+    else if(item->hovered)
+    {
+        background = RAD_CONTEXT_MENU_ITEM_HOVER_COLOR;
+    }
 
-    RAD_ContextMenuItemFillDisc(renderer, item->center_x, item->center_y, RAD_ContextMenuItemRadius(item), background);
-    RAD_ContextMenuItemDrawIcon(item, renderer, RAD_CONTEXT_MENU_ITEM_ICON_COLOR);
+    const float radius = RAD_ContextMenuItemRadius(item);
+    RAD_ContextMenuItemFillDisc(renderer, item->center_x, item->center_y, radius, background);
+
+    // Der Rahmen liegt innen am Rand, damit der Kreis nicht waechst; beim
+    // Aufklappen ist er womoeglich kleiner als der Rahmen dick.
+    const float inner = (radius > RAD_CONTEXT_MENU_ITEM_BORDER) ? radius - RAD_CONTEXT_MENU_ITEM_BORDER : 0.0f;
+    RAD_ContextMenuItemFillRing(renderer, item->center_x, item->center_y, inner, radius, RAD_CONTEXT_MENU_ITEM_BORDER_COLOR);
+    RAD_ContextMenuItemDrawIcon(item, renderer, icon);
 }
 
 

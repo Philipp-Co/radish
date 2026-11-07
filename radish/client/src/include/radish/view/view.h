@@ -14,8 +14,7 @@
 /// view/ -- die grafischen Komponenten. RAD_RootView_t ist ihre Grundlage, die
 /// RootView: sie initialisiert SDL und SDL_ttf, haelt Fenster, Renderer und
 /// Schrift, genau eine IsoMapView (view/iso_map_view.h), genau eine
-/// TerrainInfoView (view/terrain_info_view.h), genau eine UnitInfoView
-/// (view/unit_info_view.h), genau eine ContextMenuView
+/// UnitInfoView (view/unit_info_view.h), genau eine ContextMenuView
 /// (view/context_menu/context_menu_view.h) -- samt deren UnitDeploymentView --, genau
 /// eine EndTurnView (view/end_turn_view.h) und genau eine DebugView
 /// (view/debug/debug_view.h).
@@ -61,30 +60,21 @@
 /// (control/attack_unit.h).
 ///
 /// **Die IsoMapView nimmt die ganze Zeichenflaeche ein**
-/// (SDL_GetWindowSizeInPixels). **TerrainInfoView und UnitInfoView liegen am
-/// unteren Rand** darueber, die TerrainInfoView links, die UnitInfoView rechts,
-/// beide so gross wie ihr Inhalt: die TerrainInfoView hoechstens 200 Pixel breit
-/// und 27% der Hoehe der Zeichenflaeche hoch, die UnitInfoView genau 200 Pixel
-/// breit und hoechstens so hoch wie die ganze Zeichenflaeche. Ist die
-/// Zeichenflaeche schmaler als 400 Pixel, tritt die halbe Breite an die Stelle
-/// der 200 Pixel. Die Grenzen stehen mit RAD_CreateView fest -- das Fenster ist
+/// (SDL_GetWindowSizeInPixels). **Die UnitInfoView liegt am unteren rechten
+/// Rand** darueber, so hoch wie ihr Inhalt: genau 200 Pixel breit und
+/// hoechstens so hoch wie die ganze Zeichenflaeche. Ist die Zeichenflaeche
+/// schmaler als 400 Pixel, tritt die halbe Breite an die Stelle der 200 Pixel. Die Grenzen stehen mit RAD_CreateView fest -- das Fenster ist
 /// nicht veraenderbar.
 ///
-/// **Die EndTurnView liegt unten mittig** darueber, zwischen den beiden, 160
-/// Pixel breit (hoechstens so breit wie die Zeichenflaeche) und 32 hoch. Sie ist
+/// **Die EndTurnView liegt unten mittig** darueber, 320
+/// Pixel breit (hoechstens so breit wie die Zeichenflaeche) und 44 hoch. Sie ist
 /// immer sichtbar: ein Knopf zum Abgeben des Zuges, der zeigt, wer dran ist.
 ///
-/// **TerrainInfoView und UnitInfoView sind nicht immer sichtbar**, und zwar
-/// unabhaengig voneinander (RAD_ViewSetTerrainInfoVisible,
-/// RAD_ViewSetUnitInfoVisible). An der Stelle einer unsichtbaren ist die
-/// IsoMapView zu sehen.
-///
-/// **Die TerrainInfoView erscheint zudem nur, wenn der Mauszeiger ueber einem
-/// Feld steht**: im Fokus (model/focus.h) steht eins. Sonst wird sie nicht
-/// gezeichnet -- auch wenn sie eingeschaltet ist.
+/// **Die UnitInfoView ist nicht immer sichtbar** (RAD_ViewSetUnitInfoVisible).
+/// An ihrer Stelle ist dann die IsoMapView zu sehen.
 ///
 /// **Die UnitInfoView erscheint zudem nur, wenn der Mauszeiger ueber einem
-/// Feld mit Einheit steht**: das Feld im Fokus, wie bei der TerrainInfoView.
+/// Feld mit Einheit steht**: das Feld im Fokus (model/focus.h).
 /// Steht nichts im Fokus, oder dort keine Einheit (mehr), ist
 /// die UnitInfoView verschwunden -- auch wenn sie eingeschaltet ist. Was in
 /// der ContextMenuView ausgewaehlt ist, spielt keine Rolle. **Sie zeigt die
@@ -100,16 +90,19 @@
 /// EndTurnView (RAD_EndTurnViewHandleMouseButton); was ihre Flaeche trifft,
 /// ist damit ebenso erledigt. **Das Loslassen
 /// der linken Maustaste waehlt sonst das Feld darunter aus** -- fuer die
-/// ContextMenuView, siehe oben. **Die Mausbewegung geht an
+/// ContextMenuView, siehe oben. **Die Mausbewegung geht an die EndTurnView**
+/// fuer ihr Mouse-Over (RAD_EndTurnViewHandleMouseMotion), **an
 /// die ContextMenuView**, solange sie zu sehen ist, **und an die IsoMapView**
 /// (RAD_IsoMapViewHandleMouseMotion), auch waehrend die Kamera gezogen wird.
-/// Alle uebrigen Ereignisse verwirft sie vorerst.
+/// Verlaesst die Maus das Fenster, vergisst die EndTurnView ihr Mouse-Over
+/// (RAD_EndTurnViewHandleMouseLeave). Alle uebrigen Ereignisse verwirft sie
+/// vorerst.
 ///
 /// **Den Frame zeichnet sie selbst**: leeren, die IsoMapView, darauf die
 /// Markierungen der ContextMenuView -- Weg und erreichbare Felder einer
 /// ziehenden, die Reichweite einer angreifenden Einheit
-/// (RAD_UpdateContextMenuViewOverlay) --, die sichtbaren von
-/// TerrainInfoView und UnitInfoView, die EndTurnView, die UnitDeploymentView,
+/// (RAD_UpdateContextMenuViewOverlay) --, die UnitInfoView, wenn sichtbar,
+/// die EndTurnView, die UnitDeploymentView,
 /// die ContextMenuView, die DebugView, anzeigen.
 ///
 
@@ -130,7 +123,7 @@ typedef struct RAD_RootView RAD_RootView_t;
 /// (view/iso_map_view.h), die RootView holt daraus beim Oeffnen der
 /// ContextMenuView die Reserve des eigenen Spielers, die EndTurnView liest
 /// daraus, wer dran ist. Und "focus": die
-/// IsoMapView schreibt ihn, die TerrainInfoView liest ihn, und die RootView
+/// IsoMapView schreibt ihn, und die RootView
 /// liest ihn jeden Frame fuer die UnitInfoView und bei einem Linksklick, um
 /// die ContextMenuView ueber das angeklickte Feld zu setzen.
 ///
@@ -165,11 +158,9 @@ void RAD_UpdateView(RAD_RootView_t *view);
 bool RAD_ViewIsBusy(const RAD_RootView_t *view);
 
 ///
-/// Setzt (true) oder ruecksetzt (false), ob TerrainInfoView bzw. UnitInfoView
-/// sichtbar sind. Die UnitInfoView braucht dazu noch ein ausgewaehltes Feld mit
-/// Einheit (siehe oben).
+/// Setzt (true) oder ruecksetzt (false), ob die UnitInfoView sichtbar ist. Sie
+/// braucht dazu noch ein ausgewaehltes Feld mit Einheit (siehe oben).
 ///
-void RAD_ViewSetTerrainInfoVisible(RAD_RootView_t *view, bool visible);
 void RAD_ViewSetUnitInfoVisible(RAD_RootView_t *view, bool visible);
 
 ///

@@ -2,10 +2,10 @@
 ASGI config for config project.
 
 Routet HTTP wie gehabt an Django (django_asgi_app unten), WebSocket-
-Verbindungen dagegen an Channels: api/routing.py listet die Endpunkte,
-api/consumers.py die Handler, api/middleware.py prueft beim Handshake das
+Verbindungen dagegen an Channels: api/interfaces/routing.py listet die Endpunkte,
+api/interfaces/player/views/consumers.py die Handler, api/interfaces/auth/middleware.py prueft beim Handshake das
 Keycloak-Access-Token (siehe dort fuer den Grund: dieselbe Pruefung wie bei
-der REST-API, siehe api/authentication.py, nur eben nicht aus einem
+der REST-API, siehe api/interfaces/auth/authentication.py, nur eben nicht aus einem
 Authorization-Header, sondern aus dem Query-String).
 
 For more information on this file, see
@@ -21,14 +21,14 @@ from django.core.asgi import get_asgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
-# Muss vor den Importen unten stehen: api.routing/api.middleware ziehen ueber
+# Muss vor den Importen unten stehen: api.interfaces.routing/api.interfaces.auth.middleware ziehen ueber
 # "from . import consumers" bzw. "from .authentication import ..."
 # Django-Modelle nach sich, die erst nach get_asgi_application() (stoesst
 # django.setup() an) importierbar sind.
 django_asgi_app = get_asgi_application()
 
-from api.middleware import KeycloakTokenAuthMiddleware  # noqa: E402
-from api.routing import websocket_urlpatterns  # noqa: E402
+from api.interfaces.auth.middleware import KeycloakTokenAuthMiddleware  # noqa: E402
+from api.interfaces.routing import websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter({
     'http': django_asgi_app,

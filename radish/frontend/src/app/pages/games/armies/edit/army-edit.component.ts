@@ -35,7 +35,7 @@ import { UnitDetailComponent } from './unit-detail.component';
  *
  * Waehlt nur aus dem Katalog (api/client/catalog/) aus -- die Werte selbst
  * stehen dort. Massgeblich fuer die Regeln ist die Pruefung im Backend
- * (serializers.ArmyWriteSerializer), deren Meldung hier angezeigt wird.
+ * (army_write_serializer.ArmyWriteSerializer), deren Meldung hier angezeigt wird.
  */
 @Component({
   selector: 'app-army-edit',

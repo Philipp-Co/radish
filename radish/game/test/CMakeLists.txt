@@ -89,7 +89,7 @@ if(RAD_CHECK_JSONSCHEMA)
     endforeach()
 
     # Dasselbe fuer die Spieldaten beim Spielstart (die beiden Spieler mit
-    # ihren Armeen, siehe radish/backend/api/instance_client.py). Gueltige
+    # ihren Armeen, siehe radish/backend/api/domain/servers/instance_client.py). Gueltige
     # und ungueltige Beispiele liegen beide unter schema/spielstart/.
     set(RAD_SPIELSTART_SCHEMA "${CMAKE_CURRENT_SOURCE_DIR}/../schema/spielstart.schema.json")
 

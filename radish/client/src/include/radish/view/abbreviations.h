@@ -11,12 +11,6 @@
 
 /// Einheit (view/unit_info_view.h)
 #define RAD_VIEW_ABBREVIATION_HIT_POINTS        "LP"    // Lebenspunkte
-
-/// Terrain (view/terrain_info_view.h)
-#define RAD_VIEW_ABBREVIATION_COVER             "CV"    // Deckung
-
-/// Einheit und Terrain (view/unit_info_view.h, view/terrain_info_view.h) --
-/// beim Terrain ihr Modifier
 #define RAD_VIEW_ABBREVIATION_MOVEMENT_RANGE    "MV"    // Bewegungsreichweite
 
 #endif

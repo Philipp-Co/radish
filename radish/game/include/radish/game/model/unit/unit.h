@@ -50,7 +50,7 @@
 #define RAD_UNIT_NAME_MAX 32
 
 ///
-/// Mitglieder einer Einheit, wie MAX_UNIT_ENTITIES im Backend (api/models.py).
+/// Mitglieder einer Einheit, wie MAX_UNIT_ENTITIES im Backend (api/models/limits.py).
 ///
 #define RAD_UNIT_MAX_MEMBERS 10
 

@@ -4,7 +4,7 @@ Container steuert: ein Spiel starten und ein Spiel abbrechen.
 
 Der Start ist synchron: das Backend ruft GameStartView auf, sobald der Host
 sein Spiel aus der Lobby heraus startet (siehe radish/backend/api/
-client_views.py, GameStartView). Die Instanz setzt das Spiel noch in diesem
+interfaces/player/views/client_views.py, GameStartView). Die Instanz setzt das Spiel noch in diesem
 Aufruf auf und antwortet erst danach -- 200 heisst, das Spiel ist bereit,
 und die Spieler verlassen die Lobby.
 
@@ -12,7 +12,7 @@ Aufsetzen heisst: die Zugangscodes der beiden Spieler in die Whitelist von
 zucchini eintragen, die Spieldaten als Datei ablegen und radish_server per
 SIGUSR1 darauf hinweisen (siehe _prepare_game).
 
-Die Zugangscodes sind geheim (radish/backend/api/access.py): das Backend
+Die Zugangscodes sind geheim (radish/backend/api/domain/servers/access.py): das Backend
 vergibt sie beim Start, setzt sie vor jede Nachricht seiner Spieler, und
 zucchini laesst nur durch, was einen davon traegt. Sie stehen deshalb nicht
 in der Spielstart-Datei -- radish_server braucht sie nicht --, sondern nur in
@@ -219,7 +219,7 @@ class InstanceAPIView(APIView):
 
     Vorerst ohne Auth: keine Authentifizierung, jeder darf. Hier kommt
     spaeter z.B. eine Keycloak-JWT-Pruefung wie im Backend hin (siehe
-    radish/backend/api/authentication.py). Ohne SessionAuthentication
+    radish/backend/api/interfaces/auth/authentication.py). Ohne SessionAuthentication
     erzwingt DRF auch kein CSRF -- Aufrufe des Backends (Server zu Server,
     kein Browser) kommen deshalb ohne CSRF-Token durch. Nur fuer Dev.
     """
@@ -239,7 +239,7 @@ class GameStartView(InstanceAPIView):
         es bereit ist. Erwartet die Spieldaten nach radish/game/schema/
         spielstart.schema.json und daneben "zugangscodes", die Codes der
         beiden Spieler in derselben Reihenfolge (radish/backend/api/
-        instance_client.py, game_start_request). Hier wird nur die grobe Form
+        domain/servers/instance_client.py, game_start_request). Hier wird nur die grobe Form
         geprueft (zwei Spieler unter "spieldaten", eine Liste unter
         "gelaende", zwei verschiedene Codes) -- dass das Dokument dem Schema
         genuegt, stellt das Backend sicher (siehe dortige Tests).

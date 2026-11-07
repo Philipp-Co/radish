@@ -38,7 +38,7 @@
 ///
 ///   - EMPTY_TILE_SELECTED, SELECT_ENTITY_FROM_RESERVE, DEPLOY_FROM_RESERVE:
 ///     Deploy (RAD_CONTEXT_MENU_ITEM_ACTION_DEPLOY).
-///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, blau hervorgehoben
+///   - WAITING_FOR_USER_ACKNOWLEDGEMENT: Deploy, gold hervorgehoben
 ///     (RAD_ContextMenuItemSetHighlighted).
 ///   - TILE_WITH_OWN_ENTITY_SELECTED: Move (RAD_CONTEXT_MENU_ITEM_ACTION_MOVE)
 ///     und Attack (RAD_CONTEXT_MENU_ITEM_ACTION_ATTACK) -- jeder nur, solange
@@ -46,8 +46,8 @@
 ///     und nicht schon gezogen bzw. angegriffen (RAD_ClientUnit_t.deployed,
 ///     moved, attacked, gelesen beim Oeffnen). Darf sie keins von beiden, steht
 ///     nur Schliessen da.
-///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, blau hervorgehoben.
-///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, blau hervorgehoben.
+///   - WAITING_FOR_MOVE_ACKNOWLEDGEMENT: Move, gold hervorgehoben.
+///   - WAITING_FOR_ATTACK_ACKNOWLEDGEMENT: Attack, gold hervorgehoben.
 ///   - TILE_WITH_FOREIGN_ENTITY_SELECTED -- die Einheit gehoert nicht dem
 ///     Spieler dieses Clients (own_player_id, io/net_session.h) --,
 ///     WAITING_FOR_SERVER_RESPONSE: nur Schliessen.
@@ -86,7 +86,7 @@
 /// Aufstellzone, wie der Server sie geschickt hat (RAD_ClientWorldDeployZone),
 /// hat Gelaende, ist begehbar (RAD_ControlTerrainImpassable) und frei -- dieselben
 /// Gruende wie im Spiel (RAD_GameCheckDeployUnit). Sonst geht der Grund ins Log,
-/// kein Kommando hinaus, und Deploy ist vorher auch nicht blau hervorgehoben.
+/// kein Kommando hinaus, und Deploy ist vorher auch nicht hervorgehoben.
 /// Angeboten wird Deploy trotzdem auf jedem freien Feld: so sieht der Spieler
 /// die Zone auch, wenn er daneben geklickt hat.
 ///

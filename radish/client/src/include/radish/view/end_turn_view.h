@@ -11,16 +11,21 @@
 ///
 /// Ein Knopf zum Abgeben des eigenen Zuges, der zugleich zeigt, wer am Zug ist:
 ///
-///   "Zug beenden"      gruen -- man ist selbst dran, ein Klick gibt ab
-///   "Gegner am Zug"    grau  -- ein anderer ist dran, Klicks tun nichts
-///   "Niemand am Zug"   grau  -- der Server hat noch keinen genannt
+///   "Zug beenden"      hell     -- man ist selbst dran, ein Klick gibt ab
+///   "Gegner am Zug"    gedaempft -- ein anderer ist dran, Klicks tun nichts
+///   "Niemand am Zug"   gedaempft -- der Server hat noch keinen genannt
 ///
 /// Davor steht die Runde, sobald der Server sie geschickt hat ("Runde 3/10: Zug
 /// beenden"). Ist das Spiel vorbei, zeigt sie stattdessen den Ausgang mit den
 /// eigenen Punkten zuerst -- "Gewonnen 25:10", "Verloren 10:25",
-/// "Unentschieden 10:10" (RAD_ClientWorldResult) --, grau, und Klicks tun nichts.
+/// "Unentschieden 10:10" (RAD_ClientWorldResult) --, hell, und Klicks tun nichts.
 ///
-/// Der Text steht mittig in der Flaeche. Gedrueckt ist der gruene Knopf dunkler.
+/// **Die Farben sind die der Buttons im Frontend** (frontend/src/styles.css):
+/// schwarzer Grund, goldene Schrift (--heading), zwei Pixel Rahmen in Oliv
+/// (--button-hover); gedrueckt und unter der Maus wird der Grund oliv, der Rahmen
+/// bleibt -- nur, solange man dran ist, wie ein gesperrter Button dort keins hat. "Gedaempft" heisst Schrift
+/// und Rahmen mit halber Deckkraft, wie ein gesperrter Button dort. Der Text
+/// steht mittig in der Flaeche.
 ///
 /// **Wer dran ist, liest sie bei jedem Update aus der Welt**
 /// (RAD_ClientWorldCurrentPlayer, model/world.h), wer man selbst ist, aus der
@@ -60,9 +65,18 @@ void RAD_DestroyEndTurnView(RAD_EndTurnView_t **end_turn_view);
 /// wenn es ihr gehoert -- in ihrer Flaeche oder das Loslassen nach einem
 /// Druecken in ihr --, dann sollte der Aufrufer es nicht an das weitergeben,
 /// was unter ihr liegt. Das gilt auch, wenn man nicht dran ist: ein Klick auf
-/// den grauen Knopf waehlt nicht das Feld darunter aus.
+/// den gedaempften Knopf waehlt nicht das Feld darunter aus.
 ///
 bool RAD_EndTurnViewHandleMouseButton(RAD_EndTurnView_t *end_turn_view, const SDL_MouseButtonEvent *button);
+
+///
+/// Merkt sich, ob der Mauszeiger ueber ihr steht (Mouse-Over, siehe oben). Nimmt
+/// die Bewegung nicht fuer sich: der Aufrufer gibt sie weiter wie zuvor.
+/// RAD_EndTurnViewHandleMouseLeave vergisst es, wenn die Maus das Fenster
+/// verlaesst -- dann kommt keine Bewegung mehr, die es taete.
+///
+void RAD_EndTurnViewHandleMouseMotion(RAD_EndTurnView_t *end_turn_view, const SDL_MouseMotionEvent *motion);
+void RAD_EndTurnViewHandleMouseLeave(RAD_EndTurnView_t *end_turn_view);
 
 ///
 /// Bringt den Text auf den Stand der Welt und zeichnet die EndTurnView mit

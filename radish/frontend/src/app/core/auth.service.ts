@@ -94,7 +94,7 @@ function decodeClaims(accessToken: string | null): TokenClaims {
 
 /**
  * Authorization-Code-Flow mit PKCE gegen den Keycloak-Client "radish-web"
- * (siehe pkce.ts). Anders als radish/backend/api/auth_views.py (der
+ * (siehe pkce.ts). Anders als radish/backend/api/interfaces/auth/views/auth_views.py (der
  * serverseitige, session-basierte Flow des confidential Clients
  * "radish-backend") bekommt der Browser hier den Access-Token direkt und
  * schickt ihn als Bearer-Token an die Django-API (siehe auth.interceptor.ts),
@@ -137,7 +137,7 @@ export class AuthService {
    * unverschluesseltes Base64url-JSON ist -- fuer eine rein clientseitige
    * Anzeigeentscheidung (z.B. den Admin-Tab in games-shell.component.ts) reicht
    * das Auslesen hier, ohne Signaturpruefung: durchgesetzt wird die Rolle
-   * ohnehin serverseitig (siehe radish/backend/api/permissions.py,
+   * ohnehin serverseitig (siehe radish/backend/api/interfaces/admin/roles/has_admin_role.py,
    * HasAdminRole), das hier entscheidet nur ueber die UI-Sichtbarkeit.
    */
   readonly roles = computed(() => this.claims().realm_access?.roles ?? []);

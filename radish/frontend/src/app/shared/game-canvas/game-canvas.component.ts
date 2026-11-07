@@ -31,7 +31,7 @@ declare global {
  * Laedt aktuell nur den WASM-Client und haengt ihn ans Canvas -- die
  * bisherige WebRTC/Relay-Verbindung (radish/relay/server.py) ist entfernt,
  * weil der Relay entfaellt (die UDP-Bruecke laeuft stattdessen ueber den
- * Django-Backend-WebSocket, siehe radish/backend/api/consumers.py,
+ * Django-Backend-WebSocket, siehe radish/backend/api/interfaces/player/views/consumers.py,
  * EchoConsumer). Der WASM-Client bekommt dadurch aktuell KEINE Verbindung
  * zu einem Spielserver mehr -- das Verdrahten mit dem WebSocket (siehe
  * core/game-socket.service.ts) ist ein spaeterer Schritt.

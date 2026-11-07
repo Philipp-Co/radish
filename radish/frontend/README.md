@@ -3,12 +3,12 @@
 Angular-Frontend fuer radish: Login (Keycloak, Authorization Code Flow mit
 PKCE gegen den oeffentlichen Client `radish-web`), Uebersicht/Erstellen/
 Beitreten offener Spiele (`api/client/game*`, siehe
-`radish/backend/api/client_views.py`) und die eigentliche Spielansicht, die
+`radish/backend/api/interfaces/player/views/client_views.py`) und die eigentliche Spielansicht, die
 den bestehenden WASM-Client (`radish/client/`, gebaut nach `radish/web/`)
 in einem `<canvas>` einbindet. Die bisherige WebRTC/Relay-Verbindung zum
 Spielserver ist entfernt (siehe Root-`README.md`, Abschnitt "Datenfluss")
 -- eine Anbindung an den WebSocket des Backends
-(`radish/backend/api/consumers.py`) ist noch offen.
+(`radish/backend/api/interfaces/player/views/consumers.py`) ist noch offen.
 
 Ersetzt das bisherige, sehr schlichte `radish/web/index.html` als
 UI-Schicht -- `radish/web/` bleibt als Build-Ziel des WASM-Clients bestehen

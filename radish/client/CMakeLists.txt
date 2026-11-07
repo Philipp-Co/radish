@@ -93,7 +93,6 @@ add_executable(client
     src/model/events/observable.c
 
     src/view/view.c
-    src/view/terrain_info_view.c
     src/view/unit_info_view.c
     src/view/iso_map_view.c
     src/view/text_view.c

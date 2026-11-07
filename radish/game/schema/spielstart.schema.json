@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://radish.local/schema/spielstart.schema.json",
   "title": "radish Spielstart",
-  "description": "Was das Backend der Spielinstanz beim Start eines Spiels uebergibt (POST /api/instances/<name>/game/start/, siehe radish/backend/api/instance_client.py): die beiden Spieler mit ihren Armeen und das Gelaende. Die Armeen sind vollstaendig aufgeloest -- jede Einheit, Entitaet, Waffe und Ausruestung traegt ihre Werte aus dem Katalog selbst, die Instanz braucht keinen Zugriff auf das Backend. Kosten und Slotgrenzen fehlen bewusst: die hat das Backend beim Zusammenstellen der Armee schon geprueft, im Spiel spielen sie keine Rolle.",
+  "description": "Was das Backend der Spielinstanz beim Start eines Spiels uebergibt (POST /api/instances/<name>/game/start/, siehe radish/backend/api/domain/servers/instance_client.py): die beiden Spieler mit ihren Armeen und das Gelaende. Die Armeen sind vollstaendig aufgeloest -- jede Einheit, Entitaet, Waffe und Ausruestung traegt ihre Werte aus dem Katalog selbst, die Instanz braucht keinen Zugriff auf das Backend. Kosten und Slotgrenzen fehlen bewusst: die hat das Backend beim Zusammenstellen der Armee schon geprueft, im Spiel spielen sie keine Rolle.",
   "type": "object",
   "required": ["spieldaten", "gelaende"],
   "additionalProperties": false,

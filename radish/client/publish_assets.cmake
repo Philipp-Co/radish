@@ -29,7 +29,10 @@ file(GLOB_RECURSE asset_files RELATIVE "${ASSETS_DIR}"
     "${ASSETS_DIR}/units/*.png"
     "${ASSETS_DIR}/effects/*.png"
 )
-list(APPEND asset_files "LiberationSansBold.ttf")
+# Dieselbe Schrift wie im Frontend (Michroma, SIL OFL, siehe
+# assets/fonts/michroma/OFL.txt) -- als TTF, weil FreeType im Emscripten-Port
+# ohne Brotli gebaut ist und die woff2-Dateien des Frontends nicht liest.
+list(APPEND asset_files "fonts/michroma/Michroma-Regular.ttf")
 list(SORT asset_files)
 
 set(manifest_entries "")

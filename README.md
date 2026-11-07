@@ -12,7 +12,7 @@ die Container-Definitionen, mit denen sich das Ganze lokal starten lässt
 Der bisherige Relay, der einen WebRTC-DataChannel im Browser per UDP-Bruecke
 mit dem Spielserver verband, ist entfernt (vormals `relay/`, `aiortc` +
 `websockets`, samt der Testseite `radish/web/index.html`). Die UDP-Bruecke soll stattdessen ueber das Django-Backend
-laufen: dessen WebSocket (`radish/backend/api/consumers.py`, `EchoConsumer`)
+laufen: dessen WebSocket (`radish/backend/api/interfaces/player/views/consumers.py`, `EchoConsumer`)
 oeffnet serverseitig bereits ein UDP-Socket zum `GameServer` des aktuellen
 Spiels und leitet Daten in beide Richtungen weiter. Der WASM-Client im
 Browser ist an diesen WebSocket aber noch nicht angebunden (siehe
@@ -26,7 +26,7 @@ zwei Prozesse — `zucchini_server` nimmt die UDP-Pakete an, `server` hält
 den Spielzustand. Das 8-Byte-Codefeld vor jedem Paket wertet Zucchini selbst
 aus (Whitelist) und schneidet es ab. Gesetzt wird es nicht vom Client, sondern
 vom WebSocket-Consumer im Backend, zusammen mit der Spieler-Id dahinter
-([access.py](radish/backend/api/access.py)):
+([access.py](radish/backend/api/domain/servers/access.py)):
 
 ```
 [ Zucchini-Code 8 Byte ][ Spieler-Id 8 Byte ][ NetUserRequest vom Client ]

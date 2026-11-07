@@ -18,7 +18,10 @@
 ///
 /// **Maus-Ereignisse bekommt er von der ContextMenuView**, in
 /// Fensterkoordinaten, wie SDL sie liefert. Er merkt sich, ob die Maus ueber
-/// ihm ist, und schreibt Wechsel und Klicks ins Log.
+/// ihm ist -- dann ist sein Kreis oliv wie ein Button im Frontend unter der
+/// Maus --, und schreibt Wechsel und Klicks ins Log. Sein Symbol hat die Farbe
+/// der Schrift im Frontend (--heading), sein Rand einen Rahmen wie ein Button
+/// dort (--button-hover).
 ///
 /// **Was ein Klick bewirkt, sagt seine Aktion** (RAD_ContextMenuItemAction_t,
 /// RAD_ContextMenuItemSetAction); ausfuehren tut sie die ContextMenuView.
@@ -97,7 +100,8 @@ bool RAD_ContextMenuItemContains(const RAD_ContextMenuItem_t *item, int32_t x, i
 
 ///
 /// Setzt (true) oder ruecksetzt (false), ob er hervorgehoben ist: dann ist
-/// sein Kreis blau statt schwarz.
+/// sein Kreis gold (#cca700) statt schwarz und sein Symbol schwarz, auch unter
+/// der Maus.
 /// Anfangs ist er es nicht.
 ///
 void RAD_ContextMenuItemSetHighlighted(RAD_ContextMenuItem_t *item, bool highlighted);

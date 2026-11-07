@@ -32,7 +32,10 @@ ENV DJANGO_SETTINGS_MODULE=config.settings_migrate
 # Einzeln statt ganzer Verzeichnisse: neue Dateien in config/ oder api/
 # sollen nicht ungefragt im Image landen.
 COPY radish/backend/config/__init__.py radish/backend/config/database.py radish/backend/config/settings_migrate.py /app/config/
-COPY radish/backend/api/__init__.py radish/backend/api/apps.py radish/backend/api/models.py /app/api/
+COPY radish/backend/api/__init__.py radish/backend/api/apps.py /app/api/
+# api/models/ dagegen ganz: jede Datei darin ist ein Model, das __init__.py
+# importiert -- fehlte eine, braeche der Migrator schon beim Start ab.
+COPY radish/backend/api/models/ /app/api/models/
 COPY radish/backend/api/migrations/ /app/api/migrations/
 COPY radish/backend/api/management/__init__.py /app/api/management/
 COPY radish/backend/api/management/commands/__init__.py radish/backend/api/management/commands/seed.py /app/api/management/commands/

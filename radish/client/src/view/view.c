@@ -1,6 +1,5 @@
 #include <radish/view/view.h>
 #include <radish/view/iso_map_view.h>
-#include <radish/view/terrain_info_view.h>
 #include <radish/view/unit_info_view.h>
 #include <radish/view/context_menu/context_menu_view.h>
 #include <radish/view/debug/debug_view.h>
@@ -12,17 +11,14 @@
 
 
 ///
-/// Groesse von TerrainInfoView und UnitInfoView (view/view.h): je so breit, in
-/// Pixeln, und hoechstens so hoch, in Prozent der Zeichenflaeche -- ihre Hoehe
-/// passt sich dem Inhalt an. Die Breite reicht fuer den laengsten Terrain-Namen,
-/// "Befestigte Stellung", samt Cursor und Rand (view/terrain_info_view.h).
+/// Groesse der UnitInfoView (view/view.h): so breit, in Pixeln, und hoechstens
+/// so hoch, in Prozent der Zeichenflaeche -- ihre Hoehe passt sich dem Inhalt an.
 ///
 #define RAD_VIEW_INFO_WIDTH 360
-#define RAD_VIEW_TERRAIN_INFO_MAX_HEIGHT_PERCENT 27
 #define RAD_VIEW_UNIT_INFO_MAX_HEIGHT_PERCENT 100
 
 ///
-/// Beide haben eine eigene, groessere Schrift als die anderen Views.
+/// Sie hat eine eigene, groessere Schrift als die anderen Views.
 ///
 #define RAD_VIEW_INFO_FONT_SIZE 32
 
@@ -30,8 +26,8 @@
 /// Groesse der EndTurnView (view/view.h), in Pixeln: so breit, hoechstens so
 /// breit wie die Zeichenflaeche, und so hoch.
 ///
-#define RAD_VIEW_END_TURN_WIDTH 260
-#define RAD_VIEW_END_TURN_HEIGHT 32
+#define RAD_VIEW_END_TURN_WIDTH 320
+#define RAD_VIEW_END_TURN_HEIGHT 44
 
 ///
 /// Platz fuer eine Zeile der UnitInfoView samt abschliessender Null
@@ -119,7 +115,6 @@ struct RAD_RootView
     TTF_Font *font;
     TTF_Font *info_font;
     RAD_IsoMapView_t *iso_map_view;
-    RAD_TerrainInfoView_t *terrain_info_view;
     RAD_UnitInfoView_t *unit_info_view;
     RAD_ContextMenuView_t *context_menu_view;
     RAD_DebugView_t *debug_view;
@@ -130,7 +125,6 @@ struct RAD_RootView
     ///
     RAD_ViewDebugMetrics_t debug_metrics;
 
-    bool terrain_info_visible;
     bool unit_info_visible;
 
     ///
@@ -219,7 +213,6 @@ RAD_RootView_t* RAD_CreateView(
         .font = NULL,
         .info_font = NULL,
         .iso_map_view = NULL,
-        .terrain_info_view = NULL,
         .unit_info_view = NULL,
         .context_menu_view = NULL,
         .debug_view = NULL,
@@ -228,7 +221,6 @@ RAD_RootView_t* RAD_CreateView(
             .fps = { .interval_start = 0, .frames = 0 },
             .update_time = { .interval_start = 0, .start = 0, .total = 0, .count = 0, .max_start = 0, .max = 0 }
         },
-        .terrain_info_visible = true,
         .unit_info_visible = true,
         .map = map,
         .session = session,
@@ -292,20 +284,8 @@ RAD_RootView_t* RAD_CreateView(
         return NULL;
     }
 
-    // Beide am unteren Rand, die TerrainInfoView am linken, die UnitInfoView am
-    // rechten. Ist die Zeichenflaeche schmaler als beide zusammen, teilen sie sich
-    // ihre Breite, damit sie sich nicht ueberlappen.
+    // Am unteren rechten Rand, hoechstens halb so breit wie die Zeichenflaeche.
     const int32_t info_width = (drawable_width >= 2 * RAD_VIEW_INFO_WIDTH) ? RAD_VIEW_INFO_WIDTH : drawable_width / 2;
-    const int32_t terrain_info_max_height = (drawable_height * RAD_VIEW_TERRAIN_INFO_MAX_HEIGHT_PERCENT) / 100;
-
-    view->terrain_info_view = RAD_CreateTerrainInfoView(
-        0,
-        drawable_height - terrain_info_max_height,
-        info_width,
-        terrain_info_max_height,
-        view->info_font,
-        focus
-    );
     const int32_t unit_info_max_height = (drawable_height * RAD_VIEW_UNIT_INFO_MAX_HEIGHT_PERCENT) / 100;
     view->unit_info_view = RAD_CreateUnitInfoView(
         drawable_width - info_width,
@@ -314,14 +294,14 @@ RAD_RootView_t* RAD_CreateView(
         unit_info_max_height,
         view->info_font
     );
-    if(view->terrain_info_view == NULL || view->unit_info_view == NULL)
+    if(view->unit_info_view == NULL)
     {
-        printf("Keine TerrainInfoView oder UnitInfoView\n");
+        printf("Keine UnitInfoView\n");
         RAD_DestroyView(&view);
         return NULL;
     }
 
-    // Unten mittig, zwischen TerrainInfoView und UnitInfoView.
+    // Unten mittig.
     const int32_t end_turn_width = (drawable_width >= RAD_VIEW_END_TURN_WIDTH) ? RAD_VIEW_END_TURN_WIDTH : drawable_width;
     view->end_turn_view = RAD_CreateEndTurnView(
         (drawable_width - end_turn_width) / 2,
@@ -424,10 +404,6 @@ void RAD_DestroyView(RAD_RootView_t **view)
     {
         RAD_DestroyUnitInfoView(&v->unit_info_view);
     }
-    if(v->terrain_info_view != NULL)
-    {
-        RAD_DestroyTerrainInfoView(&v->terrain_info_view);
-    }
     if(v->iso_map_view != NULL)
     {
         RAD_DestroyIsoMapView(&v->iso_map_view);
@@ -471,10 +447,6 @@ void RAD_UpdateView(RAD_RootView_t *view)
     RAD_UpdateIsoMapView(view->iso_map_view, view->renderer);
     // Weg und Reichweite liegen auf der Karte, unter allem anderen.
     RAD_UpdateContextMenuViewOverlay(view->context_menu_view, view->renderer);
-    if(view->terrain_info_visible && view->focus->tile != NULL)
-    {
-        RAD_UpdateTerrainInfoView(view->terrain_info_view, view->renderer);
-    }
     RAD_ViewSyncUnitInfo(view);
     if(view->unit_info_visible && view->shown_unit != NULL)
     {
@@ -492,11 +464,6 @@ void RAD_UpdateView(RAD_RootView_t *view)
 bool RAD_ViewIsBusy(const RAD_RootView_t *view)
 {
     return RAD_IsoMapViewIsBusy(view->iso_map_view);
-}
-
-void RAD_ViewSetTerrainInfoVisible(RAD_RootView_t *view, bool visible)
-{
-    view->terrain_info_visible = visible;
 }
 
 void RAD_ViewSetUnitInfoVisible(RAD_RootView_t *view, bool visible)
@@ -550,13 +517,20 @@ static void RAD_ViewHandleEvent(RAD_RootView_t *view, const SDL_Event *event)
     {
         RAD_ViewHandleMouseMotion(view, &event->motion);
     }
+    else if(event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_LEAVE)
+    {
+        // Ohne Maus im Fenster steht sie auch ueber keinem Knopf mehr.
+        RAD_EndTurnViewHandleMouseLeave(view->end_turn_view);
+    }
 
     // Alles andere wird vorerst verworfen.
 }
 
 ///
-/// Eine Mausbewegung aus RAD_ViewHandleEvent: geht an die ContextMenuView,
-/// wenn sie zu sehen ist, und, wenn die sie nicht nimmt, an die IsoMapView.
+/// Eine Mausbewegung aus RAD_ViewHandleEvent: geht zuerst an die EndTurnView,
+/// fuer ihr Mouse-Over -- die nimmt sie nicht fuer sich --, dann an die
+/// ContextMenuView, wenn sie zu sehen ist, und, wenn die sie nicht nimmt, an
+/// die IsoMapView.
 /// Ueber einem Eintrag der ContextMenuView sieht die IsoMapView sie also auch,
 /// ueber ihrer UnitDeploymentView oder waehrend die gezogen wird nicht. Die
 /// Kamera-Steuerung hat sie vorher gesehen, auch waehrend sie die Kamera
@@ -564,6 +538,7 @@ static void RAD_ViewHandleEvent(RAD_RootView_t *view, const SDL_Event *event)
 ///
 static void RAD_ViewHandleMouseMotion(RAD_RootView_t *view, const SDL_MouseMotionEvent *motion)
 {
+    RAD_EndTurnViewHandleMouseMotion(view->end_turn_view, motion);
     if(RAD_ViewPlaceContextMenu(view)
        && RAD_ContextMenuViewHandleMouseMotion(view->context_menu_view, motion))
     {

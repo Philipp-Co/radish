@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Erstellt ein Spiel am Backend (POST /api/client/game/, siehe
-# radish/backend/api/client_views.GameCreateView).
+# radish/backend/api/interfaces/player/views/client_views.GameCreateView).
 #
 # Authentifizierung laeuft automatisch ueber einen normalen Spieler (Rolle
 # "Player", siehe docker/keycloak/realm-radish.json) -- das Access-Token

@@ -16,7 +16,7 @@ const POLL_INTERVAL_MS = 2000;
 
 /**
  * Wartebereich nach dem Erstellen bzw. Beitreten (siehe radish/backend/api/
- * models.py, GameStatus): zeigt beide Spieler, laesst den Host das Spiel
+ * models/game_status.py, GameStatus): zeigt beide Spieler, laesst den Host das Spiel
  * starten, sobald ein Gegner da ist, und fuehrt auf "Aktuelles Spiel"
  * (CurrentGameComponent), sobald die Spielinstanz bereit ist.
  */

@@ -1,0 +1,12 @@
+# Werkzeuge fuer die Entwicklung, nicht fuer das Image (das installiert nur
+# requirements.txt, siehe docker/backend/Dockerfile).
+-r requirements.txt
+
+# Typpruefung, Konfiguration in mypy.ini. Die Stubs passen zu den Versionen
+# oben: django-stubs 5.2.x zu Django 5.2 (6.x ist fuer Django 6), und
+# djangorestframework-stubs 3.16.x, weil neuere django-stubs >= 6.1 verlangen.
+mypy==1.19.1
+django-stubs[compatible-mypy]==5.2.9
+djangorestframework-stubs==3.16.9
+types-requests==2.32.4.20260324
+types-jsonschema==4.26.0.20261006

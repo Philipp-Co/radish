@@ -21,7 +21,7 @@ from django.views.static import serve
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('api.urls')),
+    path('api/', include('api.interfaces.urls')),
     # Die von collectstatic gesammelten Static-Files (Admin-CSS/-JS, siehe
     # STATIC_ROOT in settings.py). Mit DEBUG liefert sie die staticfiles-App
     # schon vorher aus, ohne DEBUG (Docker-Image) nur dieser Eintrag -- sonst

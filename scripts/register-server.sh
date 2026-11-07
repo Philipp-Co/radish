@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Registriert einen Spielserver am Backend (POST /api/servers/, siehe
-# radish/backend/api/server_views.ServerView).
+# radish/backend/api/interfaces/servers/views/server_views.ServerView).
 #
 # Authentifizierung laeuft automatisch ueber den technischen User fuer den
 # Server-Teil (Rolle "Technischer-User-Server", siehe

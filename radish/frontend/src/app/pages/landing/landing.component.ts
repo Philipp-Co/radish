@@ -46,7 +46,7 @@ import { AuthService } from '../../core/auth.service';
         <article class="card">
           <h2>Taktisch ziehen</h2>
           <p class="muted">
-            Offenes Feld, Deckung oder unpassierbar: Das Gelaende bestimmt Bewegung und Treffer.
+            Offenes Feld, Wald oder unpassierbar: Das Gelaende bestimmt Bewegung und Sicht.
           </p>
         </article>
         <article class="card">

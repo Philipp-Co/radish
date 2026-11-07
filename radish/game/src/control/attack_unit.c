@@ -18,7 +18,7 @@
 /// erreicht, feuert alle ihre Schuesse; jeder Schuss geht durch vier Stufen, und
 /// jede wird mit dem W10 des Spiels (RAD_Game_t.dice) entschieden:
 ///
-///     1. Treffer       W10 >= Genauigkeit des Schuetzen + Deckung des Zielfeldes
+///     1. Treffer       W10 >= Genauigkeit des Schuetzen
 ///                      -> ein zufaelliges Mitglied der Zieleinheit ist getroffen
 ///     2. Durchschlag   W10 + Durchschlag der Waffe >= Ruestung des Getroffenen
 ///     3. Wirkung       W10 + Staerke der Waffe     >= Widerstand des Getroffenen
@@ -32,9 +32,8 @@
 /// schiesst, bekommt einen Eintrag im Ergebnis, und erst ihre Summe ergibt die
 /// Zaehler des ganzen Angriffs.
 ///
-/// **Die Deckung** ist die des Feldes, auf dem das Ziel steht
-/// (RAD_Terrain_t.cover). Sie erschwert nur den Treffer, nicht die Stufen danach,
-/// und eine Summe ueber 10 macht das Ziel mit dem W10 unerreichbar -- gewollt.
+/// **Die Deckung des Gelaendes** (RAD_Terrain_t.cover) spielt im Kampf keine
+/// Rolle: das Feld, auf dem das Ziel steht, erschwert den Treffer nicht.
 ///
 /// **Die Reihenfolge ist fest**: Mitglieder, darin Waffen, darin Schuesse, je in
 /// ihrer Reihenfolge. Zum selben Seed kommt also derselbe Kampf heraus.
@@ -51,7 +50,7 @@ static bool RAD_GameUnitReaches(const RAD_Unit_t *unit, int32_t x, int32_t y);
 static bool RAD_GameWeaponReaches(const RAD_Weapon_t *weapon, int32_t distance);
 static bool RAD_GameTileBlocksSight(const RAD_Game_t *game, int32_t x, int32_t y);
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
-                             int32_t cover, RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts);
+                             RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts);
 static void RAD_GameAddWeaponResult(RAD_AttackResult_t *result, const RAD_AttackWeaponResult_t *counts);
 static void RAD_GameRemoveMember(RAD_Unit_t *unit, int32_t member);
 
@@ -177,9 +176,6 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
 
     const int32_t distance = RAD_GameDistance(unit, attack->x, attack->y);
 
-    // Die Deckung des Zielfeldes, einmal fuer den ganzen Angriff: das Ziel steht
-    // dort, bis es faellt, und dann wird nicht mehr geschossen.
-    const int32_t cover = RAD_WorldTileAt(&game->world, attack->x, attack->y)->terrain.cover;
     for(int32_t m = 0; (target != NULL) && (m < unit->number_of_members) && (m < RAD_UNIT_MAX_MEMBERS); ++m)
     {
         const RAD_UnitMember_t *shooter = &unit->members[m];
@@ -199,7 +195,7 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
 
             for(int32_t shot = 0; (target != NULL) && (shot < weapon->shots); ++shot)
             {
-                RAD_GameFireShot(game, shooter, weapon, cover, target, counts);
+                RAD_GameFireShot(game, shooter, weapon, target, counts);
 
                 // Ohne Mitglied keine Einheit: vom Feld, und der Angriff ist aus.
                 if(target->number_of_members == 0)
@@ -229,19 +225,19 @@ void RAD_GameHandleAttackCommand(RAD_Game_t *game, const RAD_CommandAttack_t *at
 }
 
 ///
-/// Ein Schuss von "shooter" mit "weapon" auf "target", das mit der Deckung
-/// "cover" steht, durch die vier Stufen oben. Jede Stufe, die er schafft, zaehlt
+/// Ein Schuss von "shooter" mit "weapon" auf "target", durch die vier Stufen
+/// oben. Jede Stufe, die er schafft, zaehlt
 /// in "counts", dem Eintrag seiner Waffe; an der ersten, die er nicht schafft,
 /// ist er zu Ende. "target" hat wenigstens ein Mitglied.
 ///
 static void RAD_GameFireShot(RAD_Game_t *game, const RAD_UnitMember_t *shooter, const RAD_Weapon_t *weapon,
-                             int32_t cover, RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts)
+                             RAD_Unit_t *target, RAD_AttackWeaponResult_t *counts)
 {
     counts->shots++;
 
-    // 1. Trifft er das Feld, gegen die Deckung darauf? Getroffen ist dann eines der
-    // Mitglieder, die noch da sind.
-    if(RAD_DiceD10(&game->dice) < shooter->accuracy + cover)
+    // 1. Trifft er das Feld? Getroffen ist dann eines der Mitglieder, die noch
+    // da sind.
+    if(RAD_DiceD10(&game->dice) < shooter->accuracy)
     {
         return;
     }

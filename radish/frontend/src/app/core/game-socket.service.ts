@@ -20,7 +20,7 @@ export type PlayerIdHandler = (playerId: string) => void;
 /**
  * Wie oft der Client dem Backend ein Lebenszeichen schickt, waehrend die
  * Verbindung offen ist (siehe startHeartbeat() unten) -- derselbe Wert wie
- * PING_INTERVAL_SECONDS in radish/backend/api/consumers.py, EchoConsumer,
+ * PING_INTERVAL_SECONDS in radish/backend/api/interfaces/player/views/consumers.py, EchoConsumer,
  * das dieselbe Idee bereits in die andere Richtung (Server -> Client)
  * umsetzt. Kein gemeinsam importierter Wert, weil Frontend und Backend
  * getrennte Projekte/Sprachen sind -- bei einer Aenderung dort also auch
@@ -33,7 +33,7 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
  * consumers.py, EchoConsumer -- aktuell die UDP-Bruecke zum Spielserver des
  * laufenden Spiels). Der Access-Token kommt als Query-Parameter statt als
  * Header: die Browser-WebSocket-API erlaubt beim Handshake keine eigenen
- * Header (siehe radish/backend/api/middleware.py, KeycloakTokenAuthMiddleware,
+ * Header (siehe radish/backend/api/interfaces/auth/middleware.py, KeycloakTokenAuthMiddleware,
  * die genau diesen Query-Parameter erwartet).
  *
  * Schickt, solange die Verbindung offen ist, alle HEARTBEAT_INTERVAL_MS ein
@@ -46,7 +46,7 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
  * ohne dass dieser Service selbst wissen muesste, auf welcher Route er
  * gerade laeuft.
  *
- * Nachrichten sind JSON (siehe radish/backend/api/consumers.py): ein
+ * Nachrichten sind JSON (siehe radish/backend/api/interfaces/player/views/consumers.py): ein
  * "type"-Feld unterscheidet sie. Beim Typ "event" enthaelt "data" die
  * eigentlichen Spieldaten Base64-kodiert -- die werden dekodiert und ueber
  * setWasmEventHandler() an den WASM-Client weitergereicht (siehe
@@ -94,7 +94,7 @@ export class GameSocketService {
   /**
    * Wie setConnectionStateHandler(), nur fuer die eigene, oeffentliche
    * Spieler-Id: das Backend schickt sie gleich nach dem Verbindungsaufbau
-   * ({"type":"identity"}, radish/backend/api/consumers.py), oft bevor das
+   * ({"type":"identity"}, radish/backend/api/interfaces/player/views/consumers.py), oft bevor das
    * WASM-Modul geladen ist. Ist sie schon da, wird sie deshalb sofort gemeldet.
    *
    * Nur die oeffentliche Id -- den geheimen Zucchini-Code vor jeder Nachricht
