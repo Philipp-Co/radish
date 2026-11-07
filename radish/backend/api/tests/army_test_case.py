@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from typing import Unpack
+
 from rest_framework.test import APITestCase
 
 from api.models import (
@@ -9,12 +12,20 @@ from api.models import (
 )
 
 from api.tests.helpers import (
+    authenticate,
+    ArmyPayload,
+    EntityPayload,
+    TestResponse,
+    UnitPayload,
+    UnitPayloadOverrides,
     PLAYER_TOKEN,
     User,
     create_test_catalog,
 )
 
 
+# Die Attribute sind der Testkatalog, den die Tests direkt ansprechen.
+# pylint: disable-next=too-many-instance-attributes
 class ArmyTestCase(APITestCase):
     """
     Gemeinsamer Katalog fuer die Armee-Tests: die Spezies "Menschen" (aus
@@ -23,10 +34,10 @@ class ArmyTestCase(APITestCase):
     Menschen nichts verloren haben.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         create_test_catalog()
         self.user = User.objects.create(username="army-user")
-        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+        authenticate(self.client, self.user, PLAYER_TOKEN)
 
         self.humans = Species.objects.get(name="Menschen")
         self.squad = UnitType.objects.create(
@@ -82,35 +93,44 @@ class ArmyTestCase(APITestCase):
             armor_penetration=1, cost=2,
         )
 
-    def squad_payload(self, soldiers=1, heavy=(), super_heavy=(), **overrides):
+    def squad_payload(
+        self, soldiers: int = 1, heavy: Sequence[int] = (), super_heavy: Sequence[int] = (),
+        **overrides: Unpack[UnitPayloadOverrides],
+    ) -> UnitPayload:
         """Trupp aus Anfuehrer (traegt heavy/super_heavy) und soldiers Soldaten."""
-        unit = {
+        # Erst die Liste mit dem Anfuehrer, dann die Soldaten anhaengen: bei
+        # "[...] + [...]" leitet mypy den linken Operanden ohne den Typ
+        # EntityPayload her.
+        entities: list[EntityPayload] = [
+            {
+                "profile_id": self.leader.id,
+                "weapon_ids": [self.rifle.id],
+                "heavy_weapon_ids": list(heavy),
+                "super_heavy_weapon_ids": list(super_heavy),
+                "equipment_ids": [self.medkit.id],
+            },
+        ]
+        entities += [
+            {"profile_id": self.soldier.id, "weapon_ids": [self.rifle.id, self.rifle.id]}
+            for _ in range(soldiers)
+        ]
+        unit: UnitPayload = {
             "unit_type_id": self.squad.id,
-            "entities": [
-                {
-                    "profile_id": self.leader.id,
-                    "weapon_ids": [self.rifle.id],
-                    "heavy_weapon_ids": list(heavy),
-                    "super_heavy_weapon_ids": list(super_heavy),
-                    "equipment_ids": [self.medkit.id],
-                },
-            ]
-            + [
-                {"profile_id": self.soldier.id, "weapon_ids": [self.rifle.id, self.rifle.id]}
-                for _ in range(soldiers)
-            ],
+            "entities": entities,
         }
         unit.update(overrides)
         return unit
 
-    def army_payload(self, units=None, name="Erste Kompanie"):
+    def army_payload(
+        self, units: list[UnitPayload] | None = None, name: str = "Erste Kompanie"
+    ) -> ArmyPayload:
         return {
             "name": name,
             "species_id": self.humans.id,
             "units": [self.squad_payload()] if units is None else units,
         }
 
-    def create_army(self, payload=None):
+    def create_army(self, payload: ArmyPayload | None = None) -> TestResponse:
         return self.client.post(
             "/api/client/armies/", payload or self.army_payload(), format="json"
         )

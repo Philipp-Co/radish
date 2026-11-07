@@ -1,4 +1,5 @@
 from api.models import (
+    Army,
     Game,
     GameServer,
     Player,
@@ -6,7 +7,7 @@ from api.models import (
 from api.interfaces.player.serializers.army_write_serializer import ArmyWriteSerializer
 
 from api.tests.army_test_case import ArmyTestCase
-from api.tests.helpers import User
+from api.tests.helpers import TestResponse, UnitPayload, User
 
 
 class GameTestCase(ArmyTestCase):
@@ -15,7 +16,7 @@ class GameTestCase(ArmyTestCase):
     Grundlage fuer die Tests rund um Spiele.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         self.player = Player.objects.create(user=self.user)
         self.army = self.army_for(self.player)
@@ -24,14 +25,18 @@ class GameTestCase(ArmyTestCase):
             instance_name="game-instance-1",
         )
 
-    def army_for(self, player, name="Erste Kompanie", units=None):
-        serializer = ArmyWriteSerializer(
+    def army_for(
+        self, player: Player, name: str = "Erste Kompanie", units: list[UnitPayload] | None = None
+    ) -> Army:
+        serializer: ArmyWriteSerializer = ArmyWriteSerializer(
             data=self.army_payload(units=units, name=name), context={"player": player}
         )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
-    def create_game(self, army_id=None, points_limit=100, name="spiel"):
+    def create_game(
+        self, army_id: int | None = None, points_limit: int = 100, name: str = "spiel"
+    ) -> TestResponse:
         return self.client.post(
             "/api/client/game/",
             {
@@ -43,9 +48,9 @@ class GameTestCase(ArmyTestCase):
             format="json",
         )
 
-    def open_game(self, points_limit=100):
+    def open_game(self, points_limit: int = 100) -> Game:
         """Ein Spiel eines anderen Spielers, dem self.user beitreten kann."""
-        host = Player.objects.create(user=User.objects.create(username="host-user"))
+        host: Player = Player.objects.create(user=User.objects.create(username="host-user"))
         self.server.is_occupied = True
         self.server.save(update_fields=["is_occupied"])
         return Game.objects.create(
@@ -53,7 +58,7 @@ class GameTestCase(ArmyTestCase):
             points_limit=points_limit, host_army=self.army_for(host),
         )
 
-    def join(self, game, army_id=None):
+    def join(self, game: Game, army_id: int | None = None) -> TestResponse:
         return self.client.post(
             "/api/client/game/join/",
             {

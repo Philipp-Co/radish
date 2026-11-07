@@ -1,9 +1,11 @@
 from django.db import models
 
+from django.db.models import QuerySet
+
 from ..models import Army, Unit, UnitEntity, UnitEntityEquipment, UnitEntityWeapon
 
 
-def armies_with_costs():
+def armies_with_costs() -> QuerySet[Army]:
     """
     Armeen samt allem, was fuer Army.total_cost und die Ausgabe noetig ist
     -- inklusive der Katalogeintraege mit ihren Preisen, damit keine Abfrage

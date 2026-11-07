@@ -1,9 +1,11 @@
+from typing import Any
+
 from django.conf import settings
 from django.db import models
 from django.utils.crypto import get_random_string
 
 
-def _generate_player_identifier():
+def _generate_player_identifier() -> str:
     """
     8 Zeichen aus Buchstaben/Ziffern -- in ASCII also 8 Byte, wie gefordert.
     """
@@ -39,11 +41,13 @@ class Player(models.Model):
     # mitkam.
     name = models.CharField(max_length=255, blank=True, default="")
 
-    def save(self, *args, **kwargs):
+    # Any: Signatur von Model.save in den django-stubs; die Argumente gehen
+    # unveraendert an super().save, ein engerer Typ waere ein [override]-Fehler.
+    def save(self, *args: Any, **kwargs: Any) -> None:
         # Nur beim allerersten Speichern zuweisen, nicht bei jedem Update.
         if not self.identifier:
             for _ in range(10):
-                candidate = _generate_player_identifier()
+                candidate: str = _generate_player_identifier()
                 if not Player.objects.filter(identifier=candidate).exists():
                     self.identifier = candidate
                     break
@@ -56,5 +60,5 @@ class Player(models.Model):
                 )
         super().save(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.identifier

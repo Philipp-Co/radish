@@ -26,7 +26,8 @@ import re
 from pathlib import Path
 
 from django.conf import settings
-from django.http import Http404
+from django.http import FileResponse, Http404, HttpRequest
+from django.http.response import HttpResponseBase
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.views.static import serve
 
@@ -37,8 +38,12 @@ FRONTEND_DIST_DIR = Path(settings.BASE_DIR).parent / "frontend" / "dist" / "radi
 WASM_DIR = Path(settings.BASE_DIR).parent / "web"
 
 
-def _accepts_gzip(request):
+def _accepts_gzip(request: HttpRequest) -> bool:
     """Ob Accept-Encoding gzip erlaubt (und nicht per "gzip;q=0" ablehnt)."""
+    part: str
+    name: str
+    params: list[str]
+    param: str
     for part in request.headers.get("Accept-Encoding", "").split(","):
         name, *params = (p.strip() for p in part.split(";"))
         if name.lower() != "gzip":
@@ -61,7 +66,7 @@ def _accepts_gzip(request):
 _HASHED_FILE = re.compile(r"(-[A-Z0-9]{8}\.(js|css)|\.[0-9a-f]{12}\.[a-z0-9]+)$")
 
 
-def _set_cache_control(response, filename):
+def _set_cache_control(response: HttpResponseBase, filename: str) -> None:
     """
     Gehashte Dateien ein Jahr und unveraenderlich; alles andere (index.html,
     client.js/client.wasm, assets/manifest.json) traegt einen festen Namen und
@@ -74,7 +79,7 @@ def _set_cache_control(response, filename):
         patch_cache_control(response, no_cache=True)
 
 
-def _serve(request, filename, document_root):
+def _serve(request: HttpRequest, filename: str, document_root: Path) -> HttpResponseBase:
     """
     Wie serve(), bevorzugt aber eine vorkomprimierte "<filename>.gz" daneben
     (im Docker-Image beim Build erzeugt, siehe docker/backend/Dockerfile).
@@ -84,25 +89,25 @@ def _serve(request, filename, document_root):
     """
     if _accepts_gzip(request):
         try:
-            response = serve(request, f"{filename}.gz", document_root=document_root)
+            response: FileResponse = serve(request, f"{filename}.gz", document_root=str(document_root))
         except Http404:
             pass
         else:
             patch_vary_headers(response, ("Accept-Encoding",))
             _set_cache_control(response, filename)
             return response
-    response = serve(request, filename, document_root=document_root)
+    response = serve(request, filename, document_root=str(document_root))
     patch_vary_headers(response, ("Accept-Encoding",))
     _set_cache_control(response, filename)
     return response
 
 
-def index(request):
+def index(request: HttpRequest) -> HttpResponseBase:
     """Liefert das gebaute Angular-index.html unter "/"."""
     return _serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
 
 
-def wasm_file(request, filename):
+def wasm_file(request: HttpRequest, filename: str) -> HttpResponseBase:
     """
     Liefert eine Datei aus radish/web/ (client.js, client.wasm, ggf.
     weitere spaeter dazukommende Assets) unter wasm/<filename> -- passend zu
@@ -115,7 +120,7 @@ def wasm_file(request, filename):
     return _serve(request, filename, document_root=WASM_DIR)
 
 
-def static_file(request, filename):
+def static_file(request: HttpRequest, filename: str) -> HttpResponseBase:
     """
     Liefert eine Datei aus dem Angular-Build (JS-/CSS-Bundles mit Hash im
     Namen, siehe angular.json "outputHashing": "all") unter ihrem eigenen

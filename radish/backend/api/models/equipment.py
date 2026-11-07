@@ -1,3 +1,7 @@
+# Katalogeintraege einer Spezies sind gleich aufgebaut (Meta, Constraint);
+# eine gemeinsame Basis braeuchte eine Migration.
+# pylint: disable=duplicate-code
+
 from django.db import models
 
 from .species import Species
@@ -24,5 +28,5 @@ class Equipment(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.species})"

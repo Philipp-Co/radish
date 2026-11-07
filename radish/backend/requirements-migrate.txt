@@ -9,4 +9,4 @@ typing_extensions==4.16.0
 # Connection-Pool (OPTIONS "pool" in config/settings.py; den Pool selbst
 # bringt psycopg-pool in requirements.txt). Fertige musllinux-Wheels, auf
 # Alpine also ohne Build-Abhaengigkeiten.
-psycopg[binary]==3.2.3
+psycopg[binary]==3.2.13

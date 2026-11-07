@@ -1,3 +1,7 @@
+# Admin- und Spieler-API geben bewusst dieselben Felder aus, duerfen sich
+# aber unabhaengig aendern.
+# pylint: disable=duplicate-code
+
 from rest_framework import serializers
 
 from ....models import UnitType

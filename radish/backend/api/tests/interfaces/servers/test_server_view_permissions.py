@@ -6,9 +6,11 @@ from api.models import (
 )
 
 from api.tests.helpers import (
+    authenticate,
     ADMIN_TOKEN,
     PLAYER_TOKEN,
     SERVER_TOKEN,
+    TestResponse,
     User,
 )
 
@@ -21,22 +23,22 @@ class ServerViewPermissionTests(APITestCase):
     -- fuer Auflisten, Registrieren und Loeschen.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         GameServer.objects.create(name="server-a", address="10.0.0.1", port=7000)
         self.user = User.objects.create(username="spieler")
 
-    def test_player_cannot_list_servers(self):
-        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+    def test_player_cannot_list_servers(self) -> None:
+        authenticate(self.client, self.user, PLAYER_TOKEN)
 
         self.assertEqual(self.client.get("/api/servers/").status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
             self.client.get("/api/servers/server-a/").status_code, status.HTTP_403_FORBIDDEN
         )
 
-    def test_player_cannot_register_server(self):
-        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+    def test_player_cannot_register_server(self) -> None:
+        authenticate(self.client, self.user, PLAYER_TOKEN)
 
-        response = self.client.post(
+        response: TestResponse = self.client.post(
             "/api/servers/",
             {
                 "name": "boese",
@@ -51,27 +53,27 @@ class ServerViewPermissionTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(GameServer.objects.filter(name="boese").exists())
 
-    def test_player_cannot_delete_server(self):
-        self.client.force_authenticate(user=self.user, token=PLAYER_TOKEN)
+    def test_player_cannot_delete_server(self) -> None:
+        authenticate(self.client, self.user, PLAYER_TOKEN)
 
-        response = self.client.delete("/api/servers/server-a/")
+        response: TestResponse = self.client.delete("/api/servers/server-a/")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(GameServer.objects.filter(name="server-a").exists())
 
-    def test_admin_cannot_register_server(self):
-        self.client.force_authenticate(user=self.user, token=ADMIN_TOKEN)
+    def test_admin_cannot_register_server(self) -> None:
+        authenticate(self.client, self.user, ADMIN_TOKEN)
 
-        response = self.client.post(
+        response: TestResponse = self.client.post(
             "/api/servers/", {"name": "x", "address": "a", "port": 1}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_server_account_can_delete_server(self):
-        self.client.force_authenticate(user=self.user, token=SERVER_TOKEN)
+    def test_server_account_can_delete_server(self) -> None:
+        authenticate(self.client, self.user, SERVER_TOKEN)
 
-        response = self.client.delete("/api/servers/server-a/")
+        response: TestResponse = self.client.delete("/api/servers/server-a/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(GameServer.objects.filter(name="server-a").exists())

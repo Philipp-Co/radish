@@ -17,7 +17,13 @@ nicht aus einem hier zurueckgegebenen Identifier.
 """
 
 from django.contrib.auth import get_user_model, login, logout
-from django.http import HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
+from django.contrib.auth import models as auth_models
+from django.http import (
+    HttpRequest,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.views import View
 
 from .. import keycloak
@@ -26,7 +32,7 @@ User = get_user_model()
 
 
 class LoginView(View):
-    def get(self, request):
+    def get(self, request: HttpRequest) -> JsonResponse | HttpResponseRedirect:
         if request.user.is_authenticated:
             # Bewusst ohne username/sub in der Antwort: das ist Keycloaks
             # interner User-Identifier und darf nicht an den Client
@@ -34,14 +40,14 @@ class LoginView(View):
             # oeffentliche Kennung -- siehe models.Player).
             return JsonResponse({"authenticated": True})
 
-        state = keycloak.new_state()
+        state: str = keycloak.new_state()
         request.session["keycloak_login_state"] = state
         return HttpResponseRedirect(keycloak.build_authorization_redirect_url(state))
 
 
 class LoginCallbackView(View):
-    def get(self, request):
-        error = request.GET.get("error")
+    def get(self, request: HttpRequest) -> JsonResponse | HttpResponseBadRequest:
+        error: str | None = request.GET.get("error")
         if error:
             # "error" kommt ungeprueft aus der URL -- jeder kann einen Link
             # auf login/callback/?error=<script>... bauen. Als text/plain
@@ -54,25 +60,28 @@ class LoginCallbackView(View):
                 content_type="text/plain; charset=utf-8",
             )
 
-        expected_state = request.session.pop("keycloak_login_state", None)
-        state = request.GET.get("state")
+        # Die Session liefert Any; abgelegt wurde dort ein str (LoginView).
+        expected_state: str | None = request.session.pop("keycloak_login_state", None)
+        state: str | None = request.GET.get("state")
         if not expected_state or state != expected_state:
             return HttpResponseBadRequest("Ungueltiger oder fehlender state-Parameter.")
 
-        code = request.GET.get("code")
+        code: str | None = request.GET.get("code")
         if not code:
             return HttpResponseBadRequest("Kein code-Parameter in der Antwort von Keycloak.")
 
-        tokens = keycloak.exchange_code_for_tokens(code)
-        userinfo = keycloak.fetch_userinfo(tokens["access_token"])
+        tokens: keycloak.TokenResponse = keycloak.exchange_code_for_tokens(code)
+        userinfo: keycloak.KeycloakClaims = keycloak.fetch_userinfo(tokens["access_token"])
 
-        user = keycloak.get_or_create_user_from_claims(userinfo)
+        # auth_models.User: das modulweite User = get_user_model() ist fuer
+        # mypy eine Variable und als Typ nicht verwendbar.
+        user: auth_models.User = keycloak.get_or_create_user_from_claims(userinfo)
 
         # Keine Passwort-basierte authenticate(): die Identitaet ist durch
         # den Code-Tausch mit Keycloak schon bewiesen. login() braucht dafuer
-        # ein backend-Attribut am User.
-        user.backend = "django.contrib.auth.backends.ModelBackend"
-        login(request, user)
+        # das Backend -- als Argument statt als backend-Attribut am User, das
+        # die Stubs nicht kennen (login() liest beides gleich aus).
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
         # Fuer den End-Session-Redirect bei /api/logout/ noetig (id_token_hint).
         request.session["keycloak_id_token"] = tokens.get("id_token")
@@ -86,7 +95,8 @@ class LoginCallbackView(View):
 
 
 class LogoutView(View):
-    def get(self, request):
-        id_token = request.session.pop("keycloak_id_token", None)
+    def get(self, request: HttpRequest) -> HttpResponseRedirect:
+        # Wie oben: abgelegt wurde ein str oder None (LoginCallbackView).
+        id_token: str | None = request.session.pop("keycloak_id_token", None)
         logout(request)
         return HttpResponseRedirect(keycloak.build_end_session_redirect_url(id_token))

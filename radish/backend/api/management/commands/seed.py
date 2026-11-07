@@ -21,7 +21,9 @@ Datenbank.
 """
 
 import json
+from argparse import ArgumentParser
 from pathlib import Path
+from typing import Any, TextIO
 
 from django.apps import apps
 from django.core.management import call_command
@@ -39,16 +41,19 @@ class Command(BaseCommand):
     # Templates und Middleware, die es dort nicht gibt.
     requires_system_checks = []
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--mode", choices=MODES, default="if-empty")
 
-    def handle(self, *args, mode, **options):
+    # Any: Signatur von BaseCommand.handle in den django-stubs; options kommt
+    # ungeprueft aus argparse/call_command (z.B. options["verbosity"]).
+    def handle(self, *args: Any, **options: Any) -> None:
+        mode: str = options["mode"]
         if mode == "never":
             self.stdout.write("Seed: uebersprungen (never).")
             return
 
         if mode == "if-empty":
-            filled = [label for label in models_in_fixture() if apps.get_model(label).objects.exists()]
+            filled: list[str] = [label for label in models_in_fixture() if apps.get_model(label).objects.exists()]
             if filled:
                 self.stdout.write(f"Seed: uebersprungen, schon Inhalt in {', '.join(filled)}.")
                 return
@@ -56,7 +61,8 @@ class Command(BaseCommand):
         call_command("loaddata", str(FIXTURE), verbosity=options["verbosity"])
 
 
-def models_in_fixture():
+def models_in_fixture() -> list[str]:
     """Die Models ("app.model"), von denen der Dump Datensaetze enthaelt."""
+    f: TextIO
     with FIXTURE.open(encoding="utf-8") as f:
         return sorted({entry["model"] for entry in json.load(f)})

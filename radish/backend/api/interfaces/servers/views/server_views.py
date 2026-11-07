@@ -8,15 +8,17 @@ Platzhalter-Endpunkte (POST/SSE), hier alles rund um GameServer.
 import logging
 
 from django.db import transaction
+from django.db.models import QuerySet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ...player.views.client_views import end_started_game
 from ....models import Game, GameServer, GameStatus
 from ..roles.has_server_role import HasServerRole
-from ..serializers.game_finished_serializer import GameFinishedSerializer
+from ..serializers.game_finished_serializer import GameFinishedData, GameFinishedSerializer
 from ..serializers.game_server_serializer import GameServerSerializer
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,7 @@ class ServerView(APIView):
 
     permission_classes = [IsAuthenticated, HasServerRole]
 
-    def get(self, request, name=None):
+    def get(self, request: Request, name: str | None = None) -> Response:
         """
         Liefert registrierte Server, inklusive Adresse, Port und
         Belegungsstatus (is_occupied).
@@ -57,19 +59,20 @@ class ServerView(APIView):
         anstatt mit einem TypeError auf den unerwarteten URL-Parameter
         zu reagieren.
         """
+        serializer: GameServerSerializer
         if name is not None:
             try:
-                server = GameServer.objects.get(name=name)
+                server: GameServer = GameServer.objects.get(name=name)
             except GameServer.DoesNotExist:
                 return Response(status=status.HTTP_404_NOT_FOUND)
             serializer = GameServerSerializer(server)
             return Response(serializer.data)
 
-        servers = GameServer.objects.all().order_by("name")
+        servers: QuerySet[GameServer] = GameServer.objects.all().order_by("name")
         serializer = GameServerSerializer(servers, many=True)
         return Response({"servers": serializer.data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         """
         Macht einen Server bekannt: legt ihn mit Name, Adresse und Port an.
 
@@ -77,16 +80,17 @@ class ServerView(APIView):
         Server mit bereits vergebenem Namen liefert 400 statt eines
         zweiten Eintrags.
         """
-        serializer = GameServerSerializer(data=request.data)
+        serializer: GameServerSerializer = GameServerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def delete(self, request, name):
+    def delete(self, request: Request, name: str) -> Response:
         """
         Entfernt einen zuvor bekannt gemachten Server wieder, identifiziert
         ueber seinen Namen (nicht ueber die Datenbank-ID).
         """
+        deleted_count: int
         deleted_count, _ = GameServer.objects.filter(name=name).delete()
         if not deleted_count:
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -122,10 +126,10 @@ class GameFinishedView(APIView):
 
     permission_classes = [IsAuthenticated, HasServerRole]
 
-    def post(self, request, name):
-        serializer = GameFinishedSerializer(data=request.data)
+    def post(self, request: Request, name: str) -> Response:
+        serializer: GameFinishedSerializer = GameFinishedSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+        data: GameFinishedData = serializer.validated_data
 
         if data["game-instance"] != name:
             return Response(
@@ -134,13 +138,13 @@ class GameFinishedView(APIView):
             )
 
         with transaction.atomic():
-            server = GameServer.objects.select_for_update().filter(name=name).first()
+            server: GameServer | None = GameServer.objects.select_for_update().filter(name=name).first()
             if server is None:
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
             # Gesperrt wird nur das Game selbst: second_player ist nullable, und
             # FOR UPDATE geht nicht auf die Seite eines Outer Joins.
-            game = (
+            game: Game | None = (
                 Game.objects.select_for_update(of=("self",))
                 .select_related("server", "host", "second_player")
                 .filter(server=server)
@@ -152,8 +156,8 @@ class GameFinishedView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            draw = data["winner"] is None
-            players = {game.host.identifier}
+            draw: bool = data["winner"] is None
+            players: set[str] = {game.host.identifier}
             if game.second_player is not None:
                 players.add(game.second_player.identifier)
             if not draw and {data["winner"], data["loser"]} != players:

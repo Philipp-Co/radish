@@ -10,7 +10,11 @@ class AdminTerrainTypeSerializer(serializers.ModelSerializer):
     ist die Bezeichnung fuer den Adminbereich.
     """
 
-    label = serializers.CharField(source="get_code_display", read_only=True)
+    # In den Stubs ist label das Beschriftungsattribut jedes Feldes (str | None).
+    # Zur Laufzeit entfernt der SerializerMetaclass deklarierte Felder aus den
+    # Klassenattributen, es gibt also keine Kollision -- nur mypy sieht eine;
+    # deshalb das ignore statt eines Any, der Typ des Feldes bleibt sichtbar.
+    label = serializers.CharField(source="get_code_display", read_only=True)  # type: ignore[assignment]
 
     class Meta:
         model = TerrainType

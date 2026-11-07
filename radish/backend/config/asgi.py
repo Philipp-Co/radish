@@ -27,8 +27,10 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 # django.setup() an) importierbar sind.
 django_asgi_app = get_asgi_application()
 
+# pylint: disable=wrong-import-position
 from api.interfaces.auth.middleware import KeycloakTokenAuthMiddleware  # noqa: E402
 from api.interfaces.routing import websocket_urlpatterns  # noqa: E402
+# pylint: enable=wrong-import-position
 
 application = ProtocolTypeRouter({
     'http': django_asgi_app,

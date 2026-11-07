@@ -324,4 +324,3 @@ SIMPLE_JWT = {
     # "Invalid audience" fehl, auch bei einem sonst gueltigen Token.
     "AUDIENCE": "radish-backend",
 }
-

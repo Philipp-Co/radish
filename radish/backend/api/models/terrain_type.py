@@ -42,5 +42,5 @@ class TerrainType(models.Model):
         # In der Reihenfolge der Typen im Spiel -- so stehen sie im Dump.
         ordering = ["id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.get_code_display()

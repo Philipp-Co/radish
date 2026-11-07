@@ -22,8 +22,8 @@ class Army(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.player})"
 
-    def total_cost(self):
+    def total_cost(self) -> int:
         return sum(unit.total_cost() for unit in self.units.all())

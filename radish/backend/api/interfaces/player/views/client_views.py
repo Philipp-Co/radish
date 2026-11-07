@@ -18,17 +18,25 @@ client/command/ bzw. StreamView unter client/stream/), sondern ueber den
 WebSocket (siehe api/interfaces/player/views/consumers.py, EchoConsumer).
 """
 
-from django.core.paginator import Paginator
+from typing import cast
+
+# Nur fuer Type Hints: das Projekt nutzt Djangos Standard-User-Model (kein
+# AUTH_USER_MODEL), get_user_model() liefert also genau diese Klasse.
+# pylint: disable-next=imported-auth-user
+from django.contrib.auth.models import AnonymousUser, User
+from django.core.paginator import Page, Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import Token
 
 from ....domain.army_queries import armies_with_costs
 from ....domain.servers import access, instance_client
-from ....models import Game, GameServer, GameStatus, Player
+from ....models import Army, Game, GameServer, GameStatus, Player
 from ..roles.has_player_role import HasPlayerRole
 from ..serializers.game_create_serializer import GameCreateSerializer
 from ..serializers.game_detail_serializer import GameDetailSerializer
@@ -36,20 +44,23 @@ from ..serializers.game_join_serializer import GameJoinSerializer
 from ..serializers.game_list_serializer import GameListSerializer
 
 
-def _sync_player_name(player, request):
+def _sync_player_name(player: Player, request: Request) -> None:
     """
     Uebernimmt den Keycloak-Benutzernamen ("preferred_username" im
     validierten Access-Token, siehe auth/roles/realm_roles._realm_roles fuer
     request.auth) in Player.name, falls er sich geaendert hat.
     """
-    token = request.auth
-    name = (token.get("preferred_username") if token is not None else None) or ""
+    # DRF typisiert request.auth mit seinem eigenen authtoken-Token; hier
+    # setzt es aber KeycloakJWTAuthentication, also ein simplejwt-Token
+    # (verhaelt sich wie ein Mapping auf seine Klaims).
+    token: Token | None = cast(Token | None, request.auth)
+    name: str = (token.get("preferred_username") if token is not None else None) or ""
     if name and name != player.name:
         player.name = name
         player.save(update_fields=["name"])
 
 
-def _get_or_create_player(request):
+def _get_or_create_player(request: Request) -> Player:
     """
     Loest den durch Keycloak authentifizierten Django-User (request.user,
     siehe KeycloakJWTAuthentication in api/interfaces/auth/authentication.py) zu seinem
@@ -62,18 +73,21 @@ def _get_or_create_player(request):
     dem validierten Access-Token -- ein player_identifier im Request-Body
     entfaellt komplett (siehe serializers/game_create_serializer.py).
     """
+    player: Player
     player, _ = Player.objects.get_or_create(user=request.user)
     _sync_player_name(player, request)
     return player
 
 
-def _army_for_game(player, army_id, points_limit):
+def _army_for_game(
+    player: Player, army_id: int, points_limit: int
+) -> tuple[Army, None] | tuple[None, Response]:
     """
     Die Armee, mit der ein Spieler antreten will: sie muss ihm gehoeren,
     mindestens eine Einheit haben und darf hoechstens points_limit kosten.
     Liefert (army, None) oder (None, Fehler-Response).
     """
-    army = armies_with_costs().filter(pk=army_id, player=player).first()
+    army: Army | None = armies_with_costs().filter(pk=army_id, player=player).first()
     if army is None:
         return None, Response(
             {"detail": "Armee nicht gefunden."}, status=status.HTTP_400_BAD_REQUEST
@@ -83,7 +97,7 @@ def _army_for_game(player, army_id, points_limit):
             {"detail": f"Die Armee „{army.name}“ hat noch keine Einheiten."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    cost = army.total_cost()
+    cost: int = army.total_cost()
     if cost > points_limit:
         return None, Response(
             {
@@ -114,16 +128,16 @@ class GameCreateView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def post(self, request):
-        serializer = GameCreateSerializer(data=request.data)
+    def post(self, request: Request) -> Response:
+        serializer: GameCreateSerializer = GameCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        name = serializer.validated_data["name"]
-        password = serializer.validated_data["password"]
-        points_limit = serializer.validated_data["points_limit"]
+        name: str = serializer.validated_data["name"]
+        password: str = serializer.validated_data["password"]
+        points_limit: int = serializer.validated_data["points_limit"]
 
-        player = _get_or_create_player(request)
+        player: Player = _get_or_create_player(request)
 
-        already_in_game = Game.objects.filter(
+        already_in_game: bool = Game.objects.filter(
             Q(host=player) | Q(second_player=player)
         ).exists()
         if already_in_game:
@@ -132,12 +146,14 @@ class GameCreateView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        army: Army | None
+        error: Response | None
         army, error = _army_for_game(player, serializer.validated_data["army_id"], points_limit)
         if error is not None:
             return error
 
         with transaction.atomic():
-            server = (
+            server: GameServer | None = (
                 GameServer.objects.select_for_update()
                 .filter(is_occupied=False)
                 .first()
@@ -149,7 +165,7 @@ class GameCreateView(APIView):
                 )
             server.is_occupied = True
             server.save(update_fields=["is_occupied"])
-            game = Game.objects.create(
+            game: Game = Game.objects.create(
                 name=name,
                 password=password,
                 server=server,
@@ -187,15 +203,15 @@ class GameJoinView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def post(self, request):
-        serializer = GameJoinSerializer(data=request.data)
+    def post(self, request: Request) -> Response:
+        serializer: GameJoinSerializer = GameJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        name = serializer.validated_data["name"]
-        password = serializer.validated_data["password"]
+        name: str = serializer.validated_data["name"]
+        password: str = serializer.validated_data["password"]
 
-        player = _get_or_create_player(request)
+        player: Player = _get_or_create_player(request)
 
-        already_in_game = Game.objects.filter(
+        already_in_game: bool = Game.objects.filter(
             Q(host=player) | Q(second_player=player)
         ).exists()
         if already_in_game:
@@ -204,6 +220,9 @@ class GameJoinView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        game: Game
+        army: Army | None
+        error: Response | None
         with transaction.atomic():
             try:
                 game = Game.objects.select_for_update().get(name=name)
@@ -261,14 +280,14 @@ class GameStartView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def post(self, request):
-        user = request.user
+    def post(self, request: Request) -> Response:
+        user: User | AnonymousUser = request.user
         with transaction.atomic():
             # Das Spiel direkt ueber den User statt erst den Player zu suchen;
             # ohne Player-Objekt findet die Abfrage kein Spiel.
             # of=("self",): nur die Zeile des Spiels sperren -- second_player
             # ist nullable, und durch einen Outer Join sperrt Postgres nicht.
-            game = (
+            game: Game | None = (
                 Game.objects.select_for_update(of=("self",))
                 # Die Armeen fuer die Antwort (GameDetailSerializer, Armeenamen).
                 .select_related("server", "host", "second_player", "host_army", "second_player_army")
@@ -283,7 +302,10 @@ class GameStartView(APIView):
             # Der anfragende Spieler steckt schon im Spiel. Sein Name wird vor
             # dem Start nachgezogen: das Spielstart-Dokument liest ihn aus
             # game.host bzw. game.second_player -- demselben Objekt.
-            player = game.host if game.host.user_id == user.id else game.second_player
+            player: Player | None = game.host if game.host.user_id == user.id else game.second_player
+            # Gefunden ueber host__user oder second_player__user: ist der User
+            # nicht Host, ist er second_player, und der ist dann nicht None.
+            assert player is not None
             _sync_player_name(player, request)
             if game.host_id != player.id:
                 return Response(
@@ -345,13 +367,13 @@ class GameListView(APIView):
 
     PAGE_SIZE = 20
 
-    def get(self, request):
-        games = Game.objects.filter(status=GameStatus.LOBBY).order_by("id")
-        name = request.query_params.get("name")
+    def get(self, request: Request) -> Response:
+        games: QuerySet[Game] = Game.objects.filter(status=GameStatus.LOBBY).order_by("id")
+        name: str | None = request.query_params.get("name")
         if name is not None:
             games = games.filter(name=name)
-        page = Paginator(games, self.PAGE_SIZE).get_page(request.query_params.get("page"))
-        serializer = GameListSerializer(page.object_list, many=True)
+        page: Page[Game] = Paginator(games, self.PAGE_SIZE).get_page(request.query_params.get("page"))
+        serializer: GameListSerializer = GameListSerializer(page.object_list, many=True)
         return Response(
             {
                 "games": serializer.data,
@@ -379,12 +401,12 @@ class CurrentGameView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         # Eine Abfrage: das Spiel direkt ueber den User statt erst den Player
         # zu suchen, dazu alles, was GameDetailSerializer liest (Spieler-
         # Kennungen und Armeenamen). Ohne Player-Objekt findet sie kein Spiel.
-        user = request.user
-        game = (
+        user: User | AnonymousUser = request.user
+        game: Game | None = (
             Game.objects.select_related("host", "second_player", "host_army", "second_player_army")
             .filter(Q(host__user=user) | Q(second_player__user=user))
             .first()
@@ -393,11 +415,11 @@ class CurrentGameView(APIView):
             return Response({"game": None})
 
         # Der anfragende Spieler steckt schon im Spiel: Host oder zweiter Spieler.
-        player = game.host if game.host.user_id == user.id else game.second_player
+        player: Player | None = game.host if game.host.user_id == user.id else game.second_player
         return Response({"game": GameDetailSerializer(game, context={"player": player}).data})
 
 
-def end_started_game(game):
+def end_started_game(game: Game) -> None:
     """
     Beendet ein gestartetes Spiel fuer beide Spieler: das Game verschwindet
     (Spieler und Armeen sind damit wieder frei), der Server wird frei, und
@@ -409,7 +431,7 @@ def end_started_game(game):
     einer Transaktion gerufen zu werden, die "game" gesperrt haelt
     (select_for_update).
     """
-    server = game.server
+    server: GameServer = game.server
     game.delete()
     server.is_occupied = False
     server.save(update_fields=["is_occupied"])
@@ -455,7 +477,10 @@ class LeaveGameView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
+        # IsAuthenticated laesst keinen AnonymousUser durch.
+        assert not isinstance(request.user, AnonymousUser)
+        player: Player
         try:
             player = Player.objects.get(user=request.user)
         except Player.DoesNotExist:
@@ -465,7 +490,7 @@ class LeaveGameView(APIView):
             )
 
         with transaction.atomic():
-            game = (
+            game: Game | None = (
                 Game.objects.select_for_update()
                 .select_related("server")
                 .filter(Q(host=player) | Q(second_player=player))
@@ -486,6 +511,8 @@ class LeaveGameView(APIView):
                 game.save(update_fields=["second_player", "second_player_army"])
             elif game.second_player_id:
                 # Host verlaesst, zweiter Spieler ruecht auf -- mit seiner Armee.
+                # second_player_id ist gesetzt, second_player also nicht None.
+                assert game.second_player is not None
                 game.host = game.second_player
                 game.host_army = game.second_player_army
                 game.second_player = None
@@ -495,7 +522,7 @@ class LeaveGameView(APIView):
                 )
             else:
                 # Host verlaesst, niemand sonst da -- Spiel endet.
-                server = game.server
+                server: GameServer = game.server
                 game.delete()
                 server.is_occupied = False
                 server.save(update_fields=["is_occupied"])
@@ -519,5 +546,5 @@ class PlayerStateView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         return Response({"status": "ok"})

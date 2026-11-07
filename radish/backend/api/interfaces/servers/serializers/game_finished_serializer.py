@@ -1,4 +1,14 @@
+from typing import Any, TypedDict
+
 from rest_framework import serializers
+
+
+# Die validierten Daten von GameFinishedSerializer. Funktionale Schreibweise,
+# weil "game-instance" kein gueltiger Python-Name ist.
+GameFinishedData = TypedDict(
+    "GameFinishedData",
+    {"winner": str | None, "loser": str | None, "game-instance": str},
+)
 
 
 class GameFinishedSerializer(serializers.Serializer):
@@ -18,11 +28,16 @@ class GameFinishedSerializer(serializers.Serializer):
     winner = serializers.CharField(max_length=8, allow_null=True)
     loser = serializers.CharField(max_length=8, allow_null=True)
 
-    def __init__(self, *args, **kwargs):
+    # Any: wird unveraendert an DRF Serializer.__init__ weitergereicht.
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fields["game-instance"] = serializers.CharField(max_length=255)
 
-    def validate(self, attrs):
+    # Any: Signatur von DRF Serializer.validate (Stubs); enger waere eine
+    # Liskov-Verletzung.
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        winner: str | None
+        loser: str | None
         winner, loser = attrs["winner"], attrs["loser"]
         if (winner is None) != (loser is None):
             raise serializers.ValidationError(

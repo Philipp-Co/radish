@@ -11,8 +11,15 @@ sorgt dafuer, dass DRF dieses validierte Token als request.auth bereitstellt
 -- genau das liest _realm_roles hier aus.
 """
 
+from typing import cast
 
-def _realm_roles(request):
+from rest_framework.request import Request
+from rest_framework_simplejwt.tokens import Token
+
+from ..keycloak import RealmAccess
+
+
+def _realm_roles(request: Request) -> list[str]:
     """
     Liest die Keycloak-Realm-Rollen aus dem validierten Access-Token.
 
@@ -21,8 +28,13 @@ def _realm_roles(request):
     Ohne erfolgreiche Authentifizierung (z.B. bei AllowAny-Views ohne
     Token) ist request.auth None -- dann gibt es auch keine Rollen.
     """
-    token = request.auth
+    # DRF typisiert request.auth mit seinem eigenen authtoken-Token; hier
+    # setzt es aber KeycloakJWTAuthentication, also ein simplejwt-Token.
+    token: Token | None = cast(Token | None, request.auth)
     if token is None:
         return []
-    realm_access = token.get("realm_access", {}) or {}
+    # Token.get ist in simplejwt Any; der Klaim hat die Form von RealmAccess.
+    # RealmAccess() ist zur Laufzeit dasselbe leere dict wie vorher "{}", ein
+    # nacktes "{}" leitet mypy hinter "or" aber als dict[Any, Any] her.
+    realm_access: RealmAccess = token.get("realm_access", {}) or RealmAccess()
     return realm_access.get("roles", []) or []

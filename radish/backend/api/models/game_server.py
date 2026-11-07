@@ -56,5 +56,5 @@ class GameServer(models.Model):
         validators=[RegexValidator(r"^[A-Za-z0-9_-]+$")],
     )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.address}:{self.port})"

@@ -58,7 +58,7 @@ class Game(models.Model):
     host_zucchini_code = models.CharField(max_length=16, blank=True, default="")
     second_player_zucchini_code = models.CharField(max_length=16, blank=True, default="")
 
-    def zucchini_code_for(self, player):
+    def zucchini_code_for(self, player: Player) -> str:
         """Der Code des Spielers in diesem Spiel, "" fuer jemand anderen."""
         if player.pk == self.host_id:
             return self.host_zucchini_code
@@ -66,5 +66,5 @@ class Game(models.Model):
             return self.second_player_zucchini_code
         return ""
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name

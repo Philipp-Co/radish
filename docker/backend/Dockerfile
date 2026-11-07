@@ -64,7 +64,7 @@ RUN emcmake cmake -S radish -B build -DCMAKE_BUILD_TYPE=Release \
 # kopierte chmod dort alle Dateien in eine weitere Schicht.
 
 
-FROM python:3.12-alpine AS builder
+FROM python:3.14-alpine AS builder
 
 RUN apk add --no-cache \
     gcc \
@@ -81,7 +81,7 @@ COPY radish/backend/requirements.txt radish/backend/requirements-migrate.txt /tm
 RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 
-FROM python:3.12-alpine
+FROM python:3.14-alpine
 
 RUN apk add --no-cache \
     libffi \

@@ -1,4 +1,6 @@
 from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
+from rest_framework.views import APIView
 
 from ...auth.roles.realm_roles import _realm_roles
 
@@ -19,5 +21,5 @@ class HasAdminRole(BasePermission):
 
     message = "Erfordert die Keycloak-Rolle 'Radish-Admin'."
 
-    def has_permission(self, request, view):
+    def has_permission(self, request: Request, view: APIView) -> bool:
         return "Radish-Admin" in _realm_roles(request)

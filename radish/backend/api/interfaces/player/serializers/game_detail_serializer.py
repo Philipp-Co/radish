@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import Game
+from ....models import Game, Player
 
 
 class GameDetailSerializer(serializers.ModelSerializer):
@@ -18,10 +18,10 @@ class GameDetailSerializer(serializers.ModelSerializer):
     Player-Objekte, da Player ohnehin nichts weiter als die Kennung traegt.
     """
 
-    host_identifier = serializers.SlugRelatedField(
+    host_identifier: serializers.SlugRelatedField[Player] = serializers.SlugRelatedField(
         source="host", slug_field="identifier", read_only=True
     )
-    second_player_identifier = serializers.SlugRelatedField(
+    second_player_identifier: serializers.SlugRelatedField[Player] = serializers.SlugRelatedField(
         source="second_player", slug_field="identifier", read_only=True
     )
 
@@ -49,6 +49,6 @@ class GameDetailSerializer(serializers.ModelSerializer):
             "is_host",
         ]
 
-    def get_is_host(self, obj):
-        player = self.context.get("player")
+    def get_is_host(self, obj: Game) -> bool:
+        player: Player | None = self.context.get("player")
         return player is not None and obj.host_id == player.id

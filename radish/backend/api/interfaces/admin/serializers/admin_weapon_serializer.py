@@ -1,3 +1,7 @@
+# Admin- und Spieler-API geben bewusst dieselben Felder aus, duerfen sich
+# aber unabhaengig aendern.
+# pylint: disable=duplicate-code
+
 from rest_framework import serializers
 
 from ....models import (
@@ -33,9 +37,11 @@ class AdminWeaponSerializer(_CatalogAdminSerializer):
             "in_use",
         ]
 
-    def validate(self, attrs):
+    # Die Stubs typisieren attrs als Any; es sind die validierten Daten, ein
+    # dict von Feldname auf Wert.
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        if _value(self, attrs, "min_range") > _value(self, attrs, "max_range"):
+        if _value(self, attrs, "min_range", int) > _value(self, attrs, "max_range", int):
             raise serializers.ValidationError(
                 {"min_range": "Darf nicht groesser als die Maximalreichweite sein."}
             )

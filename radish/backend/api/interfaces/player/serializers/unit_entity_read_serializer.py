@@ -27,17 +27,17 @@ class UnitEntityReadSerializer(serializers.ModelSerializer):
         ]
 
     @staticmethod
-    def _ids(obj, weapon_class):
+    def _ids(obj: UnitEntity, weapon_class: WeaponClass) -> list[int]:
         return [slot.weapon_id for slot in obj.weapons.all() if slot.weapon_class == weapon_class]
 
-    def get_weapon_ids(self, obj):
+    def get_weapon_ids(self, obj: UnitEntity) -> list[int]:
         return self._ids(obj, WeaponClass.STANDARD)
 
-    def get_heavy_weapon_ids(self, obj):
+    def get_heavy_weapon_ids(self, obj: UnitEntity) -> list[int]:
         return self._ids(obj, WeaponClass.HEAVY)
 
-    def get_super_heavy_weapon_ids(self, obj):
+    def get_super_heavy_weapon_ids(self, obj: UnitEntity) -> list[int]:
         return self._ids(obj, WeaponClass.SUPER_HEAVY)
 
-    def get_equipment_ids(self, obj):
+    def get_equipment_ids(self, obj: UnitEntity) -> list[int]:
         return [slot.equipment_id for slot in obj.equipment.all()]

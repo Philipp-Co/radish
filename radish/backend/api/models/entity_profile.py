@@ -47,5 +47,5 @@ class EntityProfile(models.Model):
             ),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.unit_type.name})"

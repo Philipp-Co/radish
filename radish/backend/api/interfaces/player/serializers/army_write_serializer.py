@@ -1,26 +1,62 @@
 from collections import Counter
+from typing import Any, Literal, TypedDict, cast
 
 from django.db import transaction
+from django.db.models import QuerySet
 from rest_framework import serializers
 
 from ....models import (
     MAX_UNIT_ENTITIES,
     Army,
+    EntityProfile,
+    Equipment,
     Species,
     Unit,
     UnitEntity,
     UnitEntityEquipment,
     UnitEntityWeapon,
+    UnitType,
+    Weapon,
     WeaponClass,
 )
 
 from .unit_write_serializer import UnitWriteSerializer
 
 
+# Die Waffenfelder einer validierten Entitaet (siehe ValidatedEntity) --
+# als Literal, damit sie den TypedDict typsicher indizieren.
+WeaponKey = Literal["weapons", "heavy_weapons", "super_heavy_weapons"]
+
+
+class ValidatedEntity(TypedDict):
+    """Eine Entitaet nach UnitEntityWriteSerializer: die ids sind aufgeloest."""
+
+    profile: EntityProfile
+    weapons: list[Weapon]
+    heavy_weapons: list[Weapon]
+    super_heavy_weapons: list[Weapon]
+    equipment: list[Equipment]
+
+
+class ValidatedUnit(TypedDict):
+    """Eine Einheit nach UnitWriteSerializer."""
+
+    unit_type: UnitType
+    entities: list[ValidatedEntity]
+
+
+class ValidatedArmy(TypedDict):
+    """Die validierten Daten von ArmyWriteSerializer (Felder ueber "source")."""
+
+    name: str
+    species: Species
+    units: list[ValidatedUnit]
+
+
 # Waffenklassen einer Entitaet: Feld (ohne "_ids") -> (Klasse, Slotfeld am
 # Entitaetsprofil, Bezeichnung fuer Meldungen). Alle Waffen, auch schwere
 # und super-schwere, traegt eine einzelne Entitaet.
-ENTITY_WEAPON_CLASSES = {
+ENTITY_WEAPON_CLASSES: dict[WeaponKey, tuple[WeaponClass, str, str]] = {
     "weapons": (WeaponClass.STANDARD, "weapon_slots", "Waffe"),
     "heavy_weapons": (WeaponClass.HEAVY, "heavy_weapon_slots", "schwere Waffe"),
     "super_heavy_weapons": (
@@ -32,7 +68,7 @@ ENTITY_WEAPON_CLASSES = {
 
 # Hoechstzahl je Einheit (Feld am Einheitentyp) fuer die Klassen, die eine
 # haben -- ueber alle Entitaeten zusammen, zusaetzlich zu deren Slots.
-UNIT_WEAPON_LIMITS = {
+UNIT_WEAPON_LIMITS: dict[WeaponKey, str] = {
     "heavy_weapons": "max_heavy_weapons",
     "super_heavy_weapons": "max_super_heavy_weapons",
 }
@@ -58,126 +94,182 @@ class ArmyWriteSerializer(serializers.Serializer):
     )
     units = UnitWriteSerializer(many=True, required=False, default=list)
 
-    def validate_name(self, value):
-        armies = Army.objects.filter(player=self.context["player"], name=value)
+    def validate_name(self, value: str) -> str:
+        armies: QuerySet[Army] = Army.objects.filter(player=self.context["player"], name=value)
         if self.instance is not None:
             armies = armies.exclude(pk=self.instance.pk)
         if armies.exists():
             raise serializers.ValidationError("Es gibt bereits eine Armee mit diesem Namen.")
         return value
 
-    def validate(self, attrs):
-        species = attrs["species"]
-        for number, unit in enumerate(attrs["units"], start=1):
+    # Any: Signatur von DRF Serializer.validate (Stubs); enger waere eine
+    # Liskov-Verletzung.
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        # Die Feld-Serializer haben attrs zu genau dieser Struktur aufgeloest
+        # (PrimaryKeyRelatedField -> Model, verschachtelte Serializer).
+        data: ValidatedArmy = cast(ValidatedArmy, attrs)
+        species: Species = data["species"]
+        number: int
+        unit: ValidatedUnit
+        for number, unit in enumerate(data["units"], start=1):
             self._validate_unit(species, unit, f"Einheit {number}")
         return attrs
 
     @staticmethod
-    def _validate_unit(species, unit, label):
-        unit_type = unit["unit_type"]
+    def _validate_unit(species: Species, unit: ValidatedUnit, label: str) -> None:
+        """Prueft eine Einheit gegen den Katalog; die Reihenfolge bestimmt die Fehlermeldung."""
+        unit_type: UnitType = unit["unit_type"]
         if unit_type.species_id != species.id:
             raise serializers.ValidationError(
                 f"{label}: Einheitentyp {unit_type.name} gehoert nicht zur Spezies {species.name}."
             )
 
-        entities = unit["entities"]
-        lower = unit_type.min_entities
-        upper = min(unit_type.max_entities, MAX_UNIT_ENTITIES)
+        entities: list[ValidatedEntity] = unit["entities"]
+        lower: int = unit_type.min_entities
+        upper: int = min(unit_type.max_entities, MAX_UNIT_ENTITIES)
         if not lower <= len(entities) <= upper:
             raise serializers.ValidationError(
                 f"{label}: {unit_type.name} braucht {lower} bis {upper} Entitaeten, "
                 f"hat aber {len(entities)}."
             )
 
-        profile_counts = Counter()
+        profile_counts: Counter[int] = Counter()
+        number: int
+        entity: ValidatedEntity
         for number, entity in enumerate(entities, start=1):
-            entity_label = f"{label}, Entitaet {number}"
-            profile = entity["profile"]
-            if profile.unit_type_id != unit_type.id:
+            ArmyWriteSerializer._validate_entity(species, unit_type, entity, f"{label}, Entitaet {number}")
+            profile_counts[entity["profile"].id] += 1
+
+        ArmyWriteSerializer._validate_unit_weapon_limits(unit_type, entities, label)
+        ArmyWriteSerializer._validate_profile_counts(unit_type, profile_counts, label)
+
+    @staticmethod
+    def _validate_entity(species: Species, unit_type: UnitType, entity: ValidatedEntity, label: str) -> None:
+        """Profil, Waffen und Ausruestung einer Entitaet."""
+        profile: EntityProfile = entity["profile"]
+        if profile.unit_type_id != unit_type.id:
+            raise serializers.ValidationError(
+                f"{label}: Profil {profile.name} gehoert nicht zu {unit_type.name}."
+            )
+        ArmyWriteSerializer._validate_entity_weapons(species, profile, entity, label)
+        ArmyWriteSerializer._validate_entity_equipment(species, profile, entity, label)
+
+    @staticmethod
+    def _validate_entity_weapons(
+        species: Species, profile: EntityProfile, entity: ValidatedEntity, label: str
+    ) -> None:
+        """Je Waffenklasse: Slots des Profils, Klasse und Spezies jeder Waffe."""
+        key: WeaponKey
+        weapon_class: WeaponClass
+        slots_field: str
+        class_label: str
+        weapon: Weapon
+        for key, (weapon_class, slots_field, class_label) in ENTITY_WEAPON_CLASSES.items():
+            weapons: list[Weapon] = entity[key]
+            slots: int = getattr(profile, slots_field)
+            if len(weapons) > slots:
                 raise serializers.ValidationError(
-                    f"{entity_label}: Profil {profile.name} gehoert nicht zu {unit_type.name}."
+                    f"{label}: {profile.name} hat nur {slots} Slots fuer "
+                    f"{class_label}n, bekommt aber {len(weapons)}."
                 )
-            profile_counts[profile.id] += 1
-
-            for key, (weapon_class, slots_field, class_label) in ENTITY_WEAPON_CLASSES.items():
-                weapons = entity[key]
-                slots = getattr(profile, slots_field)
-                if len(weapons) > slots:
+            for weapon in weapons:
+                if weapon.weapon_class != weapon_class:
                     raise serializers.ValidationError(
-                        f"{entity_label}: {profile.name} hat nur {slots} Slots fuer "
-                        f"{class_label}n, bekommt aber {len(weapons)}."
+                        f"{label}: {weapon.name} ist keine {class_label} "
+                        f"({weapon.get_weapon_class_display()})."
                     )
-                for weapon in weapons:
-                    if weapon.weapon_class != weapon_class:
-                        raise serializers.ValidationError(
-                            f"{entity_label}: {weapon.name} ist keine {class_label} "
-                            f"({weapon.get_weapon_class_display()})."
-                        )
-                    if weapon.species_id != species.id:
-                        raise serializers.ValidationError(
-                            f"{entity_label}: {weapon.name} gehoert nicht zur Spezies "
-                            f"{species.name}."
-                        )
+                if weapon.species_id != species.id:
+                    raise serializers.ValidationError(
+                        f"{label}: {weapon.name} gehoert nicht zur Spezies "
+                        f"{species.name}."
+                    )
 
-            equipment = entity["equipment"]
-            if len(equipment) > profile.equipment_slots:
+    @staticmethod
+    def _validate_entity_equipment(
+        species: Species, profile: EntityProfile, entity: ValidatedEntity, label: str
+    ) -> None:
+        """Ausruestungsslots des Profils und Spezies jedes Gegenstands."""
+        equipment: list[Equipment] = entity["equipment"]
+        if len(equipment) > profile.equipment_slots:
+            raise serializers.ValidationError(
+                f"{label}: {profile.name} hat nur "
+                f"{profile.equipment_slots} Ausruestungsslots."
+            )
+        item: Equipment
+        for item in equipment:
+            if item.species_id != species.id:
                 raise serializers.ValidationError(
-                    f"{entity_label}: {profile.name} hat nur "
-                    f"{profile.equipment_slots} Ausruestungsslots."
+                    f"{label}: {item.name} gehoert nicht zur Spezies {species.name}."
                 )
-            for item in equipment:
-                if item.species_id != species.id:
-                    raise serializers.ValidationError(
-                        f"{entity_label}: {item.name} gehoert nicht zur Spezies {species.name}."
-                    )
 
+    @staticmethod
+    def _validate_unit_weapon_limits(unit_type: UnitType, entities: list[ValidatedEntity], label: str) -> None:
+        """Hoechstzahl schwerer bzw. super-schwerer Waffen ueber alle Entitaeten der Einheit."""
+        key: WeaponKey
+        limit_field: str
         for key, limit_field in UNIT_WEAPON_LIMITS.items():
-            limit = getattr(unit_type, limit_field)
+            limit: int | None = getattr(unit_type, limit_field)
             if limit is None:
                 continue
-            count = sum(len(entity[key]) for entity in entities)
+            count: int = sum(len(entity[key]) for entity in entities)
             if count > limit:
-                class_label = ENTITY_WEAPON_CLASSES[key][2]
+                class_label: str = ENTITY_WEAPON_CLASSES[key][2]
                 raise serializers.ValidationError(
                     f"{label}: {unit_type.name} darf hoechstens {limit} {class_label}n "
                     f"fuehren, hat aber {count}."
                 )
 
+    @staticmethod
+    def _validate_profile_counts(unit_type: UnitType, profile_counts: Counter[int], label: str) -> None:
+        """Wie viele Entitaeten je Profil die Einheit haben darf (min_count/max_count)."""
+        profile: EntityProfile
         for profile in unit_type.profiles.all():
-            count = profile_counts[profile.id]
+            count: int = profile_counts[profile.id]
             if not profile.min_count <= count <= profile.max_count:
                 raise serializers.ValidationError(
                     f"{label}: {unit_type.name} braucht {profile.min_count} bis "
                     f"{profile.max_count} Entitaeten mit Profil {profile.name}, hat aber {count}."
                 )
 
-    def create(self, validated_data):
+    # Any: Signatur von DRF Serializer.create (Stubs); enger waere eine
+    # Liskov-Verletzung.
+    def create(self, validated_data: dict[str, Any]) -> Army:
+        # Durch validate() bzw. die Feld-Serializer garantierte Struktur.
+        data: ValidatedArmy = cast(ValidatedArmy, validated_data)
         with transaction.atomic():
-            army = Army.objects.create(
+            army: Army = Army.objects.create(
                 player=self.context["player"],
-                name=validated_data["name"],
-                species=validated_data["species"],
+                name=data["name"],
+                species=data["species"],
             )
-            self._create_units(army, validated_data["units"])
+            self._create_units(army, data["units"])
         return army
 
-    def update(self, instance, validated_data):
+    # Any: Signatur von DRF Serializer.update (Stubs); enger waere eine
+    # Liskov-Verletzung.
+    def update(self, instance: Army, validated_data: dict[str, Any]) -> Army:
+        # Durch validate() bzw. die Feld-Serializer garantierte Struktur.
+        data: ValidatedArmy = cast(ValidatedArmy, validated_data)
         with transaction.atomic():
-            instance.name = validated_data["name"]
-            instance.species = validated_data["species"]
+            instance.name = data["name"]
+            instance.species = data["species"]
             instance.save(update_fields=["name", "species"])
             instance.units.all().delete()
-            self._create_units(instance, validated_data["units"])
+            self._create_units(instance, data["units"])
         return instance
 
     @staticmethod
-    def _create_units(army, units):
+    def _create_units(army: Army, units: list[ValidatedUnit]) -> None:
+        unit_position: int
+        unit_data: ValidatedUnit
+        entity_position: int
+        entity_data: ValidatedEntity
         for unit_position, unit_data in enumerate(units):
-            unit = Unit.objects.create(
+            unit: Unit = Unit.objects.create(
                 army=army, position=unit_position, unit_type=unit_data["unit_type"]
             )
             for entity_position, entity_data in enumerate(unit_data["entities"]):
-                entity = UnitEntity.objects.create(
+                entity: UnitEntity = UnitEntity.objects.create(
                     unit=unit, position=entity_position, profile=entity_data["profile"]
                 )
                 UnitEntityWeapon.objects.bulk_create(

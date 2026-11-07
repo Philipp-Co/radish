@@ -15,7 +15,7 @@
 #
 # Build-Kontext ist wie beim Backend die Wurzel des Repositorys (siehe
 # .dockerignore).
-FROM python:3.12-alpine
+FROM python:3.14-alpine
 
 COPY radish/backend/requirements-migrate.txt /tmp/requirements-migrate.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-migrate.txt \

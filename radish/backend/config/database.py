@@ -21,7 +21,7 @@ eingeschraenkten Rechten (siehe docker/backend-db/init/01-roles.sh).
 import os
 
 
-def database(**extra):
+def database(**extra: object) -> dict[str, object]:
     """Eintrag fuer DATABASES['default']; extra ergaenzt ihn (z.B. OPTIONS)."""
     return {
         'ENGINE': 'django.db.backends.postgresql',

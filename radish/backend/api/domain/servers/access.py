@@ -34,27 +34,27 @@ import secrets
 _RESERVED_CODES = {0, 1}
 
 
-def new_zucchini_code():
+def new_zucchini_code() -> str:
     """Ein neuer, zufaelliger Code als 16 Hexziffern."""
     while True:
-        code = secrets.randbits(64)
+        code: int = secrets.randbits(64)
         if code not in _RESERVED_CODES:
             return f"{code:016x}"
 
 
-def player_id(identifier):
+def player_id(identifier: str) -> int:
     """
     Die Spieler-Id zur Kennung: die acht ASCII-Zeichen als Big-Endian-Zahl,
     "aB3xK9pQ" -> 0x614233784B397051. Dieselbe Rechnung wie
     RAD_ControlUserIdFromIdentifier im Spielserver (control/game_start.h).
     """
-    encoded = identifier.encode("ascii")
+    encoded: bytes = identifier.encode("ascii")
     if len(encoded) != 8:
         raise ValueError(f"Kennung muss genau 8 Zeichen haben: {identifier!r}")
     return int.from_bytes(encoded, "big")
 
 
-def frame(zucchini_code, identifier, payload):
+def frame(zucchini_code: str, identifier: str, payload: bytes) -> bytes:
     """Die Nachricht an den Spielserver: Code, Spieler-Id, Nutzlast."""
     return (
         int(zucchini_code, 16).to_bytes(8, "big")

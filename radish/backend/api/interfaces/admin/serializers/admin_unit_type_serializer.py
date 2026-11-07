@@ -1,3 +1,7 @@
+# Admin- und Spieler-API geben bewusst dieselben Felder aus, duerfen sich
+# aber unabhaengig aendern.
+# pylint: disable=duplicate-code
+
 from rest_framework import serializers
 
 from ....models import (
@@ -37,15 +41,17 @@ class AdminUnitTypeSerializer(_CatalogAdminSerializer):
             "profiles",
         ]
 
-    def validate(self, attrs):
+    # Die Stubs typisieren attrs als Any; es sind die validierten Daten, ein
+    # dict von Feldname auf Wert.
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        max_entities = _value(self, attrs, "max_entities")
-        if _value(self, attrs, "min_entities") > max_entities:
+        max_entities: int = _value(self, attrs, "max_entities", int)
+        if _value(self, attrs, "min_entities", int) > max_entities:
             raise serializers.ValidationError(
                 "Mindestzahl an Entitaeten darf nicht groesser als die Hoechstzahl sein."
             )
         if self.instance is not None:
-            required = sum(profile.min_count for profile in self.instance.profiles.all())
+            required: int = sum(profile.min_count for profile in self.instance.profiles.all())
             if required > max_entities:
                 raise serializers.ValidationError(
                     {"max_entities": f"Die Profile verlangen zusammen mindestens "

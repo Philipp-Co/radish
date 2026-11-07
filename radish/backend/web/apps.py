@@ -13,7 +13,7 @@ class WebConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "web"
 
-    def ready(self):
+    def ready(self) -> None:
         # .wasm ist in der mimetypes-Datenbank je nach OS/Python-Version
         # nicht als application/wasm hinterlegt -- ohne das lehnen Browser
         # teils ab, das Modul zu instanziieren. Bisher setzte das der

@@ -19,7 +19,7 @@ class UnitEntity(models.Model):
     class Meta:
         ordering = ["unit", "position"]
 
-    def total_cost(self):
+    def total_cost(self) -> int:
         return (
             self.profile.cost
             + sum(slot.weapon.cost for slot in self.weapons.all())

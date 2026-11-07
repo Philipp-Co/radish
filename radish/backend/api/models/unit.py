@@ -18,5 +18,5 @@ class Unit(models.Model):
     class Meta:
         ordering = ["army", "position"]
 
-    def total_cost(self):
+    def total_cost(self) -> int:
         return sum(entity.total_cost() for entity in self.entities.all())

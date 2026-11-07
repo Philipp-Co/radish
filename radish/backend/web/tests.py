@@ -4,34 +4,44 @@ radish/web/ (siehe views.py). Kein Model, keine Auth involviert, deshalb
 reicht der einfache Django-TestCase-Client.
 """
 
+from typing import TYPE_CHECKING
+
+from django.http import StreamingHttpResponse
 from django.test import SimpleTestCase
+
+# Was der Django-Testclient zurueckgibt. Den Typ gibt es nur in den Stubs;
+# Annotationen lokaler Variablen werden zur Laufzeit nie ausgewertet.
+if TYPE_CHECKING:
+    from django.test.client import _MonkeyPatchedWSGIResponse
 
 
 class FrontendServingTests(SimpleTestCase):
-    def test_root_serves_index_html(self):
-        response = self.client.get("/")
+    def test_root_serves_index_html(self) -> None:
+        response: _MonkeyPatchedWSGIResponse = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
+        # serve() liefert eine FileResponse; erst damit kennt mypy streaming_content.
+        assert isinstance(response, StreamingHttpResponse)
         self.assertIn(b"<canvas", b"".join(response.streaming_content))
 
-    def test_client_js_is_served_under_its_own_name(self):
-        response = self.client.get("/client.js")
+    def test_client_js_is_served_under_its_own_name(self) -> None:
+        response: _MonkeyPatchedWSGIResponse = self.client.get("/client.js")
 
         self.assertEqual(response.status_code, 200)
 
-    def test_client_wasm_is_served_with_wasm_mime_type(self):
-        response = self.client.get("/client.wasm")
+    def test_client_wasm_is_served_with_wasm_mime_type(self) -> None:
+        response: _MonkeyPatchedWSGIResponse = self.client.get("/client.wasm")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/wasm")
 
-    def test_unknown_file_returns_404(self):
-        response = self.client.get("/does-not-exist.txt")
+    def test_unknown_file_returns_404(self) -> None:
+        response: _MonkeyPatchedWSGIResponse = self.client.get("/does-not-exist.txt")
 
         self.assertEqual(response.status_code, 404)
 
-    def test_directory_traversal_is_rejected(self):
-        response = self.client.get("/../backend/manage.py")
+    def test_directory_traversal_is_rejected(self) -> None:
+        response: _MonkeyPatchedWSGIResponse = self.client.get("/../backend/manage.py")
 
         # Django weist ".."-Segmente teils schon vor der View als
         # SuspiciousOperation ab (400), teils schlaegt erst safe_join in

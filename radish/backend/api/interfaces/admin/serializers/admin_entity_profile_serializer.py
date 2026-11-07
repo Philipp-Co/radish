@@ -1,3 +1,8 @@
+# Admin- und Spieler-API geben bewusst dieselben Felder aus, duerfen sich
+# aber unabhaengig aendern.
+# pylint: disable=duplicate-code
+
+from django.db.models import QuerySet
 from rest_framework import serializers
 
 from ....models import (
@@ -43,21 +48,23 @@ class AdminEntityProfileSerializer(_CatalogAdminSerializer):
             "in_use",
         ]
 
-    def validate(self, attrs):
+    # Die Stubs typisieren attrs als Any; es sind die validierten Daten, ein
+    # dict von Feldname auf Wert.
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        unit_type = _value(self, attrs, "unit_type")
-        min_count = _value(self, attrs, "min_count")
-        max_count = _value(self, attrs, "max_count")
+        unit_type: UnitType = _value(self, attrs, "unit_type", UnitType)
+        min_count: int = _value(self, attrs, "min_count", int)
+        max_count: int = _value(self, attrs, "max_count", int)
 
         if min_count > max_count:
             raise serializers.ValidationError(
                 "Mindestanzahl darf nicht groesser als die Hoechstanzahl sein."
             )
 
-        others = unit_type.profiles.all()
+        others: QuerySet[EntityProfile] = unit_type.profiles.all()
         if self.instance is not None:
             others = others.exclude(pk=self.instance.pk)
-        required = min_count + sum(profile.min_count for profile in others)
+        required: int = min_count + sum(profile.min_count for profile in others)
         if required > unit_type.max_entities:
             raise serializers.ValidationError(
                 f"Die Mindestanzahlen aller Profile ({required}) uebersteigen die "

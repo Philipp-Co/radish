@@ -18,5 +18,5 @@ class GameListSerializer(serializers.ModelSerializer):
         model = Game
         fields = ["name", "player_count", "points_limit"]
 
-    def get_player_count(self, obj):
+    def get_player_count(self, obj: Game) -> int:
         return 2 if obj.second_player_id else 1

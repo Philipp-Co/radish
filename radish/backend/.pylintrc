@@ -1,0 +1,23 @@
+# Statische Analyse fuer das Backend. Aufruf aus radish/backend/:
+#   pip install -r requirements-dev.txt
+#   pylint api config web
+
+[MAIN]
+load-plugins = pylint_django
+django-settings-module = config.settings
+# Generiert, nicht von Hand gepflegt.
+ignore = migrations
+
+[FORMAT]
+max-line-length = 120
+
+[MESSAGES CONTROL]
+disable =
+    # Docstrings sind keine Pflicht.
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    # DRF: Eingabe-Serializer ohne create/update sind gewollt, und Views
+    # erben ueber die generischen Klassen und Mixins von vielen Basisklassen.
+    abstract-method,
+    too-many-ancestors,

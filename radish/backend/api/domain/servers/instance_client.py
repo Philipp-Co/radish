@@ -13,10 +13,11 @@ Instanz-API selbst.
 """
 
 import logging
+from typing import TypedDict
 
 import requests
 
-from ...models import TerrainCode, TerrainType
+from ...models import Army, Game, GameServer, Player, TerrainCode, TerrainType
 from ..army_queries import armies_with_costs
 
 logger = logging.getLogger(__name__)
@@ -25,22 +26,107 @@ logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 5
 
 
+# Das Spielstart-Dokument nach radish/game/schema/spielstart.schema.json;
+# die Klassen entsprechen den $defs dort (Schluesselnamen wie im Schema).
+
+
+class WeaponDocument(TypedDict):
+    """$defs/waffe"""
+
+    name: str
+    klasse: str
+    schuesse: int
+    staerke: int
+    min_reichweite: int
+    max_reichweite: int
+    durchschlag: int
+
+
+class EquipmentDocument(TypedDict):
+    """$defs/ausruestung"""
+
+    name: str
+
+
+class EntityDocument(TypedDict):
+    """$defs/entitaet"""
+
+    profil: str
+    leben: int
+    ruestung: int
+    widerstand: int
+    staerke: int
+    genauigkeit: int
+    waffen: list[WeaponDocument]
+    ausruestung: list[EquipmentDocument]
+
+
+class UnitDocument(TypedDict):
+    """$defs/einheit"""
+
+    typ: str
+    bewegung: int
+    sichtweite: int
+    transportkapazitaet: int
+    kann_ziele_einnehmen: bool
+    entitaeten: list[EntityDocument]
+
+
+class ArmyDocument(TypedDict):
+    """$defs/armee"""
+
+    name: str
+    spezies: str
+    einheiten: list[UnitDocument]
+
+
+class PlayerDocument(TypedDict):
+    """$defs/spieler"""
+
+    name: str
+    kennung: str
+    armee: ArmyDocument
+
+
+class TerrainDocument(TypedDict):
+    """$defs/terrain"""
+
+    typ: str
+    bewegung: int
+    deckung: int
+    unbegehbar: bool
+    sichtblockierend: bool
+
+
+class GameStartDocument(TypedDict):
+    """Das ganze Dokument (Wurzel des Schemas)."""
+
+    spieldaten: list[PlayerDocument]
+    gelaende: list[TerrainDocument]
+
+
+class GameStartRequest(GameStartDocument):
+    """Was die Instanz beim Start bekommt: das Dokument plus die Zucchini-Codes."""
+
+    zugangscodes: list[str]
+
+
 class InstanceError(Exception):
     """Die Instanz war nicht erreichbar oder hat den Auftrag abgelehnt."""
 
 
-def _url(server, action):
+def _url(server: GameServer, action: str) -> str:
     # instance_name, nicht name: die Instanz-API kennt ihre Instanzen nur unter
     # dem Namen im Container (siehe models.GameServer.instance_name).
     return f"{server.control_url.rstrip('/')}/api/instances/{server.instance_name}/game/{action}/"
 
 
-def _reachable(server):
+def _reachable(server: GameServer) -> bool:
     """Ob die Instanz gemeldet hat, wie ihre Instanz-API zu erreichen ist."""
     return bool(server.control_url and server.instance_name)
 
 
-def _army_document(army):
+def _army_document(army: Army) -> ArmyDocument:
     """
     Eine Armee mit allen Werten aus dem Katalog -- die Instanz hat keinen
     Zugriff darauf. army muss ueber armies_with_costs() geladen sein, sonst
@@ -88,7 +174,7 @@ def _army_document(army):
     }
 
 
-def _player_document(player, army):
+def _player_document(player: Player, army: Army) -> PlayerDocument:
     return {
         # Ohne bekannten Keycloak-Namen (Player von vor dessen Einfuehrung,
         # die seitdem keinen Aufruf mehr gemacht haben) ersatzweise die
@@ -99,15 +185,15 @@ def _player_document(player, army):
     }
 
 
-def _terrain_document():
+def _terrain_document() -> list[TerrainDocument]:
     """
     Jeder Tile-Typ mit seinen Werten, so wie der Admin sie gepflegt hat. Das
     Spiel verlangt jeden Typ genau einmal; fehlt einer in der Tabelle (der
     Dump api/fixtures/seed.json bringt alle mit), ist das ein Fehler hier
     und kein Spiel, das die Instanz still ablehnt.
     """
-    terrain = list(TerrainType.objects.all())
-    missing = set(TerrainCode.values) - {entry.code for entry in terrain}
+    terrain: list[TerrainType] = list(TerrainType.objects.all())
+    missing: set[str] = set(TerrainCode.values) - {entry.code for entry in terrain}
     if missing:
         raise InstanceError(f"Gelaende ohne Werte: {', '.join(sorted(missing))}")
     return [
@@ -122,13 +208,18 @@ def _terrain_document():
     ]
 
 
-def game_start_document(game):
+def game_start_document(game: Game) -> GameStartDocument:
     """
     Die Spieldaten fuer den Start nach radish/game/schema/
     spielstart.schema.json: Host und zweiter Spieler mit ihren Armeen, dazu
     das Gelaende.
     """
-    armies = armies_with_costs().in_bulk([game.host_army_id, game.second_player_army_id])
+    # Gestartet wird nur ein Spiel mit zweitem Spieler (siehe GameStartView).
+    assert game.second_player is not None
+    # Ebenso beide Armeen (GameCreateView/GameJoinView verlangen sie); ohne
+    # das waere armies[None] unten ein KeyError.
+    assert game.host_army_id is not None and game.second_player_army_id is not None
+    armies: dict[int, Army] = armies_with_costs().in_bulk([game.host_army_id, game.second_player_army_id])
     return {
         "spieldaten": [
             _player_document(game.host, armies[game.host_army_id]),
@@ -138,7 +229,7 @@ def game_start_document(game):
     }
 
 
-def game_start_request(game):
+def game_start_request(game: Game) -> GameStartRequest:
     """
     Was die Instanz beim Start bekommt: die Spieldaten nach dem Schema und
     daneben die Zucchini-Codes der beiden Spieler, in derselben Reihenfolge
@@ -152,21 +243,21 @@ def game_start_request(game):
     }
 
 
-def start_game(game):
+def start_game(game: Game) -> None:
     """
     Laesst die Instanz des Spiels es aufsetzen. Kehrt erst zurueck, wenn sie
     fertig ist; wirft InstanceError, wenn sie es nicht aufsetzen konnte.
 
     Die Zucchini-Codes muessen am Spiel schon gesetzt sein (GameStartView).
     """
-    server = game.server
+    server: GameServer = game.server
     if not _reachable(server):
         raise InstanceError(
             f"Instanz '{server.name}' hat keine Steuer-URL oder keinen Instanznamen gemeldet."
         )
 
     try:
-        response = requests.post(
+        response: requests.Response = requests.post(
             _url(server, "start"), json=game_start_request(game), timeout=TIMEOUT_SECONDS
         )
     except requests.RequestException as exc:
@@ -177,7 +268,7 @@ def start_game(game):
         )
 
 
-def cancel_game(server):
+def cancel_game(server: GameServer) -> None:
     """
     Bricht das Spiel auf der Instanz ab. Fehler werden nur geloggt: das
     Spiel ist im Backend dann trotzdem beendet, und eine haengende Instanz
@@ -186,7 +277,7 @@ def cancel_game(server):
     if not _reachable(server):
         return
     try:
-        response = requests.post(_url(server, "cancel"), timeout=TIMEOUT_SECONDS)
+        response: requests.Response = requests.post(_url(server, "cancel"), timeout=TIMEOUT_SECONDS)
     except requests.RequestException as exc:
         logger.warning("Abbruch auf Instanz '%s' fehlgeschlagen: %s", server.name, exc)
         return

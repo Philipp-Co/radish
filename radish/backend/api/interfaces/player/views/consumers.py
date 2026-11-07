@@ -34,15 +34,17 @@ bereits umgesetzt.
 import asyncio
 import logging
 from base64 import b64decode, b64encode
+from collections.abc import Sequence
 from datetime import datetime
 from json import loads, dumps
+from typing import Any
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db.models import Q
 
 from ....domain.servers import access
-from ....models import Game, GameStatus, Player
+from ....models import Game, GameServer, GameStatus, Player
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +57,17 @@ class _UdpProtocol(asyncio.DatagramProtocol):
     eingehende Datagramme an den WebSocket-Client weiter.
     """
 
-    def __init__(self, consumer):
+    def __init__(self, consumer: "EchoConsumer") -> None:
         self.consumer = consumer
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        # asyncio ruft connection_made als Initialisierung des Protokolls auf.
+        # pylint: disable-next=attribute-defined-outside-init
         self.transport = transport
 
-    def datagram_received(self, data, addr):
+    # Any: genau die Signatur von asyncio.DatagramProtocol.datagram_received
+    # in typeshed; enger waere eine Liskov-Verletzung.
+    def datagram_received(self, data: bytes, addr: tuple[str | Any, int]) -> None:
         # datagram_received ist keine Coroutine (asyncio ruft sie ganz
         # normal synchron auf) -- self.consumer.send() dagegen schon,
         # deshalb ueber create_task statt eines direkten await. Laeuft
@@ -79,12 +85,16 @@ class _UdpProtocol(asyncio.DatagramProtocol):
             )
         )
 
-    def error_received(self, exc):
+    def error_received(self, exc: Exception) -> None:
         logger.error("UDP-Fehler: %s", exc)
 
 
 class EchoConsumer(AsyncWebsocketConsumer):
-    async def connect(self):
+    async def connect(self) -> None:
+        # Channels legt je Verbindung einen Consumer an; connect() ist dessen
+        # Initialisierung. disconnect() prueft die Attribute per getattr, weil
+        # connect() vorher abbrechen kann.
+        # pylint: disable=attribute-defined-outside-init
         # self.scope["client"] ist der ASGI-Scope-Eintrag fuer den
         # TCP-Peer dieser Verbindung (siehe ASGI-Spezifikation:
         # "client": [host, port]) -- bei einem Reverse-Proxy davor waere
@@ -93,7 +103,9 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # ausgewertet werden, was hier noch nicht passiert). Geloggt, noch
         # bevor Auth/Player/Spiel geprueft sind, damit auch abgelehnte
         # Verbindungsversuche (4401/4404/4409 unten) mit Adresse auftauchen.
-        client_address = self.scope.get("client")
+        # daphne setzt eine Liste [host, port], die ASGI-Spezifikation nennt
+        # ein Tupel -- beides eine Sequence.
+        client_address: Sequence[str | int] | None = self.scope.get("client")
         logger.info("WebSocket-Verbindungsversuch von %s: %s", client_address, self.scope["user"])
         if not self.scope["user"].is_authenticated:
             # 4401 statt eines Standard-Codes (4000-4999 sind laut RFC 6455
@@ -113,7 +125,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
             await self.close(code=4404)
             return
 
-        game = await self._get_current_game()
+        game: Game | None = await self._get_current_game()
         if game is None:
             # 4409, angelehnt an HTTP 409 (siehe client_views.py:
             # LeaveGameView gibt fuer "Spieler ist in
@@ -128,15 +140,15 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # Der Code dieses Spielers, geheim (access.py). Ohne ihn liesse zucchini
         # keine Nachricht durch -- ein Spiel, das vor den Codes gestartet wurde,
         # hat keinen, und mit ihm ist dann nicht zu reden.
-        zucchini_code = game.zucchini_code_for(self.player)
+        zucchini_code: str = game.zucchini_code_for(self.player)
         if not zucchini_code:
             logger.warning("Spiel '%s' ohne Zugangscode fuer %s", game.name, self.player.identifier)
             await self.close(code=4409)
             return
         self.zucchini_code = zucchini_code
 
-        server = game.server
-        loop = asyncio.get_running_loop()
+        server: GameServer = game.server
+        loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         self.transport, _ = await loop.create_datagram_endpoint(
             lambda: _UdpProtocol(self),
             remote_addr=(server.address, server.port),
@@ -155,7 +167,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # weil die Verbindung noch nicht offen ist.
         self._ping_task = asyncio.create_task(self._ping_loop())
 
-    async def _ping_loop(self):
+    async def _ping_loop(self) -> None:
         # Laeuft als eigener Task neben receive()/disconnect(), siehe
         # disconnect() unten fuer das zugehoerige cancel(). asyncio.CancelledError
         # nicht abfangen: das ist genau das Signal, mit dem disconnect()
@@ -165,14 +177,14 @@ class EchoConsumer(AsyncWebsocketConsumer):
             await self.send(text_data='{"type":"ping","data":{"time":"%s"}}' % (datetime.now().isoformat()))
 
     @database_sync_to_async
-    def _get_player(self):
+    def _get_player(self) -> Player | None:
         try:
             return Player.objects.get(user=self.scope["user"])
         except Player.DoesNotExist:
             return None
 
     @database_sync_to_async
-    def _get_current_game(self):
+    def _get_current_game(self) -> Game | None:
         # select_related("server"): server.address/port werden gleich
         # in connect() gebraucht -- ohne select_related waere das ein
         # zweiter, synchroner ORM-Zugriff ausserhalb dieser Methode (und
@@ -188,7 +200,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
             .first()
         )
 
-    async def receive(self, text_data=None, bytes_data=None):
+    async def receive(self, text_data: str | None = None, bytes_data: bytes | None = None) -> None:
         # Der Client schickt nach dem Umbau auf JSON-Nachrichten nur noch
         # text_data (siehe game-socket.service.ts, connect()/sendCommand());
         # bytes_data bliebe nur fuer eine aeltere Client-Version relevant
@@ -200,7 +212,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
             return
 
         try:
-            message = loads(text_data)
+            message: object = loads(text_data)
         except (TypeError, ValueError):
             logger.warning("Nachricht ist kein gueltiges JSON: %r", text_data)
             return
@@ -209,7 +221,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
             logger.warning("Nachricht ist kein JSON-Objekt: %r", message)
             return
 
-        message_type = message.get("type")
+        message_type: object = message.get("type")
         if message_type != "command":
             # Alles ausser "command" ist kein Spielprotokoll fuers UDP-
             # Backend -- z.B. der eigene "ping"-Heartbeat des Clients
@@ -220,7 +232,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
             return
 
         try:
-            payload = b64decode(message["data"])
+            payload: bytes = b64decode(message["data"])
         except (KeyError, TypeError, ValueError):
             logger.warning("'command'-Nachricht ohne gueltiges Base64-'data': %r", message)
             return
@@ -237,10 +249,10 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # fremden Namen.
         self.transport.sendto(access.frame(self.zucchini_code, self.player.identifier, payload))
 
-    async def disconnect(self, close_code):
+    async def disconnect(self, code: int) -> None:
         # Laeuft in beiden Faellen: wenn der Client die Verbindung beendet
         # UND wenn wir selbst vorher close() aufgerufen haben (z.B. der
-        # 4401-Fall in connect() oben) -- close_code ist dann 4401 bzw. der
+        # 4401-Fall in connect() oben) -- code ist dann 4401 bzw. der
         # vom Client gesendete Code.
         #
         # Noch ohne Aufraeumarbeiten von Gruppen-State, weil dieser
@@ -249,7 +261,7 @@ class EchoConsumer(AsyncWebsocketConsumer):
         # Matchmaking-Status), gehoert hierhin group_discard(...) -- sonst
         # bleibt der Kanalname in der Gruppe haengen, obwohl niemand mehr
         # zuhoert.
-        logger.info("disconnect: %s (code=%s)", self.scope["user"], close_code)
+        logger.info("disconnect: %s (code=%s)", self.scope["user"], code)
         if getattr(self, "_ping_task", None) is not None:
             self._ping_task.cancel()
         if getattr(self, "transport", None) is not None:
