@@ -180,6 +180,25 @@ class GameCreateView(APIView):
         )
 
 
+def _check_joinable(game: Game, password: str) -> Response | None:
+    """
+    Prueft, ob man dem (gesperrten) Spiel mit diesem Passwort beitreten
+    kann. Liefert die Fehler-Response oder None.
+    """
+    if game.password != password:
+        return Response(
+            {"detail": "Falsches Passwort."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if game.second_player_id or game.status != GameStatus.LOBBY:
+        return Response(
+            {"detail": "Spiel ist bereits voll."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    return None
+
+
 class GameJoinView(APIView):
     """
     Laesst einen Spieler einem bestehenden Spiel als zweiten Mitspieler
@@ -232,17 +251,9 @@ class GameJoinView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            if game.password != password:
-                return Response(
-                    {"detail": "Falsches Passwort."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            if game.second_player_id or game.status != GameStatus.LOBBY:
-                return Response(
-                    {"detail": "Spiel ist bereits voll."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            error = _check_joinable(game, password)
+            if error is not None:
+                return error
 
             army, error = _army_for_game(
                 player, serializer.validated_data["army_id"], game.points_limit
@@ -258,6 +269,30 @@ class GameJoinView(APIView):
             GameDetailSerializer(game, context={"player": player}).data,
             status=status.HTTP_200_OK,
         )
+
+
+def _check_startable(game: Game, player: Player) -> Response | None:
+    """
+    Prueft, ob "player" das (gesperrte) Spiel starten darf: er ist Host, das
+    Spiel ist in der Lobby und hat einen zweiten Spieler. Liefert die
+    Fehler-Response oder None.
+    """
+    if game.host_id != player.id:
+        return Response(
+            {"detail": "Nur der Host kann das Spiel starten."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if game.status != GameStatus.LOBBY:
+        return Response(
+            {"detail": "Das Spiel wurde bereits gestartet."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    if not game.second_player_id:
+        return Response(
+            {"detail": "Es fehlt noch ein zweiter Spieler."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    return None
 
 
 class GameStartView(APIView):
@@ -307,21 +342,9 @@ class GameStartView(APIView):
             # nicht Host, ist er second_player, und der ist dann nicht None.
             assert player is not None
             _sync_player_name(player, request)
-            if game.host_id != player.id:
-                return Response(
-                    {"detail": "Nur der Host kann das Spiel starten."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            if game.status != GameStatus.LOBBY:
-                return Response(
-                    {"detail": "Das Spiel wurde bereits gestartet."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            if not game.second_player_id:
-                return Response(
-                    {"detail": "Es fehlt noch ein zweiter Spieler."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            error: Response | None = _check_startable(game, player)
+            if error is not None:
+                return error
 
             # Neue Codes fuer jeden Start: die Instanz nimmt sie in ihre
             # Whitelist, der Consumer setzt sie vor die Nachrichten (access.py).
@@ -438,6 +461,37 @@ def end_started_game(game: Game) -> None:
     transaction.on_commit(lambda: instance_client.cancel_game(server))
 
 
+def _leave_game(game: Game, player: Player) -> None:
+    """
+    Nimmt "player" aus dem (gesperrten) Spiel heraus -- die Faelle stehen
+    bei LeaveGameView. Erwartet dieselbe Transaktion wie end_started_game.
+    """
+    if game.status != GameStatus.LOBBY:
+        # Gestartet -- das Spiel endet fuer beide.
+        end_started_game(game)
+    elif game.second_player_id == player.id:
+        game.second_player = None
+        game.second_player_army = None
+        game.save(update_fields=["second_player", "second_player_army"])
+    elif game.second_player_id:
+        # Host verlaesst, zweiter Spieler ruecht auf -- mit seiner Armee.
+        # second_player_id ist gesetzt, second_player also nicht None.
+        assert game.second_player is not None
+        game.host = game.second_player
+        game.host_army = game.second_player_army
+        game.second_player = None
+        game.second_player_army = None
+        game.save(
+            update_fields=["host", "host_army", "second_player", "second_player_army"]
+        )
+    else:
+        # Host verlaesst, niemand sonst da -- Spiel endet.
+        server: GameServer = game.server
+        game.delete()
+        server.is_occupied = False
+        server.save(update_fields=["is_occupied"])
+
+
 class LeaveGameView(APIView):
     """
     Laesst den anfragenden Spieler sein aktuelles Spiel verlassen (siehe
@@ -502,30 +556,7 @@ class LeaveGameView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            if game.status != GameStatus.LOBBY:
-                # Gestartet -- das Spiel endet fuer beide.
-                end_started_game(game)
-            elif game.second_player_id == player.id:
-                game.second_player = None
-                game.second_player_army = None
-                game.save(update_fields=["second_player", "second_player_army"])
-            elif game.second_player_id:
-                # Host verlaesst, zweiter Spieler ruecht auf -- mit seiner Armee.
-                # second_player_id ist gesetzt, second_player also nicht None.
-                assert game.second_player is not None
-                game.host = game.second_player
-                game.host_army = game.second_player_army
-                game.second_player = None
-                game.second_player_army = None
-                game.save(
-                    update_fields=["host", "host_army", "second_player", "second_player_army"]
-                )
-            else:
-                # Host verlaesst, niemand sonst da -- Spiel endet.
-                server: GameServer = game.server
-                game.delete()
-                server.is_occupied = False
-                server.save(update_fields=["is_occupied"])
+            _leave_game(game, player)
 
         return Response({"status": "left"})
 

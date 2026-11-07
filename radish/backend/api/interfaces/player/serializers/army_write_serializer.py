@@ -173,16 +173,23 @@ class ArmyWriteSerializer(serializers.Serializer):
                     f"{class_label}n, bekommt aber {len(weapons)}."
                 )
             for weapon in weapons:
-                if weapon.weapon_class != weapon_class:
-                    raise serializers.ValidationError(
-                        f"{label}: {weapon.name} ist keine {class_label} "
-                        f"({weapon.get_weapon_class_display()})."
-                    )
-                if weapon.species_id != species.id:
-                    raise serializers.ValidationError(
-                        f"{label}: {weapon.name} gehoert nicht zur Spezies "
-                        f"{species.name}."
-                    )
+                ArmyWriteSerializer._validate_weapon(species, weapon, weapon_class, class_label, label)
+
+    @staticmethod
+    def _validate_weapon(
+        species: Species, weapon: Weapon, weapon_class: WeaponClass, class_label: str, label: str
+    ) -> None:
+        """Erst die Klasse, dann die Spezies einer einzelnen Waffe."""
+        if weapon.weapon_class != weapon_class:
+            raise serializers.ValidationError(
+                f"{label}: {weapon.name} ist keine {class_label} "
+                f"({weapon.get_weapon_class_display()})."
+            )
+        if weapon.species_id != species.id:
+            raise serializers.ValidationError(
+                f"{label}: {weapon.name} gehoert nicht zur Spezies "
+                f"{species.name}."
+            )
 
     @staticmethod
     def _validate_entity_equipment(
@@ -269,17 +276,22 @@ class ArmyWriteSerializer(serializers.Serializer):
                 army=army, position=unit_position, unit_type=unit_data["unit_type"]
             )
             for entity_position, entity_data in enumerate(unit_data["entities"]):
-                entity: UnitEntity = UnitEntity.objects.create(
-                    unit=unit, position=entity_position, profile=entity_data["profile"]
-                )
-                UnitEntityWeapon.objects.bulk_create(
-                    UnitEntityWeapon(
-                        entity=entity, weapon_class=weapon_class, slot=slot, weapon=weapon
-                    )
-                    for key, (weapon_class, _, _) in ENTITY_WEAPON_CLASSES.items()
-                    for slot, weapon in enumerate(entity_data[key])
-                )
-                UnitEntityEquipment.objects.bulk_create(
-                    UnitEntityEquipment(entity=entity, slot=slot, equipment=item)
-                    for slot, item in enumerate(entity_data["equipment"])
-                )
+                ArmyWriteSerializer._create_entity(unit, entity_position, entity_data)
+
+    @staticmethod
+    def _create_entity(unit: Unit, position: int, entity_data: ValidatedEntity) -> None:
+        """Eine Entitaet samt Waffen und Ausruestung (je ein bulk_create)."""
+        entity: UnitEntity = UnitEntity.objects.create(
+            unit=unit, position=position, profile=entity_data["profile"]
+        )
+        UnitEntityWeapon.objects.bulk_create(
+            UnitEntityWeapon(
+                entity=entity, weapon_class=weapon_class, slot=slot, weapon=weapon
+            )
+            for key, (weapon_class, _, _) in ENTITY_WEAPON_CLASSES.items()
+            for slot, weapon in enumerate(entity_data[key])
+        )
+        UnitEntityEquipment.objects.bulk_create(
+            UnitEntityEquipment(entity=entity, slot=slot, equipment=item)
+            for slot, item in enumerate(entity_data["equipment"])
+        )

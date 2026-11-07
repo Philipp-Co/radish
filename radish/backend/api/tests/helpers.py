@@ -11,7 +11,8 @@ force_authenticate zusaetzlich ein token-Objekt mitgegeben, das sich wie
 ein validiertes JWT mit "realm_access.roles" verhaelt.
 """
 
-from typing import TYPE_CHECKING, NotRequired, Required, TypedDict
+from collections.abc import Iterable, Mapping
+from typing import TYPE_CHECKING, NotRequired, Required, TypedDict, TypeVar
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -111,6 +112,23 @@ def create_test_catalog() -> None:
             impassable=impassable,
             blocks_sight=blocks_sight,
         )
+
+
+# Ein Eintrag einer API-Antwort (ein TypedDict wie TerrainTypeData).
+EntryT = TypeVar("EntryT", bound=Mapping[str, object])
+
+
+def find_by(items: Iterable[EntryT], **fields: object) -> EntryT:
+    """
+    Der eine Eintrag aus items, dessen Felder die angegebenen Werte haben.
+    Laesst den Test fehlschlagen, wenn keiner oder mehrere passen.
+    """
+    matches: list[EntryT] = [
+        item for item in items if all(item[key] == value for key, value in fields.items())
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"{len(matches)} Eintraege mit {fields}, erwartet genau einer")
+    return matches[0]
 
 
 # Payloads, die die Tests an die API schicken. Die Tests schicken auch

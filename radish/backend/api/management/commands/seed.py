@@ -53,12 +53,17 @@ class Command(BaseCommand):
             return
 
         if mode == "if-empty":
-            filled: list[str] = [label for label in models_in_fixture() if apps.get_model(label).objects.exists()]
+            filled: list[str] = filled_models()
             if filled:
                 self.stdout.write(f"Seed: uebersprungen, schon Inhalt in {', '.join(filled)}.")
                 return
 
         call_command("loaddata", str(FIXTURE), verbosity=options["verbosity"])
+
+
+def filled_models() -> list[str]:
+    """Die Models aus dem Dump, deren Tabelle schon Zeilen hat."""
+    return [label for label in models_in_fixture() if apps.get_model(label).objects.exists()]
 
 
 def models_in_fixture() -> list[str]:

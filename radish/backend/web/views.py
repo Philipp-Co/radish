@@ -43,19 +43,24 @@ def _accepts_gzip(request: HttpRequest) -> bool:
     part: str
     name: str
     params: list[str]
-    param: str
     for part in request.headers.get("Accept-Encoding", "").split(","):
         name, *params = (p.strip() for p in part.split(";"))
-        if name.lower() != "gzip":
-            continue
-        for param in params:
-            if param.startswith("q="):
-                try:
-                    return float(param[2:]) > 0
-                except ValueError:
-                    return False
-        return True
+        if name.lower() == "gzip":
+            # Der erste gzip-Eintrag entscheidet.
+            return _gzip_params_allow(params)
     return False
+
+
+def _gzip_params_allow(params: list[str]) -> bool:
+    """q-Wert des gzip-Eintrags: ohne q erlaubt, q>0 erlaubt, q=0 oder ungueltig nicht."""
+    param: str
+    for param in params:
+        if param.startswith("q="):
+            try:
+                return float(param[2:]) > 0
+            except ValueError:
+                return False
+    return True
 
 
 # Dateien mit Inhalts-Hash im Namen: die Angular-Bundles ("main-R6I5S75B.js",

@@ -8,6 +8,7 @@ from api.models import (
 
 from api.tests.helpers import (
     authenticate,
+    find_by,
     ADMIN_TOKEN,
     PLAYER_TOKEN,
     TerrainTypeData,
@@ -35,15 +36,15 @@ class AdminTerrainTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         terrain: list[TerrainTypeData] = response.data["terrain"]
         self.assertEqual([entry["code"] for entry in terrain], TerrainCode.values)
-        forest: TerrainTypeData = next(entry for entry in terrain if entry["code"] == "forest")
+        forest: TerrainTypeData = find_by(terrain, code="forest")
         self.assertEqual(
             forest,
             {"code": "forest", "label": "Wald", "movement_modifier": -1, "cover": 2, "impassable": False,
              "blocks_sight": True},
         )
-        self.assertTrue(next(e for e in terrain if e["code"] == "water_deep")["impassable"])
+        self.assertTrue(find_by(terrain, code="water_deep")["impassable"])
         self.assertEqual(
-            next(e for e in terrain if e["code"] == "dragons_teeth"),
+            find_by(terrain, code="dragons_teeth"),
             {"code": "dragons_teeth", "label": "Drachenzaehne", "movement_modifier": 0, "cover": 0,
              "impassable": True, "blocks_sight": False},
         )

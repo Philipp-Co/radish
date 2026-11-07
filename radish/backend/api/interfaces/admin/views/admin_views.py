@@ -138,24 +138,35 @@ class _CatalogAdminMixin(_Base[_M]):
     # URL-Parameter, die DRF ungeprueft durchreicht.
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         queryset: QuerySet[_M] = self.get_queryset()
-        param: str
-        field: str
-        value: str | None
-        for param, field in self.filters.items():
-            value = request.query_params.get(param)
-            if value is not None:
-                if not value.isdigit():
-                    raise ValidationError({param: "Muss eine id sein."})
-                queryset = queryset.filter(**{field: int(value)})
-        for param, field in self.choice_filters.items():
-            value = request.query_params.get(param)
-            if value:
-                queryset = queryset.filter(**{field: value})
+        queryset = self._filter_by_ids(request, queryset)
+        queryset = self._filter_by_choices(request, queryset)
         search: str = request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
         serializer: BaseSerializer[_M] = self.get_serializer(queryset, many=True)
         return Response({self.list_key: serializer.data})
+
+    def _filter_by_ids(self, request: Request, queryset: QuerySet[_M]) -> QuerySet[_M]:
+        """Filter aus self.filters; der Wert muss eine id (nur Ziffern) sein."""
+        param: str
+        field: str
+        for param, field in self.filters.items():
+            value: str | None = request.query_params.get(param)
+            if value is not None:
+                if not value.isdigit():
+                    raise ValidationError({param: "Muss eine id sein."})
+                queryset = queryset.filter(**{field: int(value)})
+        return queryset
+
+    def _filter_by_choices(self, request: Request, queryset: QuerySet[_M]) -> QuerySet[_M]:
+        """Filter aus self.choice_filters; leere Werte werden ignoriert."""
+        param: str
+        field: str
+        for param, field in self.choice_filters.items():
+            value: str | None = request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        return queryset
 
     # Any: DRF-Signatur, siehe list oben.
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:

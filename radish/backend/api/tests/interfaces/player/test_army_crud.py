@@ -8,6 +8,7 @@ from api.models import (
 
 from api.tests.helpers import (
     authenticate,
+    find_by,
     ADMIN_TOKEN,
     ArmyListData,
     EntityData,
@@ -28,21 +29,21 @@ class ArmyCrudTests(ArmyTestCase):
         response: TestResponse = self.client.get("/api/client/catalog/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        humans: SpeciesCatalogData = next(s for s in response.data["species"] if s["name"] == "Menschen")
+        humans: SpeciesCatalogData = find_by(response.data["species"], name="Menschen")
         self.assertEqual(
             sorted(t["name"] for t in humans["unit_types"]), ["Spaeher", "Transporter", "Trupp"]
         )
-        squad: UnitTypeData = next(t for t in humans["unit_types"] if t["name"] == "Trupp")
+        squad: UnitTypeData = find_by(humans["unit_types"], name="Trupp")
         self.assertEqual(len(squad["profiles"]), 2)
-        leader: ProfileData = next(p for p in squad["profiles"] if p["name"] == "Anfuehrer")
+        leader: ProfileData = find_by(squad["profiles"], name="Anfuehrer")
         self.assertEqual(leader["accuracy"], 3)
         self.assertEqual(len(humans["weapons"]), 3)
-        battle_cannon: WeaponData = next(w for w in humans["weapons"] if w["name"] == "Kampfgeschuetz")
+        battle_cannon: WeaponData = find_by(humans["weapons"], name="Kampfgeschuetz")
         self.assertEqual(battle_cannon["weapon_class"], "super_heavy")
         self.assertEqual((battle_cannon["min_range"], battle_cannon["max_range"]), (6, 72))
         self.assertEqual((leader["heavy_weapon_slots"], leader["super_heavy_weapon_slots"]), (1, 1))
         self.assertNotIn("heavy_weapon_slots", squad)
-        truck: UnitTypeData = next(t for t in humans["unit_types"] if t["name"] == "Transporter")
+        truck: UnitTypeData = find_by(humans["unit_types"], name="Transporter")
         self.assertEqual(truck["transport_capacity"], 2)
         self.assertEqual(squad["transport_capacity"], 0)
         self.assertTrue(squad["can_capture_objectives"])

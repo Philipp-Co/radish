@@ -9,7 +9,7 @@ from api.models import (
     TerrainType,
 )
 from api.tests.game_test_case import GameTestCase
-from api.tests.helpers import SPIELSTART_SCHEMA
+from api.tests.helpers import SPIELSTART_SCHEMA, find_by
 
 try:
     import jsonschema
@@ -92,11 +92,11 @@ class InstanceClientTests(GameTestCase):
 
         # Jeder Typ genau einmal, in der Reihenfolge des Spiels.
         self.assertEqual([entry["typ"] for entry in terrain], TerrainCode.values)
-        forest: instance_client.TerrainDocument = next(entry for entry in terrain if entry["typ"] == "forest")
+        forest: instance_client.TerrainDocument = find_by(terrain, typ="forest")
         self.assertEqual(
             forest, {"typ": "forest", "bewegung": -2, "deckung": 4, "unbegehbar": False, "sichtblockierend": True}
         )
-        deep: instance_client.TerrainDocument = next(entry for entry in terrain if entry["typ"] == "water_deep")
+        deep: instance_client.TerrainDocument = find_by(terrain, typ="water_deep")
         self.assertTrue(deep["unbegehbar"])
         self.assertFalse(deep["sichtblockierend"])
 

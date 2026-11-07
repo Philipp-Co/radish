@@ -89,6 +89,39 @@ class _UdpProtocol(asyncio.DatagramProtocol):
         logger.error("UDP-Fehler: %s", exc)
 
 
+def _command_payload(text_data: str) -> bytes | None:
+    """
+    Entpackt eine JSON-Nachricht des Clients. Liefert bei einer gueltigen
+    "command"-Nachricht deren Base64-dekodierte Rohdaten, sonst None (der
+    Grund ist dann schon geloggt).
+    """
+    try:
+        message: object = loads(text_data)
+    except (TypeError, ValueError):
+        logger.warning("Nachricht ist kein gueltiges JSON: %r", text_data)
+        return None
+
+    if not isinstance(message, dict):
+        logger.warning("Nachricht ist kein JSON-Objekt: %r", message)
+        return None
+
+    message_type: object = message.get("type")
+    if message_type != "command":
+        # Alles ausser "command" ist kein Spielprotokoll fuers UDP-
+        # Backend -- z.B. der eigene "ping"-Heartbeat des Clients
+        # (siehe game-socket.service.ts, startHeartbeat()). Nur zur
+        # Kenntnisnahme geloggt, nicht an den Spielserver
+        # weitergereicht, der koennte mit dem JSON nichts anfangen.
+        logger.debug("Nachricht vom Client (%s): %s", message_type, message)
+        return None
+
+    try:
+        return b64decode(message["data"])
+    except (KeyError, TypeError, ValueError):
+        logger.warning("'command'-Nachricht ohne gueltiges Base64-'data': %r", message)
+        return None
+
+
 class EchoConsumer(AsyncWebsocketConsumer):
     async def connect(self) -> None:
         # Channels legt je Verbindung einen Consumer an; connect() ist dessen
@@ -211,30 +244,8 @@ class EchoConsumer(AsyncWebsocketConsumer):
             )
             return
 
-        try:
-            message: object = loads(text_data)
-        except (TypeError, ValueError):
-            logger.warning("Nachricht ist kein gueltiges JSON: %r", text_data)
-            return
-
-        if not isinstance(message, dict):
-            logger.warning("Nachricht ist kein JSON-Objekt: %r", message)
-            return
-
-        message_type: object = message.get("type")
-        if message_type != "command":
-            # Alles ausser "command" ist kein Spielprotokoll fuers UDP-
-            # Backend -- z.B. der eigene "ping"-Heartbeat des Clients
-            # (siehe game-socket.service.ts, startHeartbeat()). Nur zur
-            # Kenntnisnahme geloggt, nicht an den Spielserver
-            # weitergereicht, der koennte mit dem JSON nichts anfangen.
-            logger.debug("Nachricht vom Client (%s): %s", message_type, message)
-            return
-
-        try:
-            payload: bytes = b64decode(message["data"])
-        except (KeyError, TypeError, ValueError):
-            logger.warning("'command'-Nachricht ohne gueltiges Base64-'data': %r", message)
+        payload: bytes | None = _command_payload(text_data)
+        if payload is None:
             return
 
         # sendto() statt send(): das ist die Methode des UDP-Transports

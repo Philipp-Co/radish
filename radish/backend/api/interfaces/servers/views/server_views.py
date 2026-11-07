@@ -98,6 +98,52 @@ class ServerView(APIView):
 
 
 
+def _lock_running_game(server: GameServer) -> Game | None:
+    """
+    Sperrt das Spiel auf "server" und liefert es -- None, wenn dort keins
+    laeuft oder es noch nicht gestartet ist. Erwartet eine Transaktion.
+    """
+    # Gesperrt wird nur das Game selbst: second_player ist nullable, und
+    # FOR UPDATE geht nicht auf die Seite eines Outer Joins.
+    game: Game | None = (
+        Game.objects.select_for_update(of=("self",))
+        .select_related("server", "host", "second_player")
+        .filter(server=server)
+        .first()
+    )
+    if game is None or game.status != GameStatus.RUNNING:
+        return None
+    return game
+
+
+def _check_players(game: Game, data: GameFinishedData) -> Response | None:
+    """
+    Prueft, ob winner und loser die beiden Spieler des Spiels sind (bei einem
+    Unentschieden gibt es nichts zu pruefen). Liefert die Fehler-Response
+    oder None.
+    """
+    draw: bool = data["winner"] is None
+    players: set[str] = {game.host.identifier}
+    if game.second_player is not None:
+        players.add(game.second_player.identifier)
+    if not draw and {data["winner"], data["loser"]} != players:
+        return Response(
+            {"detail": "winner und loser muessen die beiden Spieler dieses Spiels sein."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
+def _log_result(game: Game, name: str, data: GameFinishedData) -> None:
+    if data["winner"] is None:
+        logger.info("Spiel '%s' auf %s vorbei: unentschieden", game.name, name)
+    else:
+        logger.info(
+            "Spiel '%s' auf %s vorbei: gewonnen hat %s, verloren %s",
+            game.name, name, data["winner"], data["loser"],
+        )
+
+
 class GameFinishedView(APIView):
     """
     Die Spielinstanz meldet, dass das Spiel auf ihr vorbei ist:
@@ -142,37 +188,18 @@ class GameFinishedView(APIView):
             if server is None:
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            # Gesperrt wird nur das Game selbst: second_player ist nullable, und
-            # FOR UPDATE geht nicht auf die Seite eines Outer Joins.
-            game: Game | None = (
-                Game.objects.select_for_update(of=("self",))
-                .select_related("server", "host", "second_player")
-                .filter(server=server)
-                .first()
-            )
-            if game is None or game.status != GameStatus.RUNNING:
+            game: Game | None = _lock_running_game(server)
+            if game is None:
                 return Response(
                     {"detail": "Auf diesem Server laeuft kein gestartetes Spiel."},
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            draw: bool = data["winner"] is None
-            players: set[str] = {game.host.identifier}
-            if game.second_player is not None:
-                players.add(game.second_player.identifier)
-            if not draw and {data["winner"], data["loser"]} != players:
-                return Response(
-                    {"detail": "winner und loser muessen die beiden Spieler dieses Spiels sein."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            error: Response | None = _check_players(game, data)
+            if error is not None:
+                return error
 
-            if draw:
-                logger.info("Spiel '%s' auf %s vorbei: unentschieden", game.name, name)
-            else:
-                logger.info(
-                    "Spiel '%s' auf %s vorbei: gewonnen hat %s, verloren %s",
-                    game.name, name, data["winner"], data["loser"],
-                )
+            _log_result(game, name, data)
             end_started_game(game)
 
         return Response({"status": "finished"})
