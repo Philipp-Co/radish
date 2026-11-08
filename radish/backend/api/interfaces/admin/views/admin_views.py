@@ -22,7 +22,15 @@ from rest_framework.serializers import BaseSerializer
 from rest_framework.utils.serializer_helpers import ReturnDict
 from rest_framework.views import APIView
 
-from ....models import (
+from api.interfaces.admin.roles.has_admin_role import HasAdminRole
+from api.interfaces.admin.serializers.admin_entity_profile_serializer import AdminEntityProfileSerializer
+from api.interfaces.admin.serializers.admin_equipment_serializer import AdminEquipmentSerializer
+from api.interfaces.admin.serializers.admin_species_serializer import AdminSpeciesSerializer
+from api.interfaces.admin.serializers.admin_terrain_type_serializer import AdminTerrainTypeSerializer
+from api.interfaces.admin.serializers.admin_unit_type_serializer import AdminUnitTypeSerializer
+from api.interfaces.admin.serializers.admin_weapon_serializer import AdminWeaponSerializer
+from api.interfaces.servers.serializers.game_server_serializer import GameServerSerializer
+from api.models import (
     EntityProfile,
     Equipment,
     GameServer,
@@ -34,14 +42,6 @@ from ....models import (
     UnitType,
     Weapon,
 )
-from ..roles.has_admin_role import HasAdminRole
-from ...servers.serializers.game_server_serializer import GameServerSerializer
-from ..serializers.admin_entity_profile_serializer import AdminEntityProfileSerializer
-from ..serializers.admin_equipment_serializer import AdminEquipmentSerializer
-from ..serializers.admin_species_serializer import AdminSpeciesSerializer
-from ..serializers.admin_terrain_type_serializer import AdminTerrainTypeSerializer
-from ..serializers.admin_unit_type_serializer import AdminUnitTypeSerializer
-from ..serializers.admin_weapon_serializer import AdminWeaponSerializer
 
 
 class AdminServerListView(APIView):
@@ -80,7 +80,7 @@ IN_USE: dict[type[Model], Exists] = {
 }
 
 
-class Conflict(APIException):
+class ConflictError(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_code = "conflict"
 
@@ -188,7 +188,7 @@ class _CatalogAdminMixin(_Base[_M]):
         try:
             instance.delete()
         except ProtectedError as exc:
-            raise Conflict(
+            raise ConflictError(
                 f"{instance} wird noch verwendet (in Armeen oder von anderen "
                 "Katalogeintraegen) und kann nicht geloescht werden."
             ) from exc

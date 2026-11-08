@@ -1,9 +1,9 @@
 from django.urls import path
 
-from .admin.views import admin_views
-from .auth.views import auth_views
-from .player.views import army_views, client_views
-from .servers.views import server_views
+from api.interfaces.admin.views import admin_views
+from api.interfaces.auth.views import auth_views
+from api.interfaces.player.views import army_views, client_views
+from api.interfaces.servers.views import server_views
 
 app_name = "api"
 

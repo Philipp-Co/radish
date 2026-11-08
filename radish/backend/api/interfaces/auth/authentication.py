@@ -22,7 +22,7 @@ from django.contrib.auth.models import User
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import Token
 
-from .keycloak import KeycloakClaims, get_or_create_user_from_claims
+from api.interfaces.auth.keycloak import KeycloakClaims, get_or_create_user_from_claims
 
 
 class KeycloakJWTAuthentication(JWTAuthentication):

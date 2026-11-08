@@ -6,11 +6,7 @@ from django.core.management import call_command
 from rest_framework.test import APITestCase
 
 from api.management.commands.seed import FIXTURE
-from api.models import (
-    Species,
-    TerrainCode,
-    TerrainType,
-)
+from api.models import Species, TerrainCode, TerrainType
 
 
 class SeedCommandTests(APITestCase):

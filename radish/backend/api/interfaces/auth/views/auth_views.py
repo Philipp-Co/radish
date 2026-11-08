@@ -18,15 +18,10 @@ nicht aus einem hier zurueckgegebenen Identifier.
 
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth import models as auth_models
-from django.http import (
-    HttpRequest,
-    HttpResponseBadRequest,
-    HttpResponseRedirect,
-    JsonResponse,
-)
+from django.http import HttpRequest, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.views import View
 
-from .. import keycloak
+from api.interfaces.auth import keycloak
 
 User = get_user_model()
 

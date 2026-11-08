@@ -1,20 +1,16 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import (
-    TerrainCode,
-    TerrainType,
-)
-
+from api.models import TerrainCode, TerrainType
 from api.tests.helpers import (
-    authenticate,
-    find_by,
     ADMIN_TOKEN,
     PLAYER_TOKEN,
     TerrainTypeData,
     TestResponse,
     User,
+    authenticate,
     create_test_catalog,
+    find_by,
 )
 
 

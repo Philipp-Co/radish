@@ -32,19 +32,19 @@ bereits umgesetzt.
 """
 
 import asyncio
-import logging
 from base64 import b64decode, b64encode
 from collections.abc import Sequence
 from datetime import datetime
-from json import loads, dumps
+from json import dumps, loads
+import logging
 from typing import Any
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db.models import Q
 
-from ....domain.servers import access
-from ....models import Game, GameServer, GameStatus, Player
+from api.domain.servers import access
+from api.models import Game, GameServer, GameStatus, Player
 
 logger = logging.getLogger(__name__)
 

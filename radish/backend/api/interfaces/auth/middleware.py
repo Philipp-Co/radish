@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 
 from asgiref.typing import ASGI3Application, ASGIReceiveCallable, ASGISendCallable, WebSocketScope
 from channels.db import database_sync_to_async
+
 # Nur fuer Type Hints: das Projekt nutzt Djangos Standard-User-Model (kein
 # AUTH_USER_MODEL), get_user_model() liefert also genau diese Klasse.
 # pylint: disable-next=imported-auth-user
@@ -21,7 +22,7 @@ from django.contrib.auth.models import AnonymousUser, User
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import Token
 
-from .authentication import KeycloakJWTAuthentication
+from api.interfaces.auth.authentication import KeycloakJWTAuthentication
 
 
 class UserWebSocketScope(WebSocketScope):

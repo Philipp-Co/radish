@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import Equipment
+from api.models import Equipment
 
 
 class EquipmentSerializer(serializers.ModelSerializer):

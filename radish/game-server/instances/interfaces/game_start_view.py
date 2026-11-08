@@ -10,10 +10,10 @@ from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..domain.access_codes import valid_access_codes
-from ..domain.game_files import InstanceNotRunning, prepare_game
-from ..domain.whitelist import WhitelistError
-from .instance_api_view import InstanceAPIView
+from instances.domain.access_codes import valid_access_codes
+from instances.domain.game_files import InstanceNotRunningError, prepare_game
+from instances.domain.whitelist import WhitelistError
+from instances.interfaces.instance_api_view import InstanceAPIView
 
 
 def _is_two_players(value: object) -> bool:
@@ -73,7 +73,7 @@ class GameStartView(InstanceAPIView):
             # In die Datei nur die Spieldaten und das Gelaende -- die Codes
             # bleiben ausserhalb.
             prepare_game(name, {"spieldaten": spieler, "gelaende": gelaende}, codes)
-        except (OSError, WhitelistError, InstanceNotRunning) as exc:
+        except (OSError, WhitelistError, InstanceNotRunningError) as exc:
             return Response(
                 {"detail": f"Spiel konnte nicht aufgesetzt werden: {exc}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

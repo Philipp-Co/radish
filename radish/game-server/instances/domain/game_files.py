@@ -42,16 +42,15 @@ dessen GameServer.name ist ein anderer, ueber alle Container eindeutiger
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import signal
-from pathlib import Path
 from typing import TextIO, TypedDict
 
 from django.conf import settings
 from django.http import Http404
 
-from .whitelist import grant_access, revoke_access
-
+from instances.domain.whitelist import grant_access, revoke_access
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ PID_FILE = "radish_server.pid"
 _INSTANCE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-class InstanceNotRunning(Exception):
+class InstanceNotRunningError(Exception):
     """radish_server laeuft nicht (keine oder eine veraltete PID-Datei)."""
 
 
@@ -88,18 +87,18 @@ def _instance_dir(name: str) -> Path:
 def _notify(directory: Path) -> None:
     """
     Schickt SIGUSR1 an radish_server: die Spielstart-Datei hat sich
-    geaendert. Wirft InstanceNotRunning, wenn es keinen laufenden Prozess
+    geaendert. Wirft InstanceNotRunningError, wenn es keinen laufenden Prozess
     dazu gibt.
     """
     try:
         pid: int = int((directory / PID_FILE).read_text().strip())
         os.kill(pid, signal.SIGUSR1)
     except FileNotFoundError as exc:
-        raise InstanceNotRunning("keine PID-Datei -- radish_server laeuft nicht") from exc
+        raise InstanceNotRunningError("keine PID-Datei -- radish_server laeuft nicht") from exc
     except ValueError as exc:
-        raise InstanceNotRunning("PID-Datei ist unlesbar") from exc
+        raise InstanceNotRunningError("PID-Datei ist unlesbar") from exc
     except ProcessLookupError as exc:
-        raise InstanceNotRunning(f"kein Prozess mit PID {pid}") from exc
+        raise InstanceNotRunningError(f"kein Prozess mit PID {pid}") from exc
 
 
 def prepare_game(name: str, spieldaten: GameStartFile, codes: list[str]) -> None:
@@ -112,7 +111,7 @@ def prepare_game(name: str, spieldaten: GameStartFile, codes: list[str]) -> None
     Erst in eine temporaere Datei, dann per os.replace an ihren Platz: das
     Umbenennen ist atomar, radish_server sieht nie eine halb geschriebene
     Datei. Wirft OSError, wenn das Schreiben scheitert, WhitelistError, wenn
-    zucchini die Codes nicht nimmt, und InstanceNotRunning, wenn niemand zu
+    zucchini die Codes nicht nimmt, und InstanceNotRunningError, wenn niemand zu
     benachrichtigen ist.
     """
     directory: Path = _instance_dir(name)
@@ -142,5 +141,5 @@ def cancel_game(name: str) -> None:
     try:
         (directory / GAME_START_FILE).unlink(missing_ok=True)
         _notify(directory)
-    except (OSError, InstanceNotRunning) as exc:
+    except (OSError, InstanceNotRunningError) as exc:
         logger.warning("Abbruch auf Instanz '%s' nicht vollstaendig: %s", name, exc)

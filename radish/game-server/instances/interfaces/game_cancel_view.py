@@ -6,8 +6,8 @@ from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..domain.game_files import cancel_game
-from .instance_api_view import InstanceAPIView
+from instances.domain.game_files import cancel_game
+from instances.interfaces.instance_api_view import InstanceAPIView
 
 
 class GameCancelView(InstanceAPIView):

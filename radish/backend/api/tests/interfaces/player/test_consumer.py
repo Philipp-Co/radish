@@ -9,15 +9,8 @@ from django.test import TransactionTestCase
 
 from api.domain.servers import access
 from api.interfaces.player.views.consumers import EchoConsumer
-from api.models import (
-    Game,
-    GameServer,
-    GameStatus,
-    Player,
-)
-from api.tests.helpers import (
-    User,
-)
+from api.models import Game, GameServer, GameStatus, Player
+from api.tests.helpers import User
 
 
 class ConsumerTests(TransactionTestCase):

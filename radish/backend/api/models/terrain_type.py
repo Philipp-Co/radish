@@ -1,8 +1,7 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
-from .terrain_code import TerrainCode
-
+from api.models.terrain_code import TerrainCode
 
 # Wie weit MV und CV reichen duerfen: in beide Richtungen fuer die Bewegung,
 # bis 10 fuer die Deckung. Die Deckung wirkt im Kampf derzeit nicht

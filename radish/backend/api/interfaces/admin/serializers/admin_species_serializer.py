@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import Species
+from api.models import Species
 
 
 class AdminSpeciesSerializer(serializers.ModelSerializer):

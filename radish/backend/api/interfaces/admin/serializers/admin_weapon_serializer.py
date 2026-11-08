@@ -4,12 +4,8 @@
 
 from rest_framework import serializers
 
-from ....models import (
-    Species,
-    Weapon,
-)
-
-from .catalog_admin_serializer import _CatalogAdminSerializer, _value
+from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer, _current_or_new, _value
+from api.models import Species, Weapon
 
 
 class AdminWeaponSerializer(_CatalogAdminSerializer):
@@ -41,7 +37,11 @@ class AdminWeaponSerializer(_CatalogAdminSerializer):
     # dict von Feldname auf Wert.
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        if _value(self, attrs, "min_range", int) > _value(self, attrs, "max_range", int):
+        # Bisheriger Stand bzw. eine neue Waffe mit den Defaults des Modells.
+        entry: Weapon = _current_or_new(self.instance, Weapon)
+        if _value(attrs, "min_range", lambda: entry.min_range, int) > _value(
+            attrs, "max_range", lambda: entry.max_range, int
+        ):
             raise serializers.ValidationError(
                 {"min_range": "Darf nicht groesser als die Maximalreichweite sein."}
             )

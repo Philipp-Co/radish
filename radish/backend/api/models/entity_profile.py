@@ -1,8 +1,8 @@
 from django.core.validators import MaxValueValidator
 from django.db import models
 
-from .limits import MAX_UNIT_ENTITIES
-from .unit_type import UnitType
+from api.models.limits import MAX_UNIT_ENTITIES
+from api.models.unit_type import UnitType
 
 
 class EntityProfile(models.Model):

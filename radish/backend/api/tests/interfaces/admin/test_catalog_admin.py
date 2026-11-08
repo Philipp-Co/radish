@@ -2,25 +2,19 @@ from typing import Unpack
 
 from rest_framework import status
 
-from api.models import (
-    Army,
-    Player,
-    UnitType,
-    Weapon,
-)
 from api.interfaces.player.serializers.army_write_serializer import ArmyWriteSerializer
-
+from api.models import Army, Player, UnitType, Weapon
+from api.tests.army_test_case import ArmyTestCase
 from api.tests.helpers import (
-    authenticate,
+    ADMIN_TOKEN,
+    PLAYER_TOKEN,
     ProfilePayload,
     SpeciesCatalogData,
     TestResponse,
-    WeaponPayload,
-    ADMIN_TOKEN,
-    PLAYER_TOKEN,
     User,
+    WeaponPayload,
+    authenticate,
 )
-from api.tests.army_test_case import ArmyTestCase
 
 
 # Jede Testmethode zaehlt als oeffentliche Methode.

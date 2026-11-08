@@ -4,13 +4,9 @@
 
 from rest_framework import serializers
 
-from ....models import (
-    Species,
-    UnitType,
-)
-
-from .admin_entity_profile_serializer import AdminEntityProfileSerializer
-from .catalog_admin_serializer import _CatalogAdminSerializer, _value
+from api.interfaces.admin.serializers.admin_entity_profile_serializer import AdminEntityProfileSerializer
+from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer, _current_or_new, _value
+from api.models import Species, UnitType
 
 
 class AdminUnitTypeSerializer(_CatalogAdminSerializer):
@@ -45,8 +41,10 @@ class AdminUnitTypeSerializer(_CatalogAdminSerializer):
     # dict von Feldname auf Wert.
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        max_entities: int = _value(self, attrs, "max_entities", int)
-        if _value(self, attrs, "min_entities", int) > max_entities:
+        # Bisheriger Stand bzw. ein neuer Einheitentyp mit den Defaults des Modells.
+        entry: UnitType = _current_or_new(self.instance, UnitType)
+        max_entities: int = _value(attrs, "max_entities", lambda: entry.max_entities, int)
+        if _value(attrs, "min_entities", lambda: entry.min_entities, int) > max_entities:
             raise serializers.ValidationError(
                 "Mindestzahl an Entitaeten darf nicht groesser als die Hoechstzahl sein."
             )

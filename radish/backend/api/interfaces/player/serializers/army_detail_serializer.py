@@ -1,9 +1,7 @@
 from rest_framework import serializers
 
-from ....models import Army
-
-from .unit_read_serializer import UnitReadSerializer
-
+from api.interfaces.player.serializers.unit_read_serializer import UnitReadSerializer
+from api.models import Army
 
 # ---------------------------------------------------------------------------
 # Armeen

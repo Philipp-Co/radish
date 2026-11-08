@@ -20,8 +20,8 @@ Den Dump selbst erzeugt scripts/db-dump-seed.sh aus einer gepflegten
 Datenbank.
 """
 
-import json
 from argparse import ArgumentParser
+import json
 from pathlib import Path
 from typing import Any, TextIO
 

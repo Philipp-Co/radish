@@ -1,27 +1,22 @@
 from rest_framework import status
 
-from api.models import (
-    Army,
-    Player,
-    Unit,
-)
-
+from api.models import Army, Player, Unit
+from api.tests.army_test_case import ArmyTestCase
 from api.tests.helpers import (
-    authenticate,
-    find_by,
     ADMIN_TOKEN,
     ArmyListData,
     EntityData,
+    ProfileData,
     SpeciesCatalogData,
     TestResponse,
     UnitData,
     UnitPayload,
     UnitTypeData,
-    WeaponData,
-    ProfileData,
     User,
+    WeaponData,
+    authenticate,
+    find_by,
 )
-from api.tests.army_test_case import ArmyTestCase
 
 
 class ArmyCrudTests(ArmyTestCase):

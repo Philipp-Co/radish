@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import Army
+from api.models import Army
 
 
 class ArmyListSerializer(serializers.ModelSerializer):

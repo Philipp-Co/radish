@@ -1,8 +1,8 @@
 from django.db import models
 
-from .unit_entity import UnitEntity
-from .weapon import Weapon
-from .weapon_class import WeaponClass
+from api.models.unit_entity import UnitEntity
+from api.models.weapon import Weapon
+from api.models.weapon_class import WeaponClass
 
 
 class UnitEntityWeapon(models.Model):

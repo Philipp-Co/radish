@@ -34,14 +34,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import Token
 
-from ....domain.army_queries import armies_with_costs
-from ....domain.servers import access, instance_client
-from ....models import Army, Game, GameServer, GameStatus, Player
-from ..roles.has_player_role import HasPlayerRole
-from ..serializers.game_create_serializer import GameCreateSerializer
-from ..serializers.game_detail_serializer import GameDetailSerializer
-from ..serializers.game_join_serializer import GameJoinSerializer
-from ..serializers.game_list_serializer import GameListSerializer
+from api.domain.army_queries import armies_with_costs
+from api.domain.servers import access, instance_client
+from api.interfaces.player.roles.has_player_role import HasPlayerRole
+from api.interfaces.player.serializers.game_create_serializer import GameCreateSerializer
+from api.interfaces.player.serializers.game_detail_serializer import GameDetailSerializer
+from api.interfaces.player.serializers.game_join_serializer import GameJoinSerializer
+from api.interfaces.player.serializers.game_list_serializer import GameListSerializer
+from api.models import Army, Game, GameServer, GameStatus, Player
 
 
 def _sync_player_name(player: Player, request: Request) -> None:

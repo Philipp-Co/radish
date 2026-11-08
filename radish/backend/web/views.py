@@ -22,8 +22,8 @@ Range-Support) -- fuer dieses Projekt (kleiner Spiele-Client, keine
 externen Abhaengigkeiten gewuenscht) reicht das aber.
 """
 
-import re
 from pathlib import Path
+import re
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpRequest

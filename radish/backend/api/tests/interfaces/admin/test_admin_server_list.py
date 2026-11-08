@@ -1,17 +1,8 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import (
-    GameServer,
-)
-
-from api.tests.helpers import (
-    authenticate,
-    ADMIN_TOKEN,
-    PLAYER_TOKEN,
-    TestResponse,
-    User,
-)
+from api.models import GameServer
+from api.tests.helpers import ADMIN_TOKEN, PLAYER_TOKEN, TestResponse, User, authenticate
 
 
 class AdminServerListTests(APITestCase):

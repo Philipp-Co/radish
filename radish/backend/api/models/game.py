@@ -1,8 +1,8 @@
 from django.db import models
 
-from .game_server import GameServer
-from .game_status import GameStatus
-from .player import Player
+from api.models.game_server import GameServer
+from api.models.game_status import GameStatus
+from api.models.player import Player
 
 
 class Game(models.Model):

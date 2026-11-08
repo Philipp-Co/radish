@@ -21,14 +21,14 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .client_views import _get_or_create_player
-from ....domain.army_queries import armies_with_costs
-from ....models import Army, Game, Player, Species
-from ..roles.has_player_role import HasPlayerRole
-from ..serializers.army_detail_serializer import ArmyDetailSerializer
-from ..serializers.army_list_serializer import ArmyListSerializer
-from ..serializers.army_write_serializer import ArmyWriteSerializer
-from ..serializers.species_catalog_serializer import SpeciesCatalogSerializer
+from api.domain.army_queries import armies_with_costs
+from api.interfaces.player.roles.has_player_role import HasPlayerRole
+from api.interfaces.player.serializers.army_detail_serializer import ArmyDetailSerializer
+from api.interfaces.player.serializers.army_list_serializer import ArmyListSerializer
+from api.interfaces.player.serializers.army_write_serializer import ArmyWriteSerializer
+from api.interfaces.player.serializers.species_catalog_serializer import SpeciesCatalogSerializer
+from api.interfaces.player.views.client_views import _get_or_create_player
+from api.models import Army, Game, Player, Species
 
 
 def _army_detail_queryset() -> QuerySet[Army]:
@@ -108,17 +108,11 @@ class ArmyDetailView(APIView):
 
     permission_classes = [IsAuthenticated, HasPlayerRole]
 
-    @staticmethod
-    def _get_own_army(request: Request, army_id: int) -> Army:
-        return get_object_or_404(
-            _army_detail_queryset(), pk=army_id, player__user=request.user
-        )
-
     def get(self, request: Request, army_id: int) -> Response:
-        return Response(ArmyDetailSerializer(self._get_own_army(request, army_id)).data)
+        return Response(ArmyDetailSerializer(_get_own_army(request, army_id)).data)
 
     def put(self, request: Request, army_id: int) -> Response:
-        army: Army = self._get_own_army(request, army_id)
+        army: Army = _get_own_army(request, army_id)
         game: Game | None = _game_using(army)
         if game is not None:
             return _in_game_response(game)
@@ -127,10 +121,10 @@ class ArmyDetailView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(ArmyDetailSerializer(self._get_own_army(request, army_id)).data)
+        return Response(ArmyDetailSerializer(_get_own_army(request, army_id)).data)
 
     def delete(self, request: Request, army_id: int) -> Response:
-        army: Army = self._get_own_army(request, army_id)
+        army: Army = _get_own_army(request, army_id)
         game: Game | None = _game_using(army)
         if game is not None:
             return _in_game_response(game)
@@ -143,3 +137,9 @@ class ArmyDetailView(APIView):
             assert game is not None
             return _in_game_response(game)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _get_own_army(request: Request, army_id: int) -> Army:
+    return get_object_or_404(
+        _army_detail_queryset(), pk=army_id, player__user=request.user
+    )

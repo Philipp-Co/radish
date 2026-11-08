@@ -1,7 +1,7 @@
 from django.db import models
 
-from .player import Player
-from .species import Species
+from api.models.player import Player
+from api.models.species import Species
 
 
 class Army(models.Model):

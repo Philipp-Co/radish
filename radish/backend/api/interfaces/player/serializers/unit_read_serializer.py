@@ -1,8 +1,7 @@
 from rest_framework import serializers
 
-from ....models import Unit
-
-from .unit_entity_read_serializer import UnitEntityReadSerializer
+from api.interfaces.player.serializers.unit_entity_read_serializer import UnitEntityReadSerializer
+from api.models import Unit
 
 
 class UnitReadSerializer(serializers.ModelSerializer):

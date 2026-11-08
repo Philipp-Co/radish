@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import TerrainType
+from api.models import TerrainType
 
 
 class AdminTerrainTypeSerializer(serializers.ModelSerializer):

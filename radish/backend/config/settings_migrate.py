@@ -13,7 +13,7 @@ docker/backend/entrypoint.sh) -- api/tests/models/test_migrator_settings.py prue
 das schon vorher.
 """
 
-from .database import database
+from config.database import database
 
 INSTALLED_APPS = [
     # SimpleAdminConfig statt 'django.contrib.admin': ohne Autodiscover, das

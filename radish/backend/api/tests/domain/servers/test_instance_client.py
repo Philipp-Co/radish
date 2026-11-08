@@ -3,11 +3,7 @@ import unittest
 from unittest import mock
 
 from api.domain.servers import instance_client
-from api.models import (
-    Game,
-    TerrainCode,
-    TerrainType,
-)
+from api.models import Game, TerrainCode, TerrainType
 from api.tests.game_test_case import GameTestCase
 from api.tests.helpers import SPIELSTART_SCHEMA, find_by
 

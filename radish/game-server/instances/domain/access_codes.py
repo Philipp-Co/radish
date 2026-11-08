@@ -6,7 +6,6 @@ wozu sie dienen, steht in game_files.py.
 import re
 from typing import TypeGuard
 
-
 # Ein Zugangscode: eine 64-Bit-Zahl als hoechstens 16 Hexziffern, so wie
 # zucchini_admin_client ihn erwartet. 0 ist in der Whitelist ein freier Platz.
 _ACCESS_CODE = re.compile(r"^[0-9a-fA-F]{1,16}$")

@@ -1,9 +1,8 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
-from .limits import MAX_UNIT_ENTITIES
-from .species import Species
-
+from api.models.limits import MAX_UNIT_ENTITIES
+from api.models.species import Species
 
 # Obergrenze der Sichtweite: im Spiel ein Byte (RAD_Unit_t.sight_range), und
 # mehr nimmt der Spielserver beim Start nicht an (spielstart.schema.json).

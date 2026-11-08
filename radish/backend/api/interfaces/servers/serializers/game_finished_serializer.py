@@ -2,7 +2,6 @@ from typing import Any, TypedDict
 
 from rest_framework import serializers
 
-
 # Die validierten Daten von GameFinishedSerializer. Funktionale Schreibweise,
 # weil "game-instance" kein gueltiger Python-Name ist.
 GameFinishedData = TypedDict(

@@ -1,7 +1,7 @@
 from django.urls import path
 
-from .interfaces.game_cancel_view import GameCancelView
-from .interfaces.game_start_view import GameStartView
+from instances.interfaces.game_cancel_view import GameCancelView
+from instances.interfaces.game_start_view import GameStartView
 
 app_name = "instances"
 

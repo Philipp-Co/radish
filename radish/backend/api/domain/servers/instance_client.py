@@ -17,8 +17,8 @@ from typing import TypedDict
 
 import requests
 
-from ...models import Army, Game, GameServer, Player, TerrainCode, TerrainType
-from ..army_queries import armies_with_costs
+from api.domain.army_queries import armies_with_costs
+from api.models import Army, Game, GameServer, Player, TerrainCode, TerrainType
 
 logger = logging.getLogger(__name__)
 

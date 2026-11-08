@@ -1,7 +1,7 @@
 from django.db import models
 
-from .entity_profile import EntityProfile
-from .unit import Unit
+from api.models.entity_profile import EntityProfile
+from api.models.unit import Unit
 
 
 class UnitEntity(models.Model):

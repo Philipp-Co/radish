@@ -80,6 +80,31 @@ pylint api config web
 scripts/lizard.sh
 ```
 
+### Stil: Google Python Style Guide
+
+Der Python-Code orientiert sich am
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html):
+Benennung, Importe, Fehlerbehandlung, Type Hints, Kommentare und Aufbau von
+Funktionen folgen ihm, solange die Abschnitte unten nichts anderes festlegen.
+Die Werkzeuge prüfen davon nur einen Teil; der Rest ist Sache des Reviews.
+
+Bewusste Abweichungen:
+
+- **Zeilenlänge 120** statt 80 Zeichen (`.pylintrc`).
+- **Importe einzelner Namen** sind erlaubt, aus eigenem Code wie aus
+  Bibliotheken (`from api.models import Game`,
+  `from rest_framework.response import Response`) – statt nur Module zu
+  importieren und überall `modul.Name` zu schreiben. Importe sind aber immer
+  **absolut** (`from api.domain import …`, nie `from ..domain import …`).
+- **Docstrings sind keine Pflicht** – weder für Module noch für Klassen oder
+  Funktionen, auch nicht für öffentliche. Wo es einen gibt, beschreibt er kurz
+  den Zweck; die Abschnitte `Args:`/`Returns:`/`Raises:` werden nicht
+  verwendet. Kommentare und Docstrings sind deutsch.
+- **Type Hints** gehen über den Guide hinaus: auch jede lokale Variable ist
+  annotiert, und `Any` braucht einen Grund (siehe unten).
+- Wo Django, DRF oder unittest Namen vorgeben, gelten diese (etwa
+  `setUp` oder `assertRejected` im Stil von `assertEqual`).
+
 ### Typprüfung mit mypy
 
 Konfiguration: [`mypy.ini`](mypy.ini), mit den Plugins von `django-stubs` und

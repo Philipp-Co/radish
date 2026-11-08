@@ -1,7 +1,7 @@
 from django.db import models
 
-from .equipment import Equipment
-from .unit_entity import UnitEntity
+from api.models.equipment import Equipment
+from api.models.unit_entity import UnitEntity
 
 
 class UnitEntityEquipment(models.Model):

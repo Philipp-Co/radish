@@ -1,11 +1,9 @@
 from rest_framework import serializers
 
-from ....models import Species
-
-from .equipment_serializer import EquipmentSerializer
-from .unit_type_serializer import UnitTypeSerializer
-from .weapon_serializer import WeaponSerializer
-
+from api.interfaces.player.serializers.equipment_serializer import EquipmentSerializer
+from api.interfaces.player.serializers.unit_type_serializer import UnitTypeSerializer
+from api.interfaces.player.serializers.weapon_serializer import WeaponSerializer
+from api.models import Species
 
 # ---------------------------------------------------------------------------
 # Katalog (nur lesend -- Schreiben kommt mit den Admin-Schnittstellen)

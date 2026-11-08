@@ -5,12 +5,8 @@
 from django.db.models import QuerySet
 from rest_framework import serializers
 
-from ....models import (
-    EntityProfile,
-    UnitType,
-)
-
-from .catalog_admin_serializer import _CatalogAdminSerializer, _value
+from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer, _current_or_new, _value
+from api.models import EntityProfile, UnitType
 
 
 class AdminEntityProfileSerializer(_CatalogAdminSerializer):
@@ -52,9 +48,11 @@ class AdminEntityProfileSerializer(_CatalogAdminSerializer):
     # dict von Feldname auf Wert.
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         attrs = super().validate(attrs)
-        unit_type: UnitType = _value(self, attrs, "unit_type", UnitType)
-        min_count: int = _value(self, attrs, "min_count", int)
-        max_count: int = _value(self, attrs, "max_count", int)
+        # Bisheriger Stand bzw. ein neues Profil mit den Defaults des Modells.
+        entry: EntityProfile = _current_or_new(self.instance, EntityProfile)
+        unit_type: UnitType = _value(attrs, "unit_type", lambda: entry.unit_type, UnitType)
+        min_count: int = _value(attrs, "min_count", lambda: entry.min_count, int)
+        max_count: int = _value(attrs, "max_count", lambda: entry.max_count, int)
 
         if min_count > max_count:
             raise serializers.ValidationError(

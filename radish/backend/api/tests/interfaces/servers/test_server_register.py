@@ -3,17 +3,8 @@ from typing import Unpack
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import (
-    GameServer,
-)
-
-from api.tests.helpers import (
-    authenticate,
-    SERVER_TOKEN,
-    ServerRegistrationPayload,
-    TestResponse,
-    User,
-)
+from api.models import GameServer
+from api.tests.helpers import SERVER_TOKEN, ServerRegistrationPayload, TestResponse, User, authenticate
 
 
 class ServerRegisterTests(APITestCase):

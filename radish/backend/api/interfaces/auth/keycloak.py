@@ -15,13 +15,14 @@ import secrets
 from typing import NotRequired, TypedDict
 from urllib.parse import urlencode
 
-import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
+
 # Nur fuer Type Hints: das Projekt nutzt Djangos Standard-User-Model (kein
 # AUTH_USER_MODEL), get_user_model() liefert also genau diese Klasse.
 # pylint: disable-next=imported-auth-user
 from django.contrib.auth.models import User
+import requests
 
 
 class TokenResponse(TypedDict):

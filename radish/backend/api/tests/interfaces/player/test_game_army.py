@@ -1,20 +1,9 @@
 from django.contrib.auth.base_user import AbstractBaseUser
 from rest_framework import status
 
-from api.models import (
-    Army,
-    Game,
-    GameServer,
-    Player,
-)
-
-from api.tests.helpers import (
-    authenticate,
-    PLAYER_TOKEN,
-    TestResponse,
-    User,
-)
+from api.models import Army, Game, GameServer, Player
 from api.tests.game_test_case import GameTestCase
+from api.tests.helpers import PLAYER_TOKEN, TestResponse, User, authenticate
 
 
 class GameArmyTests(GameTestCase):

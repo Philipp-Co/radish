@@ -1,10 +1,6 @@
 from rest_framework import serializers
 
-from ....models import (
-    EntityProfile,
-    Equipment,
-    Weapon,
-)
+from api.models import EntityProfile, Equipment, Weapon
 
 
 class UnitEntityWriteSerializer(serializers.Serializer):

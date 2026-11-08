@@ -1,18 +1,8 @@
 from rest_framework import status
 
-from api.models import (
-    Army,
-    Unit,
-)
-
+from api.models import Army, Unit
 from api.tests.army_test_case import ArmyTestCase
-from api.tests.helpers import (
-    EntityData,
-    EntityPayload,
-    TestResponse,
-    UnitData,
-    UnitPayload,
-)
+from api.tests.helpers import EntityData, EntityPayload, TestResponse, UnitData, UnitPayload
 
 
 # Jede Testmethode zaehlt als oeffentliche Methode.

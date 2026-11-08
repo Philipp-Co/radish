@@ -4,7 +4,7 @@
 
 from rest_framework import serializers
 
-from ....models import Weapon
+from api.models import Weapon
 
 
 class WeaponSerializer(serializers.ModelSerializer):

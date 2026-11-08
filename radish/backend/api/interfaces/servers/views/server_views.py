@@ -15,11 +15,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...player.views.client_views import end_started_game
-from ....models import Game, GameServer, GameStatus
-from ..roles.has_server_role import HasServerRole
-from ..serializers.game_finished_serializer import GameFinishedData, GameFinishedSerializer
-from ..serializers.game_server_serializer import GameServerSerializer
+from api.interfaces.player.views.client_views import end_started_game
+from api.interfaces.servers.roles.has_server_role import HasServerRole
+from api.interfaces.servers.serializers.game_finished_serializer import GameFinishedData, GameFinishedSerializer
+from api.interfaces.servers.serializers.game_server_serializer import GameServerSerializer
+from api.models import Game, GameServer, GameStatus
 
 logger = logging.getLogger(__name__)
 

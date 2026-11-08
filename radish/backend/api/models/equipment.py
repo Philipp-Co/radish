@@ -4,7 +4,7 @@
 
 from django.db import models
 
-from .species import Species
+from api.models.species import Species
 
 
 class Equipment(models.Model):

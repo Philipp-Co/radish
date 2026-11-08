@@ -6,12 +6,11 @@ zugang.json im Verzeichnis der Instanz (siehe game_files.py).
 
 import json
 import logging
-import subprocess
 from pathlib import Path
+import subprocess
 from typing import cast
 
 from django.conf import settings
-
 
 logger = logging.getLogger(__name__)
 

@@ -3,23 +3,16 @@ from typing import Unpack
 
 from rest_framework.test import APITestCase
 
-from api.models import (
-    EntityProfile,
-    Equipment,
-    Species,
-    UnitType,
-    Weapon,
-)
-
+from api.models import EntityProfile, Equipment, Species, UnitType, Weapon
 from api.tests.helpers import (
-    authenticate,
+    PLAYER_TOKEN,
     ArmyPayload,
     EntityPayload,
     TestResponse,
     UnitPayload,
     UnitPayloadOverrides,
-    PLAYER_TOKEN,
     User,
+    authenticate,
     create_test_catalog,
 )
 

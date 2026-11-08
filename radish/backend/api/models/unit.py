@@ -1,7 +1,7 @@
 from django.db import models
 
-from .army import Army
-from .unit_type import UnitType
+from api.models.army import Army
+from api.models.unit_type import UnitType
 
 
 class Unit(models.Model):

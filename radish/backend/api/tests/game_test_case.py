@@ -1,11 +1,5 @@
-from api.models import (
-    Army,
-    Game,
-    GameServer,
-    Player,
-)
 from api.interfaces.player.serializers.army_write_serializer import ArmyWriteSerializer
-
+from api.models import Army, Game, GameServer, Player
 from api.tests.army_test_case import ArmyTestCase
 from api.tests.helpers import TestResponse, UnitPayload, User
 

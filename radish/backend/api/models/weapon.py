@@ -4,8 +4,8 @@
 
 from django.db import models
 
-from .species import Species
-from .weapon_class import WeaponClass
+from api.models.species import Species
+from api.models.weapon_class import WeaponClass
 
 
 class Weapon(models.Model):

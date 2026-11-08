@@ -4,12 +4,8 @@
 
 from rest_framework import serializers
 
-from ....models import (
-    Equipment,
-    Species,
-)
-
-from .catalog_admin_serializer import _CatalogAdminSerializer
+from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer
+from api.models import Equipment, Species
 
 
 class AdminEquipmentSerializer(_CatalogAdminSerializer):

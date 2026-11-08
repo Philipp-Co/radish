@@ -16,7 +16,7 @@ from typing import cast
 from rest_framework.request import Request
 from rest_framework_simplejwt.tokens import Token
 
-from ..keycloak import RealmAccess
+from api.interfaces.auth.keycloak import RealmAccess
 
 
 def _realm_roles(request: Request) -> list[str]:

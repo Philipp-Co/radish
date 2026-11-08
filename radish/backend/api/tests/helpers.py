@@ -19,11 +19,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.base_user import AbstractBaseUser
 from rest_framework.test import APIClient
 
-from api.models import (
-    Species,
-    TerrainType,
-)
-
+from api.models import Species, TerrainType
 
 User = get_user_model()
 

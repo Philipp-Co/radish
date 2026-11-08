@@ -12,19 +12,9 @@ from unittest import mock
 from rest_framework import status
 
 from api.domain.servers.instance_client import InstanceError
-from api.models import (
-    Game,
-    GameStatus,
-    Player,
-)
+from api.models import Game, GameStatus, Player
 from api.tests.game_test_case import GameTestCase
-from api.tests.helpers import (
-    PLAYER_TOKEN,
-    TestResponse,
-    TestToken,
-    User,
-    authenticate,
-)
+from api.tests.helpers import PLAYER_TOKEN, TestResponse, TestToken, User, authenticate
 
 
 @mock.patch("api.domain.servers.instance_client.cancel_game")

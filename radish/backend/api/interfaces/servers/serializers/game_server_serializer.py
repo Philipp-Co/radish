@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ....models import GameServer
+from api.models import GameServer
 
 
 class GameServerSerializer(serializers.ModelSerializer):

@@ -1,8 +1,8 @@
 import json
+from pathlib import Path
 import signal
 import subprocess
 import tempfile
-from pathlib import Path
 from unittest import mock
 
 from django.test import override_settings

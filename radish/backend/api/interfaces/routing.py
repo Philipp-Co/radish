@@ -6,7 +6,7 @@ wird).
 
 from django.urls import re_path
 
-from .player.views import consumers
+from api.interfaces.player.views import consumers
 
 websocket_urlpatterns = [
     re_path(r"^ws/echo/$", consumers.EchoConsumer.as_asgi()),

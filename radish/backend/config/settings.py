@@ -15,7 +15,7 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
-from .database import database
+from config.database import database
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

@@ -1,10 +1,10 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
 from django.db.models import Field, ForeignObjectRel, Model
 from rest_framework import serializers
 
-# Nur fuer die Annotation in _value (Rueckgabetyp von Options.get_field);
+# Nur fuer die Annotation in _changed (Rueckgabetyp von Options.get_field);
 # zur Laufzeit wuerde der Import die contenttypes-Models laden, und
 # Annotationen lokaler Variablen werden ohnehin nie ausgewertet.
 if TYPE_CHECKING:
@@ -29,36 +29,40 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _value[T](
-    serializer: serializers.ModelSerializer[Model],
-    attrs: Mapping[str, object],
-    name: str,
-    expected: type[T],
-) -> T:
+def _current_or_new[M: Model](instance: M | None, model: type[M]) -> M:
+    """Das gespeicherte Objekt, beim Anlegen ein neues mit den Defaults des Modells."""
+    return instance if instance is not None else model()
+
+
+def _value[T](attrs: Mapping[str, object], name: str, current: Callable[[], T], expected: type[T]) -> T:
     """
-    Wert aus der Eingabe; fehlt er, bei PATCH der bisherige und beim
-    Anlegen der Default des Modells (z.B. Weapon.min_range = 0).
+    Wert aus der Eingabe; fehlt er, current() -- der bisherige Wert bei PATCH
+    bzw. beim Anlegen der Default des Modells (z.B. Weapon.min_range = 0, aus
+    einem ungespeicherten Weapon()). current wird nur aufgerufen, wenn der Wert
+    fehlt: ein ungespeichertes Objekt hat noch keinen ForeignKey.
 
     expected ist der Typ des Feldes (int fuer die Zahlenfelder, das Model
     bei einem ForeignKey). Die Felder sind alle nicht nullable, und ein
     Pflichtfeld ohne Default steht beim Anlegen immer in attrs -- der Wert
     hat also immer diesen Typ; das assert macht das fuer mypy sichtbar.
     """
-    value: object
-    if name in attrs:
-        value = attrs[name]
-    elif serializer.instance is not None:
-        value = getattr(serializer.instance, name)
-    else:
-        # Meta.model ist in den Stubs nur ueber die TypeVar typisiert.
-        model: type[Model] = serializer.Meta.model
-        field: Field[object, object] | ForeignObjectRel | GenericForeignKey = model._meta.get_field(name)
-        # _value wird nur mit konkreten Modellfeldern aufgerufen, nie mit
-        # Rueckwaertsrelationen oder GenericForeignKeys.
-        assert isinstance(field, Field)
-        value = field.get_default()
+    value: object = attrs[name] if name in attrs else current()
     assert isinstance(value, expected)
     return value
+
+
+def _changed(instance: Model, name: str, new: object) -> bool:
+    """
+    Ob new vom gespeicherten Wert des Feldes name abweicht. Bei einem
+    ForeignKey zaehlt die id: value_from_object liefert sie, ohne das
+    verknuepfte Objekt zu laden.
+    """
+    field: Field[object, object] | ForeignObjectRel | GenericForeignKey = instance._meta.get_field(name)
+    # immutable_fields nennt nur konkrete Modellfelder, nie Rueckwaertsrelationen
+    # oder GenericForeignKeys.
+    assert isinstance(field, Field)
+    stored: object = field.value_from_object(instance)
+    return (new.pk if isinstance(new, Model) else new) != stored
 
 
 class _CatalogAdminSerializer(serializers.ModelSerializer):
@@ -73,7 +77,7 @@ class _CatalogAdminSerializer(serializers.ModelSerializer):
             return attrs
         field: str
         for field in self.immutable_fields:
-            if field in attrs and attrs[field] != getattr(self.instance, field):
+            if field in attrs and _changed(self.instance, field, attrs[field]):
                 raise serializers.ValidationError(
                     {field: "Kann nach dem Anlegen nicht mehr geaendert werden."}
                 )

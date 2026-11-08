@@ -137,6 +137,19 @@ scripts/lizard.sh
 Alle vier sollen ohne Befund durchgehen. Es gibt noch keine CI und keine
 pre-commit-Hooks: die Pruefungen werden vor dem Commit von Hand ausgefuehrt.
 
+### Stil: Google Python Style Guide
+
+Der Python-Code orientiert sich am
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html),
+mit denselben bewussten Abweichungen wie im Backend (siehe dort, Abschnitt
+"Stil: Google Python Style Guide"): Zeilenlaenge 120; Importe einzelner Namen
+erlaubt (`from instances.domain.game_files import cancel_game`), aber immer
+absolut; Docstrings keine Pflicht (weder fuer Module noch fuer Funktionen, ohne
+`Args:`/`Returns:`-Abschnitte); Kommentare deutsch; Type Hints auch fuer lokale
+Variablen und `Any` nur mit Grund; und wo Django, DRF oder unittest Namen
+vorgeben, gelten diese. Die Werkzeuge pruefen davon nur einen Teil; der Rest
+ist Sache des Reviews.
+
 ### Typpruefung mit mypy
 
 Konfiguration: [`mypy.ini`](mypy.ini), mit den Plugins von `django-stubs` und

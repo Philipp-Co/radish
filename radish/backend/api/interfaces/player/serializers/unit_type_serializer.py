@@ -4,9 +4,8 @@
 
 from rest_framework import serializers
 
-from ....models import UnitType
-
-from .entity_profile_serializer import EntityProfileSerializer
+from api.interfaces.player.serializers.entity_profile_serializer import EntityProfileSerializer
+from api.models import UnitType
 
 
 class UnitTypeSerializer(serializers.ModelSerializer):

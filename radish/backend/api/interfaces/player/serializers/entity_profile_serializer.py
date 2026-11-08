@@ -4,7 +4,7 @@
 
 from rest_framework import serializers
 
-from ....models import EntityProfile
+from api.models import EntityProfile
 
 
 class EntityProfileSerializer(serializers.ModelSerializer):

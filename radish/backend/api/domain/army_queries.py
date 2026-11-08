@@ -1,8 +1,7 @@
 from django.db import models
-
 from django.db.models import QuerySet
 
-from ..models import Army, Unit, UnitEntity, UnitEntityEquipment, UnitEntityWeapon
+from api.models import Army, Unit, UnitEntity, UnitEntityEquipment, UnitEntityWeapon
 
 
 def armies_with_costs() -> QuerySet[Army]:

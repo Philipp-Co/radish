@@ -2,7 +2,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
-from ...auth.roles.realm_roles import _realm_roles
+from api.interfaces.auth.roles.realm_roles import _realm_roles
 
 
 class HasAdminRole(BasePermission):
