@@ -93,6 +93,9 @@ pip install -r requirements.txt
 python manage.py runserver
 ```
 
+Fuer die Werkzeuge aus [Code-Qualitaet](#code-qualitaet) statt
+`requirements.txt` die `requirements-dev.txt` installieren.
+
 Danach ist die Instanz-API unter <http://localhost:8000/api/> erreichbar. Eine
 Admin-Oberflaeche gibt es nicht: game-server hat keine eigenen Models, und die
 API ruft nur das Backend auf.
@@ -114,3 +117,60 @@ Danach ist die Instanz-API unter <http://localhost:8090/api/> erreichbar
 Image laeuft im Produktionsmodus (`DJANGO_DEBUG=0`, gunicorn statt
 `runserver`) und braucht `DJANGO_SECRET_KEY`; Compose setzt dafuer einen
 Entwicklungswert.
+
+## Code-Qualitaet
+
+Wie im Backend (siehe [`radish/backend/README.md`](../backend/README.md),
+Abschnitt "Code-Qualität") pruefen neben den Tests drei Werkzeuge den Code,
+mit denselben Regeln. Sie stehen in `requirements-dev.txt`, das
+`requirements.txt` einbindet; das Image installiert nur `requirements.txt`.
+
+```bash
+pip install -r requirements-dev.txt
+python manage.py test instances
+mypy config instances
+pylint config instances
+scripts/lizard.sh
+```
+
+Alle vier sollen ohne Befund durchgehen. Es gibt noch keine CI und keine
+pre-commit-Hooks: die Pruefungen werden vor dem Commit von Hand ausgefuehrt.
+
+### Typpruefung mit mypy
+
+Konfiguration: [`mypy.ini`](mypy.ini), mit den Plugins von `django-stubs` und
+`djangorestframework-stubs`. Geprueft wird gegen Python 3.12, die Version des
+Images (`docker/game-server/Dockerfile`).
+
+- **Strikt:** jede Funktion hat vollstaendige Type Hints fuer Parameter und
+  Rueckgabe.
+- **Lokale Variablen** sind ebenfalls annotiert; Variablen von Schleifen,
+  `with` und Tuple-Zuweisungen werden dafuer in einer eigenen Zeile davor
+  deklariert (`code: str` vor `for code in codes:`). Ausgenommen sind nur
+  Comprehension-Variablen, `except ... as e` und Lambda-Parameter. mypy kann
+  das nicht erzwingen -- es ist eine Konvention, die beim Review geprueft wird.
+- **Kein `Any` ohne Grund:** strukturierte Daten bekommen einen `TypedDict`
+  (etwa `GameStartFile` fuer `spielstart.json`), Pruefungen, die einen Typ
+  sicherstellen, einen `TypeGuard` (`valid_access_codes`). `cast(...)` und
+  `# type: ignore[...]` nur mit Kommentar, warum.
+
+### Statische Analyse mit pylint
+
+Konfiguration: [`.pylintrc`](.pylintrc), mit `pylint-django`.
+
+- Zeilenlaenge hoechstens **120** Zeichen, Docstrings sind keine Pflicht.
+- Abgeschaltet, weil es DRF-Muster sind: `abstract-method` und
+  `too-many-ancestors`.
+- Alles andere ist an. Ausnahmen an einzelnen Stellen stehen als
+  `# pylint: disable-next=<meldung>` (bzw. `disable=` oben in der Datei) mit
+  einer Begruendung in der Zeile darueber -- etwa fuer die Mock-Parameter der
+  `@mock.patch`-Dekoratoren in `instances/tests.py`.
+
+### Komplexitaet mit lizard
+
+Aufruf und Grenzwerte: [`scripts/lizard.sh`](scripts/lizard.sh); lizard hat
+keine Konfigurationsdatei. Je Funktion hoechstens **CCN 5**, **500 Zeilen** und
+**6 Parameter**, keine Erweiterungen, Migrationen ausgenommen. Wird eine
+Funktion zu komplex, wird sie in kleine Pruef- oder Hilfsfunktionen
+aufgeteilt (z.B. `_start_request_error` mit der Tabelle `_START_CHECKS`), ohne
+das Verhalten zu aendern.

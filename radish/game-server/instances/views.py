@@ -44,12 +44,15 @@ import os
 import re
 import signal
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import TextIO, TypedDict, TypeGuard, cast
 
 from django.conf import settings
 from django.http import Http404
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -68,8 +71,9 @@ _ACCESS_CODE = re.compile(r"^[0-9a-fA-F]{1,16}$")
 # eine Queue und weckt zucchini -- das ist sofort erledigt.
 ADMIN_CLIENT_TIMEOUT_SECONDS = 5
 
-# Instanznamen, wie supervisord.conf sie vergibt (z.B. "game-instance-1"). Der Name wird Teil eines Pfads -- alles andere, etwa
-# "../", wird abgewiesen, bevor er das tut.
+# Instanznamen, wie supervisord.conf sie vergibt (z.B. "game-instance-1"). Der
+# Name wird Teil eines Pfads -- alles andere, etwa "../", wird abgewiesen,
+# bevor er das tut.
 _INSTANCE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -81,17 +85,35 @@ class WhitelistError(Exception):
     """zucchini_admin_client hat einen Code nicht ein- oder austragen koennen."""
 
 
-def valid_access_codes(codes):
-    """Genau zwei verschiedene Codes, je 1-16 Hexziffern und nicht 0."""
-    if not isinstance(codes, list) or len(codes) != 2:
-        return False
-    if not all(isinstance(code, str) and _ACCESS_CODE.match(code) for code in codes):
-        return False
-    values = [int(code, 16) for code in codes]
+class GameStartFile(TypedDict):
+    """Was in spielstart.json landet: die Spieldaten des Backends ohne die Codes."""
+
+    spieldaten: list[object]
+    gelaende: list[object]
+
+
+def _is_access_code(code: object) -> bool:
+    """Ein Code: 1-16 Hexziffern."""
+    return isinstance(code, str) and _ACCESS_CODE.match(code) is not None
+
+
+def _distinct_and_nonzero(codes: list[str]) -> bool:
+    """Keiner ist 0 (ein freier Platz in der Whitelist), und beide sind verschieden."""
+    values: list[int] = [int(code, 16) for code in codes]
     return 0 not in values and values[0] != values[1]
 
 
-def _whitelist(name, command, code):
+def valid_access_codes(codes: object) -> TypeGuard[list[str]]:
+    """Genau zwei verschiedene Codes, je 1-16 Hexziffern und nicht 0."""
+    return (
+        isinstance(codes, list)
+        and len(codes) == 2
+        and all(_is_access_code(code) for code in codes)
+        and _distinct_and_nonzero(codes)
+    )
+
+
+def _whitelist(name: str, command: str, code: str) -> None:
     """
     Ruft zucchini_admin_client mit "whitelist-add" oder "whitelist-remove" fuer
     die Zucchini-Instanz "name" auf.
@@ -107,59 +129,79 @@ def _whitelist(name, command, code):
         raise WhitelistError(f"{command} fehlgeschlagen: {exc}") from exc
 
 
-def _revoke_access(name, directory):
+def _load_access_codes(access_file: Path) -> list[str] | None:
+    """
+    Die Codes aus zugang.json; None, wenn es nichts auszutragen gibt. Eine
+    unlesbare Datei wird verworfen, ein Inhalt, der keine Liste ist, gilt als
+    leere Liste.
+    """
+    try:
+        codes: object = json.loads(access_file.read_text())
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        logger.warning("%s ist unlesbar und wird verworfen", access_file)
+        access_file.unlink(missing_ok=True)
+        return None
+    # zugang.json schreibt nur _grant_access, mit Codes, die valid_access_codes
+    # geprueft hat -- eine Liste darin enthaelt also Strings.
+    return cast(list[str], codes) if isinstance(codes, list) else []
+
+
+def _remove_codes(name: str, codes: list[str]) -> bool:
+    """Traegt die Codes aus der Whitelist aus; True, wenn alle entfernt sind."""
+    failed: bool = False
+    code: str
+    for code in codes:
+        try:
+            _whitelist(name, "whitelist-remove", code)
+        except WhitelistError as exc:
+            logger.warning("Code nicht aus der Whitelist entfernt: %s", exc)
+            failed = True
+    return not failed
+
+
+def _revoke_access(name: str, directory: Path) -> None:
     """
     Traegt die Codes des vorigen Spiels aus der Whitelist aus und loescht
     zugang.json. Fehler werden nur geloggt: ein Code, der stehen bleibt, gehoert
     zu einem Spiel, das es nicht mehr gibt -- und wird beim naechsten Aufraeumen
     erneut versucht, solange zugang.json bleibt.
     """
-    access_file = directory / ACCESS_FILE
-    try:
-        codes = json.loads(access_file.read_text())
-    except FileNotFoundError:
+    access_file: Path = directory / ACCESS_FILE
+    codes: list[str] | None = _load_access_codes(access_file)
+    if codes is None:
         return
-    except ValueError:
-        logger.warning("%s ist unlesbar und wird verworfen", access_file)
-        access_file.unlink(missing_ok=True)
-        return
-
-    failed = False
-    for code in codes if isinstance(codes, list) else []:
-        try:
-            _whitelist(name, "whitelist-remove", code)
-        except WhitelistError as exc:
-            logger.warning("Code nicht aus der Whitelist entfernt: %s", exc)
-            failed = True
-    if not failed:
+    if _remove_codes(name, codes):
         access_file.unlink(missing_ok=True)
 
 
-def _grant_access(name, directory, codes):
+def _grant_access(name: str, directory: Path, codes: list[str]) -> None:
     """
     Traegt die Codes in die Whitelist ein und merkt sie sich in zugang.json --
     vor dem ersten Eintrag, damit auch ein halb gelungener Eintrag wieder
     ausgetragen werden kann. Wirft WhitelistError.
     """
     (directory / ACCESS_FILE).write_text(json.dumps(codes))
+    code: str
     for code in codes:
         _whitelist(name, "whitelist-add", code)
 
 
-def _instance_dir(name):
+def _instance_dir(name: str) -> Path:
     if not _INSTANCE_NAME.match(name):
         raise Http404("Unbekannte Instanz.")
     return Path(settings.RADISH_GAME_DATA_DIR) / name
 
 
-def _notify(directory):
+def _notify(directory: Path) -> None:
     """
     Schickt SIGUSR1 an radish_server: die Spielstart-Datei hat sich
     geaendert. Wirft InstanceNotRunning, wenn es keinen laufenden Prozess
     dazu gibt.
     """
     try:
-        pid = int((directory / PID_FILE).read_text().strip())
+        pid: int = int((directory / PID_FILE).read_text().strip())
         os.kill(pid, signal.SIGUSR1)
     except FileNotFoundError as exc:
         raise InstanceNotRunning("keine PID-Datei -- radish_server laeuft nicht") from exc
@@ -169,7 +211,7 @@ def _notify(directory):
         raise InstanceNotRunning(f"kein Prozess mit PID {pid}") from exc
 
 
-def _prepare_game(name, spieldaten, codes):
+def _prepare_game(name: str, spieldaten: GameStartFile, codes: list[str]) -> None:
     """
     Setzt das Spiel auf der Instanz "name" auf: tauscht die Zugangscodes in der
     Whitelist gegen "codes" aus, legt spieldaten (das Dokument des Backends nach
@@ -182,34 +224,63 @@ def _prepare_game(name, spieldaten, codes):
     zucchini die Codes nicht nimmt, und InstanceNotRunning, wenn niemand zu
     benachrichtigen ist.
     """
-    directory = _instance_dir(name)
+    directory: Path = _instance_dir(name)
     if not directory.is_dir():
         raise OSError(f"kein Verzeichnis fuer Instanz '{name}'")
     _revoke_access(name, directory)
     _grant_access(name, directory, codes)
 
-    target = directory / GAME_START_FILE
-    temporary = directory / (GAME_START_FILE + ".tmp")
+    target: Path = directory / GAME_START_FILE
+    temporary: Path = directory / (GAME_START_FILE + ".tmp")
+    file: TextIO
     with open(temporary, "w", encoding="utf-8") as file:
         json.dump(spieldaten, file, ensure_ascii=False)
     os.replace(temporary, target)
     _notify(directory)
 
 
-def _cancel_game(name):
+def _cancel_game(name: str) -> None:
     """
     Loescht die Spielstart-Datei der Instanz "name" und benachrichtigt
     radish_server -- eine fehlende Datei heisst fuer ihn: kein Spiel mehr.
     Fehler werden nur geloggt, wie beim Abbruch im Backend: das Spiel ist
     dort ohnehin schon beendet.
     """
-    directory = _instance_dir(name)
+    directory: Path = _instance_dir(name)
     _revoke_access(name, directory)
     try:
         (directory / GAME_START_FILE).unlink(missing_ok=True)
         _notify(directory)
     except (OSError, InstanceNotRunning) as exc:
         logger.warning("Abbruch auf Instanz '%s' nicht vollstaendig: %s", name, exc)
+
+
+def _is_two_players(value: object) -> bool:
+    return isinstance(value, list) and len(value) == 2
+
+
+def _is_terrain_list(value: object) -> bool:
+    return isinstance(value, list) and bool(value)
+
+
+# Die grobe Form eines Spielstarts, in dieser Reihenfolge geprueft: Schluessel,
+# Pruefung und die Meldung, wenn sie fehlschlaegt.
+_START_CHECKS: list[tuple[str, Callable[[object], bool], str]] = [
+    ("spieldaten", _is_two_players, "spieldaten fehlt oder enthaelt nicht genau zwei Spieler."),
+    ("gelaende", _is_terrain_list, "gelaende fehlt oder ist keine Liste von Tile-Typen."),
+    ("zugangscodes", valid_access_codes, "zugangscodes fehlt oder ist nicht zwei verschiedene Hex-Codes."),
+]
+
+
+def _start_request_error(data: dict[str, object]) -> Response | None:
+    """Die Antwort 400 fuer die erste fehlgeschlagene Pruefung, sonst None."""
+    key: str
+    check: Callable[[object], bool]
+    message: str
+    for key, check, message in _START_CHECKS:
+        if not check(data.get(key)):
+            return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
+    return None
 
 
 class InstanceAPIView(APIView):
@@ -233,7 +304,7 @@ class GameStartView(InstanceAPIView):
     Startet ein Spiel auf einer Instanz, d.h. bereitet sie dafuer vor.
     """
 
-    def post(self, request, name):
+    def post(self, request: Request, name: str) -> Response:
         """
         Setzt das Spiel auf der Instanz "name" auf und antwortet erst, wenn
         es bereit ist. Erwartet die Spieldaten nach radish/game/schema/
@@ -244,25 +315,14 @@ class GameStartView(InstanceAPIView):
         "gelaende", zwei verschiedene Codes) -- dass das Dokument dem Schema
         genuegt, stellt das Backend sicher (siehe dortige Tests).
         """
-        data = request.data if isinstance(request.data, dict) else {}
-        spieler = data.get("spieldaten")
-        if not isinstance(spieler, list) or len(spieler) != 2:
-            return Response(
-                {"detail": "spieldaten fehlt oder enthaelt nicht genau zwei Spieler."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        gelaende = data.get("gelaende")
-        if not isinstance(gelaende, list) or not gelaende:
-            return Response(
-                {"detail": "gelaende fehlt oder ist keine Liste von Tile-Typen."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        codes = data.get("zugangscodes")
-        if not valid_access_codes(codes):
-            return Response(
-                {"detail": "zugangscodes fehlt oder ist nicht zwei verschiedene Hex-Codes."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        data: dict[str, object] = request.data if isinstance(request.data, dict) else {}
+        error: Response | None = _start_request_error(data)
+        if error is not None:
+            return error
+        # Die Form ist geprueft (_START_CHECKS): zwei Listen und zwei Codes.
+        spieler: list[object] = cast(list[object], data["spieldaten"])
+        gelaende: list[object] = cast(list[object], data["gelaende"])
+        codes: list[str] = cast(list[str], data["zugangscodes"])
 
         try:
             # In die Datei nur die Spieldaten und das Gelaende -- die Codes
@@ -281,7 +341,7 @@ class GameCancelView(InstanceAPIView):
     Bricht das Spiel auf einer Instanz ab.
     """
 
-    def post(self, request, name):
+    def post(self, request: Request, name: str) -> Response:
         """
         Bricht das Spiel der Instanz "name" ab -- aufgerufen, wenn ein
         Spieler ein gestartetes Spiel verlaesst (siehe _cancel_game). Immer

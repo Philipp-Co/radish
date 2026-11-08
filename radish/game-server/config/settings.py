@@ -99,7 +99,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Aufrufen festhalten muss, liegt als Datei bei der Instanz (siehe
 # RADISH_GAME_DATA_DIR unten). Deshalb auch kein `migrate` beim Start
 # (docker/game-server/entrypoint.sh).
-DATABASES = {}
+DATABASES: dict[str, dict[str, object]] = {}
 
 
 # Internationalization
