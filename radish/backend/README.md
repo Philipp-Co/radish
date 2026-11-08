@@ -30,7 +30,10 @@ api/
   management/, fixtures/ seed-Kommando und Dump der Kataloge
   tests/                 Tests, gegliedert wie interfaces/, domain/, models/
 config/                  Settings, URLs, ASGI
-web/                     Auslieferung von Frontend und Wasm-Client
+web/                     Auslieferung von Frontend und Wasm-Client, gegliedert wie api/:
+  interfaces/            URLs, die drei Views und die gemeinsame Auslieferung (serving.py)
+  domain/, models/       angelegt, aber leer -- web hat keine Logik und keine Tabellen
+  tests/                 Tests, gegliedert wie interfaces/
 scripts/                 Hilfsskripte (lizard.sh)
 ```
 
@@ -58,13 +61,14 @@ docker compose up -d backend-db
 ## Tests
 
 ```bash
-python manage.py test api
+python manage.py test api web
 ```
 
 Die Tests laufen gegen eine eigene Testdatenbank in derselben Postgres-Instanz;
 Keycloak und die Spielinstanzen werden nicht gebraucht (Tokens und Aufrufe an die
-Instanzen sind in den Tests ersetzt). Die Tests unter `web/` brauchen ein gebautes
-Frontend und schlagen ohne es mit 404 fehl.
+Instanzen sind in den Tests ersetzt). Die Tests unter `web/` brauchen keine
+Datenbank und keinen Build: Frontend- und Wasm-Verzeichnis zeigen dort auf
+temporäre Verzeichnisse mit eigenen Testdateien.
 
 ## Code-Qualität
 
@@ -77,7 +81,7 @@ keine pre-commit-Hooks: die Prüfungen werden vor dem Commit von Hand
 ausgeführt.
 
 ```bash
-python manage.py test api
+python manage.py test api web
 mypy api config web
 pylint api config web
 scripts/lizard.sh
@@ -196,4 +200,6 @@ Eine neue Regel ist eine neue Testmethode in dieser Datei.
 Die Tests unter `api/tests/` sind wie der Code gegliedert und folgen denselben
 Regeln (Type Hints, pylint, lizard). Gemeinsame Helfer, Testkatalog und
 Basisklassen liegen in `api/tests/helpers.py`, `army_test_case.py` und
-`game_test_case.py`.
+`game_test_case.py`. Die Tests
+unter `web/tests/` sind ebenso gegliedert; ihre Grundlage ist
+`ServingTestCase` in `web/tests/helpers.py`.

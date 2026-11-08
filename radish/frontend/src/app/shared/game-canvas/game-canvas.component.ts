@@ -205,7 +205,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * radish/client/publish_assets.cmake); manifest.json bildet den Pfad, unter
    * dem der C-Code sie oeffnet ("/assets/..."), auf diesen Namen ab. Weil ein
    * geaendertes Bild einen neuen Namen bekommt, darf der Browser jede Datei
-   * dauerhaft cachen (radish/backend/web/views.py) -- nur das Manifest wird
+   * dauerhaft cachen (radish/backend/web/interfaces/serving.py) -- nur das Manifest wird
    * jedes Mal neu geprueft.
    */
   private async loadAssets(): Promise<Array<[string, Uint8Array]>> {

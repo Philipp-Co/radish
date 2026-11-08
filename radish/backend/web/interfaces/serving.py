@@ -84,7 +84,7 @@ def _set_cache_control(response: HttpResponseBase, filename: str) -> None:
         patch_cache_control(response, no_cache=True)
 
 
-def _serve(request: HttpRequest, filename: str, document_root: Path) -> HttpResponseBase:
+def serve_file(request: HttpRequest, filename: str, document_root: Path) -> HttpResponseBase:
     """
     Wie serve(), bevorzugt aber eine vorkomprimierte "<filename>.gz" daneben
     (im Docker-Image beim Build erzeugt, siehe docker/backend/Dockerfile).
@@ -107,40 +107,11 @@ def _serve(request: HttpRequest, filename: str, document_root: Path) -> HttpResp
     return response
 
 
-def index(request: HttpRequest) -> HttpResponseBase:
-    """Liefert das gebaute Angular-index.html unter "/"."""
-    return _serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
+def serve_frontend(request: HttpRequest, filename: str) -> HttpResponseBase:
+    """Eine Datei aus dem Angular-Build (FRONTEND_DIST_DIR)."""
+    return serve_file(request, filename, FRONTEND_DIST_DIR)
 
 
-def wasm_file(request: HttpRequest, filename: str) -> HttpResponseBase:
-    """
-    Liefert eine Datei aus radish/web/ (client.js, client.wasm, ggf.
-    weitere spaeter dazukommende Assets) unter wasm/<filename> -- passend zu
-    environment.wasmBaseUrl im Frontend (radish/frontend/src/environments/).
-
-    django.views.static.serve schuetzt selbst gegen Verzeichnis-Ausbrueche
-    (ueber django.utils._os.safe_join) und liefert 404 bei unbekannten oder
-    ausserhalb von WASM_DIR liegenden Pfaden.
-    """
-    return _serve(request, filename, document_root=WASM_DIR)
-
-
-def static_file(request: HttpRequest, filename: str) -> HttpResponseBase:
-    """
-    Liefert eine Datei aus dem Angular-Build (JS-/CSS-Bundles mit Hash im
-    Namen, siehe angular.json "outputHashing": "all") unter ihrem eigenen
-    Pfad -- passend zu den von Angular selbst generierten Referenzen in
-    index.html, ohne fuer jede neue Datei eine eigene URL eintragen zu
-    muessen.
-
-    Existiert die angefragte Datei nicht, wird stattdessen index.html
-    ausgeliefert (SPA-Fallback): Angular routet clientseitig, pfadbasiert
-    (kein Hash-Routing, siehe app.routes.ts) -- ein direkter Aufruf oder
-    Reload von z.B. "/games" waere sonst ein 404, obwohl die Route in der
-    App existiert. Entspricht "try_files $uri $uri/ /index.html;" in
-    docker/web/default.conf.
-    """
-    try:
-        return _serve(request, filename, document_root=FRONTEND_DIST_DIR)
-    except Http404:
-        return _serve(request, "index.html", document_root=FRONTEND_DIST_DIR)
+def serve_wasm(request: HttpRequest, filename: str) -> HttpResponseBase:
+    """Eine Datei des Wasm-Clients (WASM_DIR)."""
+    return serve_file(request, filename, WASM_DIR)

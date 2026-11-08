@@ -62,7 +62,7 @@ npm run build
 Baut nach `dist/radish-frontend/browser/`. `docker/backend/Dockerfile`
 erledigt das automatisch als Teil von `docker compose up --build backend`
 (ein eigener Node-Stage baut das Frontend, das Python-Image kopiert das
-Ergebnis mit hinein -- siehe dort und `radish/backend/web/views.py`).
+Ergebnis mit hinein -- siehe dort und `radish/backend/web/interfaces/serving.py`).
 
 ## Struktur
 

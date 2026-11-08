@@ -25,12 +25,12 @@ urlpatterns = [
     # Die von collectstatic gesammelten Static-Files (Admin-CSS/-JS, siehe
     # STATIC_ROOT in settings.py). Mit DEBUG liefert sie die staticfiles-App
     # schon vorher aus, ohne DEBUG (Docker-Image) nur dieser Eintrag -- sonst
-    # landete "/static/..." im Catch-all von web.urls und bekaeme index.html.
+    # landete "/static/..." im Catch-all von web.interfaces.urls und bekaeme index.html.
     # lstrip: Django normalisiert STATIC_URL zu "/static/", Routen beginnen
     # aber ohne "/".
     path(f'{settings.STATIC_URL.lstrip("/")}<path:path>', serve, {'document_root': settings.STATIC_ROOT}),
-    # Zuletzt eingehaengt: web.urls enthaelt einen Catch-all
-    # ("<path:filename>", siehe web/urls.py), der sonst admin/ und api/
+    # Zuletzt eingehaengt: web.interfaces.urls enthaelt einen Catch-all
+    # ("<path:filename>", siehe web/interfaces/urls.py), der sonst admin/ und api/
     # verdecken wuerde, wenn er vorher stuende.
-    path('', include('web.urls')),
+    path('', include('web.interfaces.urls')),
 ]

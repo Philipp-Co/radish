@@ -119,7 +119,7 @@ ENV DJANGO_DEBUG=0
 # die Settings, braucht aber keinen echten Schluessel.
 RUN DJANGO_DEBUG=1 python manage.py collectstatic --noinput
 
-# Wasm-Client fuer die Django-App "web" (siehe radish/backend/web/views.py,
+# Wasm-Client fuer die Django-App "web" (siehe radish/backend/web/interfaces/serving.py,
 # WASM_DIR = Geschwisterverzeichnis von BASE_DIR): lokal liegt radish/web/
 # neben radish/backend/, im Image muss das also parallel zu /app nach /web --
 # sonst laeuft views.wasm_file() im Container ins Leere (404), obwohl es
@@ -128,12 +128,12 @@ RUN DJANGO_DEBUG=1 python manage.py collectstatic --noinput
 COPY --from=wasm-builder /src/radish/web/ /web/
 
 # Gebautes Angular-Frontend (siehe Stage "frontend-builder" oben) --
-# radish/backend/web/views.py erwartet es unter FRONTEND_DIST_DIR =
+# radish/backend/web/interfaces/serving.py erwartet es unter FRONTEND_DIST_DIR =
 # Geschwisterverzeichnis von BASE_DIR, genau wie /web/ oben.
 COPY --from=frontend-builder /frontend-src/dist/radish-frontend/browser /frontend/dist/radish-frontend/browser
 
 # Je eine vorkomprimierte .gz-Variante neben jede Text- und Wasm-Datei --
-# radish/backend/web/views.py liefert sie aus, wenn der Browser gzip annimmt.
+# radish/backend/web/interfaces/serving.py liefert sie aus, wenn der Browser gzip annimmt.
 # Einmal hier mit -9 statt bei jeder Anfrage neu; -k behaelt das Original fuer
 # Clients ohne gzip. PNGs sind schon komprimiert und bleiben aussen vor; die
 # TrueType-Schrift (/web/assets/) dagegen nicht.

@@ -6,7 +6,7 @@ from django.apps import AppConfig
 class WebConfig(AppConfig):
     """
     Liefert das WASM-Web-Frontend aus radish/web/ direkt aus Django aus
-    (siehe web/views.py) -- ohne externe Abhaengigkeit wie whitenoise,
+    (siehe web/interfaces/) -- ohne externe Abhaengigkeit wie whitenoise,
     nur mit Djangos eigenem django.views.static.serve.
     """
 

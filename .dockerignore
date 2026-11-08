@@ -38,6 +38,7 @@ radish/game-server/.venv/
 # Die Tests von Backend und game-server laufen nur ausserhalb der Images.
 radish/backend/**/tests.py
 radish/backend/api/tests/
+radish/backend/web/tests/
 radish/game-server/**/tests.py
 radish/game-server/instances/tests/
 
