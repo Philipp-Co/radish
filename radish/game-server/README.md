@@ -123,7 +123,8 @@ Entwicklungswert.
 
 Wie im Backend (siehe [`radish/backend/README.md`](../backend/README.md),
 Abschnitt "Code-Qualität") pruefen neben den Tests drei Werkzeuge den Code,
-mit denselben Regeln. Sie stehen in `requirements-dev.txt`, das
+mit denselben Regeln; dazu kommen Architekturtests, die mit den uebrigen Tests
+laufen (siehe unten). Sie stehen in `requirements-dev.txt`, das
 `requirements.txt` einbindet; das Image installiert nur `requirements.txt`.
 
 ```bash
@@ -188,3 +189,12 @@ keine Konfigurationsdatei. Je Funktion hoechstens **CCN 5**, **500 Zeilen** und
 Funktion zu komplex, wird sie in kleine Pruef- oder Hilfsfunktionen
 aufgeteilt (z.B. `_start_request_error` mit der Tabelle `_START_CHECKS`), ohne
 das Verhalten zu aendern.
+
+### Architektur mit PyTestArch
+
+Die Architekturregeln stehen als Tests in
+[`instances/tests/architecture/test_architecture.py`](instances/tests/architecture/test_architecture.py)
+und laufen mit `python manage.py test instances` -- wie im Backend mit
+[PyTestArch](https://github.com/zyskarch/pytestarch), ohne pytest. Regeln:
+`models` importiert weder `domain` noch `interfaces`, und `domain` importiert
+nicht `interfaces` (die Endpunkte rufen die Logik auf, nicht umgekehrt).

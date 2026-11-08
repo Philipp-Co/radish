@@ -24,6 +24,7 @@ api/
   domain/                Geschäftslogik ohne HTTP
     servers/             Aufrufe an die Spielinstanzen, Zugangscodes
     army_queries.py      Armeen samt Kosten laden
+    games.py             Ablauf eines Spiels, den mehrere Schnittstellen teilen
   models/                Datenbankmodelle, eine Datei je Model
   migrations/            Migrationen (generiert)
   management/, fixtures/ seed-Kommando und Dump der Kataloge
@@ -68,7 +69,9 @@ Frontend und schlagen ohne es mit 404 fehl.
 ## Code-Qualität
 
 Neben den Tests prüfen drei Werkzeuge den Code, jedes mit einer eigenen,
-versionierten Konfiguration. Alle drei laufen aus `radish/backend/` über
+versionierten Konfiguration; dazu kommen Architekturtests, die mit den übrigen
+Tests laufen (siehe [Architektur mit PyTestArch](#architektur-mit-pytestarch)).
+Alle drei laufen aus `radish/backend/` über
 `api config web` und sollen ohne Befund durchgehen. Es gibt noch keine CI und
 keine pre-commit-Hooks: die Prüfungen werden vor dem Commit von Hand
 ausgeführt.
@@ -168,6 +171,25 @@ Wird eine Funktion zu komplex, wird sie aufgeteilt – typischerweise in kleine
 Prüf- oder Hilfsfunktionen (`_check_joinable`, `_validate_weapon`, ...), ohne das
 Verhalten zu ändern. Ausnahmen per `# #lizard forgives` sind möglich, werden
 bisher aber nicht genutzt.
+
+### Architektur mit PyTestArch
+
+Die Architekturregeln stehen als Tests in
+[`api/tests/architecture/test_architecture.py`](api/tests/architecture/test_architecture.py)
+und laufen mit `python manage.py test api` – nach dem Vorbild von ArchUnit für
+Java, mit [PyTestArch](https://github.com/zyskarch/pytestarch). Trotz des Namens
+braucht es kein pytest: eine Regel wirft bei einem Verstoß ein `AssertionError`,
+das unittest als fehlgeschlagenen Test meldet, mit dem verbotenen Import in der
+Meldung.
+
+| Regel | Grund |
+|---|---|
+| `models` importiert weder `domain` noch `interfaces` | Schichten: nach unten importieren ist erlaubt, nach oben nicht |
+| `domain` importiert nicht `interfaces` | Geschäftslogik kennt kein HTTP |
+| `interfaces.admin`, `.player` und `.servers` importieren einander nicht | die Verantwortungsbereiche bleiben getrennt; was mehrere brauchen, gehört nach `domain/` (z.B. `games.end_started_game`) |
+| `interfaces.auth` importiert keinen dieser Bereiche | alle Bereiche nutzen auth, nicht umgekehrt |
+
+Eine neue Regel ist eine neue Testmethode in dieser Datei.
 
 ### Tests
 

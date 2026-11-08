@@ -25,11 +25,11 @@ from rest_framework.views import APIView
 from api.interfaces.admin.roles.has_admin_role import HasAdminRole
 from api.interfaces.admin.serializers.admin_entity_profile_serializer import AdminEntityProfileSerializer
 from api.interfaces.admin.serializers.admin_equipment_serializer import AdminEquipmentSerializer
+from api.interfaces.admin.serializers.admin_game_server_serializer import AdminGameServerSerializer
 from api.interfaces.admin.serializers.admin_species_serializer import AdminSpeciesSerializer
 from api.interfaces.admin.serializers.admin_terrain_type_serializer import AdminTerrainTypeSerializer
 from api.interfaces.admin.serializers.admin_unit_type_serializer import AdminUnitTypeSerializer
 from api.interfaces.admin.serializers.admin_weapon_serializer import AdminWeaponSerializer
-from api.interfaces.servers.serializers.game_server_serializer import GameServerSerializer
 from api.models import (
     EntityProfile,
     Equipment,
@@ -59,7 +59,7 @@ class AdminServerListView(APIView):
 
     def get(self, request: Request) -> Response:
         servers: QuerySet[GameServer] = GameServer.objects.all().order_by("name")
-        serializer: GameServerSerializer = GameServerSerializer(servers, many=True)
+        serializer: AdminGameServerSerializer = AdminGameServerSerializer(servers, many=True)
         return Response({"servers": serializer.data})
 
 

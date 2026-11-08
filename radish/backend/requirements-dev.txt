@@ -16,6 +16,10 @@ types-jsonschema==4.26.0.20261006
 pylint==4.1.3
 pylint-django==2.8.0
 
+# Architekturregeln als Tests (wie ArchUnit fuer Java): welche Pakete welche
+# importieren duerfen. Laeuft unter unittest, siehe tests/architecture/.
+pytestarch==5.1.0
+
 # Komplexitaet je Funktion. lizard hat keine Konfigurationsdatei; Aufruf und
 # Grenzwerte stehen in scripts/lizard.sh.
 lizard==1.25.1

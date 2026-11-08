@@ -15,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.interfaces.player.views.client_views import end_started_game
+from api.domain.games import end_started_game
 from api.interfaces.servers.roles.has_server_role import HasServerRole
 from api.interfaces.servers.serializers.game_finished_serializer import GameFinishedData, GameFinishedSerializer
 from api.interfaces.servers.serializers.game_server_serializer import GameServerSerializer
@@ -158,7 +158,7 @@ class GameFinishedView(APIView):
     .game_start_request). "game-instance" ist der Name des Servers und muss
     zu dem in der URL passen.
 
-    Danach endet das Spiel wie beim Verlassen (client_views.end_started_game):
+    Danach endet das Spiel wie beim Verlassen (domain/games.end_started_game):
     das Game verschwindet, der Server wird frei, die Instanz verwirft das Spiel
     und die Zugangscodes. Das Ergebnis wird nicht aufbewahrt, nur ins Log
     geschrieben.

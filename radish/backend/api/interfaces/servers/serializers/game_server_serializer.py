@@ -1,3 +1,7 @@
+# Gleiche Felder wie die Admin-Serverliste (admin/serializers/
+# admin_game_server_serializer.py), bewusst getrennt.
+# pylint: disable=duplicate-code
+
 from rest_framework import serializers
 
 from api.models import GameServer

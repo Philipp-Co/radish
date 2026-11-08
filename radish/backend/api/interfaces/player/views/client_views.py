@@ -35,6 +35,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import Token
 
 from api.domain.army_queries import armies_with_costs
+from api.domain.games import end_started_game
 from api.domain.servers import access, instance_client
 from api.interfaces.player.roles.has_player_role import HasPlayerRole
 from api.interfaces.player.serializers.game_create_serializer import GameCreateSerializer
@@ -440,25 +441,6 @@ class CurrentGameView(APIView):
         # Der anfragende Spieler steckt schon im Spiel: Host oder zweiter Spieler.
         player: Player | None = game.host if game.host.user_id == user.id else game.second_player
         return Response({"game": GameDetailSerializer(game, context={"player": player}).data})
-
-
-def end_started_game(game: Game) -> None:
-    """
-    Beendet ein gestartetes Spiel fuer beide Spieler: das Game verschwindet
-    (Spieler und Armeen sind damit wieder frei), der Server wird frei, und
-    nach dem Commit entzieht die Instanz die Zugangscodes und verwirft das
-    Spiel (instance_client.cancel_game).
-
-    Der gemeinsame Weg fuer das Verlassen (LeaveGameView) und fuer das Ende,
-    das die Instanz meldet (server_views.GameFinishedView). Erwartet, in
-    einer Transaktion gerufen zu werden, die "game" gesperrt haelt
-    (select_for_update).
-    """
-    server: GameServer = game.server
-    game.delete()
-    server.is_occupied = False
-    server.save(update_fields=["is_occupied"])
-    transaction.on_commit(lambda: instance_client.cancel_game(server))
 
 
 def _leave_game(game: Game, player: Player) -> None:
