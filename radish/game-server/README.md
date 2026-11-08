@@ -55,7 +55,8 @@ beide Spieler (Keycloak-Name, Spieler-Kennung) mit ihren Armeen samt allen
 Katalogwerten -- die Instanz braucht keinen Zugriff aufs Backend.
 
 Django REST Framework, klassenbasierte Views in
-[`instances/views.py`](instances/views.py). `<name>` ist der Name der Instanz in
+[`instances/interfaces/`](instances/interfaces/), eine Datei je View; die
+Logik dahinter liegt in [`instances/domain/`](instances/domain/). `<name>` ist der Name der Instanz in
 diesem Container, wie `docker/game-server/supervisord.conf` ihn vergibt (z.B.
 `game-instance-1`) -- zugleich ihr Zucchini-Name. Das Backend kennt ihn als
 `GameServer.instance_name`; sein `GameServer.name` ist
@@ -164,7 +165,7 @@ Konfiguration: [`.pylintrc`](.pylintrc), mit `pylint-django`.
 - Alles andere ist an. Ausnahmen an einzelnen Stellen stehen als
   `# pylint: disable-next=<meldung>` (bzw. `disable=` oben in der Datei) mit
   einer Begruendung in der Zeile darueber -- etwa fuer die Mock-Parameter der
-  `@mock.patch`-Dekoratoren in `instances/tests.py`.
+  `@mock.patch`-Dekoratoren in `instances/tests/interfaces/`.
 
 ### Komplexitaet mit lizard
 

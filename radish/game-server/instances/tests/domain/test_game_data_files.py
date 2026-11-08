@@ -1,120 +1,16 @@
-# Die Mock-Parameter setzen die @mock.patch-Dekoratoren der Klassen in jeden
-# Test ein, auch dort, wo der Test sie nicht braucht.
-# pylint: disable=unused-argument
-
 import json
 import signal
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest import mock
 
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient, APISimpleTestCase
+from rest_framework.test import APISimpleTestCase
 
-from instances.views import GameStartFile
-
-# Was der DRF-Testclient zurueckgibt. Den Typ gibt es nur in den Stubs, zur
-# Laufzeit werden Annotationen lokaler Variablen nicht ausgewertet.
-if TYPE_CHECKING:
-    from rest_framework.response import _MonkeyPatchedResponse as TestResponse
-
-
-# Gekuerzt -- vollstaendig siehe radish/game/schema/spielstart.schema.json.
-SPIELDATEN: GameStartFile = {
-    "spieldaten": [
-        {"name": "test-user", "kennung": "aB3xK9pQ", "armee": {"name": "A"}},
-        {"name": "test-user-2", "kennung": "Zz1Yy2Xx", "armee": {"name": "B"}},
-    ],
-    "gelaende": [
-        {"typ": "forest", "bewegung": -1, "deckung": 2, "unbegehbar": False},
-    ],
-}
-
-# Was das Backend schickt: die Spieldaten und daneben die geheimen Codes.
-CODES: list[str] = ["1122334455667788", "99aabbccddeeff00"]
-START: dict[str, object] = {**SPIELDATEN, "zugangscodes": CODES}
-
-
-@mock.patch("instances.views._prepare_game")
-class GameStartViewTests(APISimpleTestCase):
-    def setUp(self) -> None:
-        self.url = reverse("instances:game-start", args=["game-instance-1"])
-
-    def test_post_prepares_game_and_reports_ready(self, prepare_game: mock.MagicMock) -> None:
-        response: TestResponse = self.client.post(self.url, START, format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"instance": "game-instance-1", "status": "ready"})
-        prepare_game.assert_called_once_with("game-instance-1", SPIELDATEN, CODES)
-
-    def test_failed_preparation_is_server_error(self, prepare_game: mock.MagicMock) -> None:
-        prepare_game.side_effect = OSError("Platte voll")
-        response: TestResponse = self.client.post(self.url, START, format="json")
-        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def test_post_without_spieldaten_is_rejected(self, prepare_game: mock.MagicMock) -> None:
-        response: TestResponse = self.client.post(self.url, {}, format="json")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        prepare_game.assert_not_called()
-
-    def test_post_without_valid_codes_is_rejected(self, prepare_game: mock.MagicMock) -> None:
-        codes: object
-        for codes in (None, [], CODES[:1], [CODES[0], CODES[0]], ["0", CODES[1]],
-                      ["kein-hex", CODES[1]], ["1" * 17, CODES[1]], [17, CODES[1]]):
-            request: dict[str, object] = dict(SPIELDATEN)
-            if codes is not None:
-                request["zugangscodes"] = codes
-            response: TestResponse = self.client.post(self.url, request, format="json")
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, codes)
-        prepare_game.assert_not_called()
-
-    def test_post_with_one_player_is_rejected(self, prepare_game: mock.MagicMock) -> None:
-        one: dict[str, object] = {**START, "spieldaten": SPIELDATEN["spieldaten"][:1]}
-        response: TestResponse = self.client.post(self.url, one, format="json")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_post_without_gelaende_is_rejected(self, prepare_game: mock.MagicMock) -> None:
-        gelaende: object
-        for gelaende in (None, [], {"forest": 1}):
-            request: dict[str, object] = {"spieldaten": SPIELDATEN["spieldaten"], "zugangscodes": CODES}
-            if gelaende is not None:
-                request["gelaende"] = gelaende
-            response: TestResponse = self.client.post(self.url, request, format="json")
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, gelaende)
-        prepare_game.assert_not_called()
-
-    def test_get_not_allowed(self, prepare_game: mock.MagicMock) -> None:
-        response: TestResponse = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def test_post_without_csrf_token(self, prepare_game: mock.MagicMock) -> None:
-        # Das Backend ruft ohne CSRF-Token auf (Server zu Server).
-        client: APIClient = APIClient(enforce_csrf_checks=True)
-        response: TestResponse = client.post(self.url, START, format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-
-@mock.patch("instances.views._cancel_game")
-class GameCancelViewTests(APISimpleTestCase):
-    def setUp(self) -> None:
-        self.url = reverse("instances:game-cancel", args=["game-instance-1"])
-
-    def test_post_no_content(self, cancel_game: mock.MagicMock) -> None:
-        response: TestResponse = self.client.post(self.url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        cancel_game.assert_called_once_with("game-instance-1")
-
-    def test_get_not_allowed(self, cancel_game: mock.MagicMock) -> None:
-        response: TestResponse = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def test_post_without_csrf_token(self, cancel_game: mock.MagicMock) -> None:
-        client: APIClient = APIClient(enforce_csrf_checks=True)
-        response: TestResponse = client.post(self.url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+from instances.tests.helpers import CODES, SPIELDATEN, START, TestResponse
 
 
 class GameDataFileTests(APISimpleTestCase):
@@ -137,11 +33,11 @@ class GameDataFileTests(APISimpleTestCase):
         self.start_url: str = reverse("instances:game-start", args=["game-instance-1"])
         self.cancel_url: str = reverse("instances:game-cancel", args=["game-instance-1"])
 
-        self.kill: mock.MagicMock = self.enterContext(mock.patch("instances.views.os.kill"))
+        self.kill: mock.MagicMock = self.enterContext(mock.patch("instances.domain.game_files.os.kill"))
 
         # Der Admin-Client von zucchini: nur seine Aufrufe zaehlen. Nicht
         # self.run -- das ist die Methode, mit der unittest den Test ausfuehrt.
-        self.admin_client: mock.MagicMock = self.enterContext(mock.patch("instances.views.subprocess.run"))
+        self.admin_client: mock.MagicMock = self.enterContext(mock.patch("instances.domain.whitelist.subprocess.run"))
 
     def whitelist_calls(self) -> list[list[str]]:
         # Jeder Aufruf richtet sich an die Zucchini-Instanz mit dem Namen aus
@@ -256,7 +152,7 @@ class GameDataFileTests(APISimpleTestCase):
     def test_cancel_without_running_server_is_only_logged(self) -> None:
         (self.directory / "radish_server.pid").unlink()
 
-        with self.assertLogs("instances.views", level="WARNING"):
+        with self.assertLogs("instances.domain.game_files", level="WARNING"):
             response: TestResponse = self.client.post(self.cancel_url)
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)

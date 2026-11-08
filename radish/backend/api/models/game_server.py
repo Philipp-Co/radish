@@ -35,7 +35,7 @@ class GameServer(models.Model):
     # .filter(is_occupied=False)).
     is_occupied = models.BooleanField(default=False)
 
-    # HTTP-Basis-URL der Instanz-API (radish/game-server/instances/views.py),
+    # HTTP-Basis-URL der Instanz-API (radish/game-server/instances/interfaces/),
     # ueber die das Backend ein Spiel auf dieser Instanz startet bzw.
     # abbricht (siehe instance_client.py) -- getrennt von address/port, die
     # auf den UDP-Port des Spielservers zeigen. Leer bei Instanzen, die sich

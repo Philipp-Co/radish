@@ -512,7 +512,7 @@ nicht über das Netz — getrennte Container gäbe das nicht her. Der
 [Einstiegspunkt](docker/game-server/game-instance-entrypoint.sh) startet Zucchini
 mit leerer Whitelist und dann den Spielserver. Die Codes der Spieler trägt erst das
 Django der Instanz beim Spielstart über den Admin-Client ein und beim Abbruch
-wieder aus ([views.py](radish/game-server/instances/views.py)). Ohne Eintrag
+wieder aus ([whitelist.py](radish/game-server/instances/domain/whitelist.py)). Ohne Eintrag
 verwirft Zucchini jedes Paket, denn mit dem Code merkt es sich auch, wohin die
 Antwort geht.
 

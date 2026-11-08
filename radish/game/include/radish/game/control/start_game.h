@@ -13,7 +13,7 @@
 /// Spielstart -- wie aus einer Spieldatei ein Spiel wird.
 ///
 /// Das Django des Game-Servers legt die Datei beim Start eines Spiels ab
-/// (radish/game-server/instances/views.py), das Format beschreibt
+/// (radish/game-server/instances/domain/game_files.py), das Format beschreibt
 /// game/schema/spielstart.schema.json: zwei Spieler, jeder mit Keycloak-Name,
 /// Spieler-Kennung und vollstaendig aufgeloester Armee.
 ///

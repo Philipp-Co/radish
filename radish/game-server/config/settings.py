@@ -21,7 +21,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 # (Game/GameServer/Player), die nur *verwaltet*, wer mit wem in welchem
 # Spiel steckt.
 #
-# Schnittstelle Backend -> Instanzen: instances/views.py nimmt Aufrufe des
+# Schnittstelle Backend -> Instanzen: instances/interfaces/ nimmt Aufrufe des
 # Backends entgegen (Spiel starten/abbrechen), bislang aber nur als leere
 # Huellen ohne Logik und ohne Auth -- die Instanzverwaltung selbst kommt in
 # einem spaeteren Schritt.
@@ -117,8 +117,8 @@ USE_TZ = True
 # Nur JSON: die API ruft ausschliesslich das Backend auf. DRFs Browsable API
 # braeuchte Templates und Static-Files (staticfiles), die es hier nicht gibt.
 #
-# UNAUTHENTICATED_USER None: ohne Anmeldung (siehe instances/views.py,
-# InstanceAPIView) setzte DRF sonst request.user auf
+# UNAUTHENTICATED_USER None: ohne Anmeldung (siehe instances/interfaces/
+# instance_api_view.py, InstanceAPIView) setzte DRF sonst request.user auf
 # django.contrib.auth.models.AnonymousUser -- und braeuchte dafuer die App
 # django.contrib.auth samt Datenbank.
 REST_FRAMEWORK = {
@@ -128,12 +128,12 @@ REST_FRAMEWORK = {
 
 # Wo die Instanzen ihre Dateien austauschen: je Instanz ein Verzeichnis
 # <RADISH_GAME_DATA_DIR>/<instanz>/ mit der Spielstart-Datei (schreibt
-# instances/views.py) und der PID-Datei von radish_server (schreibt der
+# instances/domain/game_files.py) und der PID-Datei von radish_server (schreibt der
 # C-Prozess selbst). Angelegt wird es von docker/game-server/
 # game-instance-entrypoint.sh.
 RADISH_GAME_DATA_DIR = os.environ.get("RADISH_GAME_DATA_DIR", "/run/radish")
 
-# Der Admin-Client von zucchini, ueber den instances/views.py die Codes der
+# Der Admin-Client von zucchini, ueber den instances/domain/whitelist.py die Codes der
 # Spieler in die Whitelist eintraegt und wieder austraegt. Welche
 # zucchini-Instanz des Containers er anspricht, sagt "-n <Instanzname>" je
 # Aufruf (siehe docker/game-server/supervisord.conf).

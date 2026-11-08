@@ -1,6 +1,6 @@
 """
 Aufrufe des Backends an die Instanz-API eines GameServer (siehe
-radish/game-server/instances/views.py): ein Spiel starten und abbrechen.
+radish/game-server/instances/interfaces/): ein Spiel starten und abbrechen.
 
 Was beim Start uebergeben wird, beschreibt radish/game/schema/
 spielstart.schema.json (siehe game_start_document): die Spieler mit ihren

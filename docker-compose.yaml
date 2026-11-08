@@ -135,7 +135,7 @@ services:
   # ist deshalb entfallen.
   #
   # Django nimmt die Start-/Abbruch-Auftraege des Backends entgegen und setzt
-  # Spiele synchron auf (siehe radish/game-server/instances/views.py), hat
+  # Spiele synchron auf (siehe radish/game-server/instances/domain/game_files.py), hat
   # aber noch kein Modell und keine Instanzverwaltung *durch* Django.
   #
   # Name und UDP-Port je Instanz stehen nicht hier, sondern in
@@ -198,7 +198,7 @@ services:
       # im Container), ueber die das Backend ein Spiel aus der Lobby heraus
       # startet bzw. abbricht (siehe radish/backend/api/domain/servers/instance_client.py).
       RADISH_GAME_SERVER_CONTROL_URL: "http://game-server:8000"
-      # Verzeichnis, ueber das Django (instances/views.py) und radish_server
+      # Verzeichnis, ueber das Django (instances/domain/game_files.py) und radish_server
       # die Spielstart-Datei austauschen -- je Instanz ein Unterverzeichnis
       # <RADISH_GAME_DATA_DIR>/<Instanzname>/ (siehe
       # docker/game-server/game-instance-entrypoint.sh).

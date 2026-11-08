@@ -53,7 +53,7 @@
 ///     RADISH_GAME_START_PATH=/run/radish/game-instance-1/spielstart.json
 ///     RADISH_GAME_PID_PATH=/run/radish/game-instance-1/radish_server.pid
 ///
-/// Das Django des Game-Servers (radish/game-server/instances/views.py) schreibt
+/// Das Django des Game-Servers (radish/game-server/instances/domain/game_files.py) schreibt
 /// die Spielstart-Datei (game/schema/spielstart.schema.json) bzw. loescht sie beim
 /// Abbruch und schickt danach SIGUSR1 an die PID aus der PID-Datei. Die schreibt
 /// dieser Server selbst, und zwar erst, nachdem der Handler fuer SIGUSR1 steht:

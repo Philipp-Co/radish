@@ -39,6 +39,7 @@ radish/game-server/.venv/
 radish/backend/**/tests.py
 radish/backend/api/tests/
 radish/game-server/**/tests.py
+radish/game-server/instances/tests/
 
 # Ein lokales `manage.py collectstatic`; das Image sammelt selbst.
 radish/backend/staticfiles/

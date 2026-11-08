@@ -14,7 +14,7 @@
 #   <name>  Name der Instanz in diesem Container -- Zucchini-Name
 #           (zucchini_server/zucchini_admin_client -n), Name fuer
 #           radish_server (Ringpuffer/FIFO), Datenverzeichnis und Pfadteil
-#           der Instanz-API (radish/game-server/instances/views.py). Muss nur
+#           der Instanz-API (radish/game-server/instances/interfaces/). Muss nur
 #           in diesem Container eindeutig sein.
 #   <port>  UDP-Port von zucchini_server (-p), so auch beim Backend gemeldet.
 #           Ebenfalls je Container eindeutig, und in docker-compose.yaml
@@ -24,7 +24,7 @@
 # stiller Default wuerde mit der naechsten Instanz zusammenstossen.
 #
 # Legt das Verzeichnis an, ueber das Django (radish/game-server/instances/
-# views.py) und radish_server die Spielstart-Datei austauschen, und raeumt es
+# domain/game_files.py) und radish_server die Spielstart-Datei austauschen, und raeumt es
 # vorher aus: nach einem Absturz soll weder ein altes Spiel wieder auftauchen
 # noch eine PID liegen, hinter der kein Prozess mehr steht. Die PID-Datei
 # schreibt radish_server selbst, sobald sein Handler fuer SIGUSR1 steht
@@ -73,7 +73,7 @@ export RADISH_GAME_FINISHED_COMMAND=/usr/local/bin/register_instance.py
 # Die Whitelist bleibt hier leer. Zucchini nimmt nur Pakete an, deren Code
 # darin steht, und die Codes vergibt das Backend je Spieler beim Spielstart
 # (radish/backend/api/domain/servers/access.py); eingetragen werden sie erst dann, vom
-# Django dieses Containers (radish/game-server/instances/views.py). Bis
+# Django dieses Containers (radish/game-server/instances/domain/whitelist.py). Bis
 # dahin kommt nichts durch -- es gibt ja auch noch kein Spiel.
 
 /usr/local/bin/zucchini_server -n "$RADISH_GAME_INSTANCE_NAME" -p "$RADISH_GAME_SERVER_PORT" &

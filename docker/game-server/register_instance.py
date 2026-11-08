@@ -91,7 +91,7 @@ def register():
     port = _env("RADISH_GAME_SERVER_PORT")
     backend_url = _env("RADISH_BACKEND_URL")
     # HTTP-Adresse der Instanz-API dieses Containers (radish/game-server/
-    # instances/views.py), ueber die das Backend Spiele startet/abbricht --
+    # instances/interfaces/), ueber die das Backend Spiele startet/abbricht --
     # siehe GameServer.control_url in radish/backend/api/models/game_server.py.
     control_url = _env("RADISH_GAME_SERVER_CONTROL_URL")
     # Name der Instanz in diesem Container (Zucchini-Name, Pfadteil der
