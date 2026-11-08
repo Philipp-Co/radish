@@ -2,7 +2,7 @@
 #define __RAD_VIEW_TEXT_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,9 +11,8 @@
 /// wird abgeschnitten.
 ///
 /// **Den Renderer haelt sie nicht selbst**, sie bekommt ihn bei jedem Update
-/// (view/view.h). Der Text wird deshalb erst im naechsten
-/// RAD_UpdateTextView nach einem Setter gerendert und bis zum naechsten
-/// behalten.
+/// (view/view.h) und zeichnet den Text dort mit ihrer Schrift
+/// (rendering/font.h).
 ///
 
 ///
@@ -27,7 +26,7 @@ typedef struct RAD_TextView RAD_TextView_t;
 /// gehoert dem Aufrufer (view/view.h, RAD_ViewFont) und muss die TextView
 /// ueberleben. RAD_DestroyTextView nullt den Zeiger des Aufrufers.
 ///
-RAD_TextView_t* RAD_CreateTextView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font);
+RAD_TextView_t* RAD_CreateTextView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font);
 void RAD_DestroyTextView(RAD_TextView_t **text_view);
 
 ///
@@ -38,7 +37,7 @@ bool RAD_TextViewSetText(RAD_TextView_t *text_view, const char *text);
 
 ///
 /// Verschiebt die TextView: ihre obere linke Ecke kommt nach (x, y), die
-/// Groesse bleibt. Der Text muss dafuer nicht neu gerendert werden.
+/// Groesse bleibt.
 ///
 void RAD_TextViewSetPosition(RAD_TextView_t *text_view, int32_t x, int32_t y);
 
@@ -50,7 +49,7 @@ void RAD_TextViewSetColor(RAD_TextView_t *text_view, SDL_Color color);
 ///
 /// Wie breit der jetzige Text in der Schrift der TextView ist, in Pixeln --
 /// ungekuerzt, also auch breiter als die TextView selbst. 0 fuer einen leeren
-/// Text, oder wenn SDL_ttf ihn nicht vermessen kann.
+/// Text.
 ///
 int32_t RAD_TextViewTextWidth(const RAD_TextView_t *text_view);
 

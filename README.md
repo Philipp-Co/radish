@@ -326,8 +326,10 @@ Dieser Build kopiert die `compile_commands.json` bewusst *nicht* nach `radish/` 
 sonst stünden dort Einträge ohne die SDL2- und Emscripten-Suchpfade, und clangd
 fände die Header des Clients nicht mehr.
 
-SDL2, SDL_ttf und SDL_image werden nicht separat installiert — Emscripten zieht
-sie über `-sUSE_SDL=2` / `-sUSE_SDL_TTF=2` / `-sUSE_SDL_IMAGE=2` als Ports.
+SDL2 und SDL_image werden nicht separat installiert — Emscripten zieht sie über
+`-sUSE_SDL=2` / `-sUSE_SDL_IMAGE=2` als Ports. Text zeichnet der Client ohne
+SDL_ttf aus einem Bitmap-Atlas (`radish/assets/fonts/michroma/michroma_32.fnt`
+samt PNG, siehe `radish/client/src/rendering/bitmap_font.c`).
 
 ## Testen
 

@@ -112,8 +112,8 @@ struct RAD_RootView
 {
     SDL_Window *window;
     SDL_Renderer *renderer;
-    TTF_Font *font;
-    TTF_Font *info_font;
+    RAD_Font_t *font;
+    RAD_Font_t *info_font;
     RAD_IsoMapView_t *iso_map_view;
     RAD_UnitInfoView_t *unit_info_view;
     RAD_ContextMenuView_t *context_menu_view;
@@ -237,14 +237,6 @@ RAD_RootView_t* RAD_CreateView(
         return NULL;
     }
 
-    if(TTF_Init() != 0)
-    {
-        printf("TTF_Init: %s\n", TTF_GetError());
-        SDL_Quit();
-        free(view);
-        return NULL;
-    }
-
     view->window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                     width, height, SDL_WINDOW_SHOWN);
     if(view->window == NULL)
@@ -262,11 +254,12 @@ RAD_RootView_t* RAD_CreateView(
         return NULL;
     }
 
-    view->font = TTF_OpenFont(font_path, font_size);
-    view->info_font = TTF_OpenFont(font_path, RAD_VIEW_INFO_FONT_SIZE);
+    // Beide Groessen aus demselben Atlas; warum es nicht klappt, meldet
+    // RAD_CreateFont selbst.
+    view->font = RAD_CreateFont(view->renderer, font_path, font_size);
+    view->info_font = RAD_CreateFont(view->renderer, font_path, RAD_VIEW_INFO_FONT_SIZE);
     if(view->font == NULL || view->info_font == NULL)
     {
-        printf("TTF_OpenFont %s: %s\n", font_path, TTF_GetError());
         RAD_DestroyView(&view);
         return NULL;
     }
@@ -376,7 +369,7 @@ RAD_RootView_t* RAD_CreateView(
 
 ///
 /// Baut auch eine halb angelegte Komponente ab (RAD_CreateView im Fehlerfall):
-/// SDL und SDL_ttf sind dann schon initialisiert, Fenster, Renderer, Schrift
+/// SDL ist dann schon initialisiert, Fenster, Renderer, Schriften
 /// oder eine der Views womoeglich noch NULL.
 ///
 void RAD_DestroyView(RAD_RootView_t **view)
@@ -408,13 +401,14 @@ void RAD_DestroyView(RAD_RootView_t **view)
     {
         RAD_DestroyIsoMapView(&v->iso_map_view);
     }
+    // Vor dem Renderer: an ihm haengen ihre Texturen.
     if(v->font != NULL)
     {
-        TTF_CloseFont(v->font);
+        RAD_DestroyFont(&v->font);
     }
     if(v->info_font != NULL)
     {
-        TTF_CloseFont(v->info_font);
+        RAD_DestroyFont(&v->info_font);
     }
     if(v->renderer != NULL)
     {
@@ -425,7 +419,6 @@ void RAD_DestroyView(RAD_RootView_t **view)
         SDL_DestroyWindow(v->window);
     }
 
-    TTF_Quit();
     SDL_Quit();
 
     free(v);
@@ -476,7 +469,7 @@ SDL_Renderer* RAD_ViewRenderer(const RAD_RootView_t *view)
     return view->renderer;
 }
 
-TTF_Font* RAD_ViewFont(const RAD_RootView_t *view)
+const RAD_Font_t* RAD_ViewFont(const RAD_RootView_t *view)
 {
     return view->font;
 }

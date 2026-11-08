@@ -105,7 +105,7 @@ static bool RAD_EndTurnViewSync(RAD_EndTurnView_t *end_turn_view);
 static void RAD_EndTurnViewResultText(const RAD_EndTurnView_t *end_turn_view, char *text, size_t size);
 
 
-RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font,
+RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font,
                                          const RAD_ClientWorld_t *world, RAD_IoNetSession_t *session)
 {
     RAD_EndTurnView_t *end_turn_view = malloc(sizeof(struct RAD_EndTurnView));
@@ -116,7 +116,7 @@ RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, in
 
     // Senkrecht mittig; waagerecht setzt RAD_EndTurnViewSync den Text je nach
     // seiner Breite.
-    const int32_t line = TTF_FontLineSkip(font);
+    const int32_t line = RAD_FontLineHeight(font);
     const int32_t text_y = y + (height - line) / 2;
 
     *end_turn_view = (struct RAD_EndTurnView){

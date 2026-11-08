@@ -2,7 +2,7 @@
 #define __RAD_VIEW_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/model/focus.h>
@@ -12,7 +12,7 @@
 
 ///
 /// view/ -- die grafischen Komponenten. RAD_RootView_t ist ihre Grundlage, die
-/// RootView: sie initialisiert SDL und SDL_ttf, haelt Fenster, Renderer und
+/// RootView: sie initialisiert SDL, haelt Fenster, Renderer und Schriften
 /// Schrift, genau eine IsoMapView (view/iso_map_view.h), genau eine
 /// UnitInfoView (view/unit_info_view.h), genau eine ContextMenuView
 /// (view/context_menu/context_menu_view.h) -- samt deren UnitDeploymentView --, genau
@@ -112,9 +112,10 @@
 typedef struct RAD_RootView RAD_RootView_t;
 
 ///
-/// Initialisiert SDL und SDL_ttf, oeffnet ein Fenster "title" mit width x height
-/// Pixeln samt Renderer, laedt die Schrift "font_path" in "font_size" Punkt,
-/// legt ihre Views an, alle sichtbar, und schaltet die Texteingabe ein. Die
+/// Initialisiert SDL, oeffnet ein Fenster "title" mit width x height Pixeln
+/// samt Renderer, laedt die Schrift "font_path" (rendering/font.h) in
+/// "font_size" Pixeln, legt ihre Views an, alle sichtbar, und schaltet die
+/// Texteingabe ein. Die
 /// IsoMapView zeichnet "map", die Kamera-Steuerung verschiebt deren Kamera; die
 /// Map gehoert dem Aufrufer und muss die RootView ueberleben. Ebenso
 /// "session" (io/net_session.h): die RootView liest daraus die eigene
@@ -168,6 +169,6 @@ void RAD_ViewSetUnitInfoVisible(RAD_RootView_t *view, bool visible);
 /// nach RAD_DestroyView nicht mehr benutzen.
 ///
 SDL_Renderer* RAD_ViewRenderer(const RAD_RootView_t *view);
-TTF_Font* RAD_ViewFont(const RAD_RootView_t *view);
+const RAD_Font_t* RAD_ViewFont(const RAD_RootView_t *view);
 
 #endif

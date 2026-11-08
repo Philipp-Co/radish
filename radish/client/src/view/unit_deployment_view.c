@@ -47,7 +47,7 @@ struct RAD_UnitDeploymentView
     SDL_Rect list_area;
     SDL_Rect scrollbar_area;
 
-    TTF_Font *font;
+    const RAD_Font_t *font;
     int32_t row_height;
     bool visible;
 
@@ -112,7 +112,7 @@ static void RAD_UnitDeploymentViewClick(RAD_UnitDeploymentView_t *unit_deploymen
 static void RAD_UnitDeploymentViewDrawScrollbar(const RAD_UnitDeploymentView_t *unit_deployment_view, SDL_Renderer *renderer);
 
 
-RAD_UnitDeploymentView_t* RAD_CreateUnitDeploymentView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font)
+RAD_UnitDeploymentView_t* RAD_CreateUnitDeploymentView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font)
 {
     RAD_UnitDeploymentView_t *unit_deployment_view = malloc(sizeof(struct RAD_UnitDeploymentView));
     if(unit_deployment_view == NULL)
@@ -122,7 +122,7 @@ RAD_UnitDeploymentView_t* RAD_CreateUnitDeploymentView(int32_t x, int32_t y, int
 
     *unit_deployment_view = (struct RAD_UnitDeploymentView){
         .font = font,
-        .row_height = TTF_FontLineSkip(font) + RAD_UNIT_DEPLOYMENT_VIEW_GAP,
+        .row_height = RAD_FontLineHeight(font) + RAD_UNIT_DEPLOYMENT_VIEW_GAP,
         .visible = false,
         .reserve = NULL,
         .units = NULL,
@@ -405,7 +405,7 @@ static bool RAD_UnitDeploymentViewAddEntry(RAD_UnitDeploymentView_t *unit_deploy
 
     // Wohin sie gehoert, setzt RAD_UpdateUnitDeploymentView jeden Frame.
     const SDL_Rect *list = &unit_deployment_view->list_area;
-    RAD_TextView_t *entry = RAD_CreateTextView(list->x, list->y, list->w, TTF_FontLineSkip(unit_deployment_view->font), unit_deployment_view->font);
+    RAD_TextView_t *entry = RAD_CreateTextView(list->x, list->y, list->w, RAD_FontLineHeight(unit_deployment_view->font), unit_deployment_view->font);
     if(entry == NULL)
     {
         return false;

@@ -2,7 +2,7 @@
 #define __RAD_VIEW_UNIT_INFO_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -64,7 +64,7 @@ typedef struct RAD_UnitInfoView RAD_UnitInfoView_t;
 /// UnitInfoView ueberleben. RAD_DestroyUnitInfoView baut alles ab und nullt den
 /// Zeiger des Aufrufers.
 ///
-RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font);
+RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font);
 void RAD_DestroyUnitInfoView(RAD_UnitInfoView_t **unit_info_view);
 
 ///

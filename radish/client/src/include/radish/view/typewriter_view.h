@@ -2,7 +2,7 @@
 #define __RAD_VIEW_TYPEWRITER_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -18,8 +18,8 @@
 /// TypewriterView. Ohne Schrift oder Text zeichnet sie nichts.
 ///
 /// **Den Renderer haelt sie nicht selbst**, sie bekommt ihn bei jedem Update
-/// (view/view.h). Text und Cursor werden deshalb erst im naechsten
-/// RAD_UpdateTypewriterView nach einem Setter gerendert.
+/// (view/view.h) und zeichnet Text und Cursor dort mit ihrer Schrift
+/// (rendering/font.h).
 ///
 
 ///
@@ -47,7 +47,7 @@ bool RAD_TypewriterViewSetText(RAD_TypewriterView_t *typewriter_view, const char
 /// RAD_ViewFont) und muss die TypewriterView ueberleben. NULL heisst keine
 /// Schrift; so ist die TypewriterView auch angelegt.
 ///
-void RAD_TypewriterViewSetFont(RAD_TypewriterView_t *typewriter_view, TTF_Font *font);
+void RAD_TypewriterViewSetFont(RAD_TypewriterView_t *typewriter_view, const RAD_Font_t *font);
 
 ///
 /// Farbe des Textes. Angelegt ist die TypewriterView in Weiss.
@@ -57,8 +57,7 @@ void RAD_TypewriterViewSetColor(RAD_TypewriterView_t *typewriter_view, SDL_Color
 ///
 /// Wie breit der ganze Text samt Cursor in der Schrift der TypewriterView ist,
 /// in Pixeln -- egal, wie viel davon schon getippt ist, und ungekuerzt, also
-/// auch breiter als die TypewriterView selbst. 0 ohne Schrift oder Text, oder
-/// wenn SDL_ttf ihn nicht vermessen kann.
+/// auch breiter als die TypewriterView selbst. 0 ohne Schrift oder Text.
 ///
 int32_t RAD_TypewriterViewTextWidth(const RAD_TypewriterView_t *typewriter_view);
 

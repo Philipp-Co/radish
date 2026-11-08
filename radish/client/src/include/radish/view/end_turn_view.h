@@ -2,7 +2,7 @@
 #define __RAD_VIEW_END_TURN_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/io/net_session.h>
@@ -56,7 +56,7 @@ typedef struct RAD_EndTurnView RAD_EndTurnView_t;
 /// ebenso "world" und "session". RAD_DestroyEndTurnView nullt den Zeiger des
 /// Aufrufers.
 ///
-RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font,
+RAD_EndTurnView_t* RAD_CreateEndTurnView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font,
                                          const RAD_ClientWorld_t *world, RAD_IoNetSession_t *session);
 void RAD_DestroyEndTurnView(RAD_EndTurnView_t **end_turn_view);
 

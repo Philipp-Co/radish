@@ -1,5 +1,4 @@
 #include <radish/view/typewriter_view.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,7 +27,7 @@
 struct RAD_TypewriterView
 {
     SDL_Rect area;
-    TTF_Font *font;
+    const RAD_Font_t *font;
 
     ///
     /// Eigene Kopie des Textes, NULL heisst leer.
@@ -50,29 +49,17 @@ struct RAD_TypewriterView
     uint64_t start_ms;
 
     ///
-    /// Wie viele Zeichen beim letzten Update sichtbar waren und wie breit sie
-    /// in der Schrift sind. Neu gemessen nur, wenn sich die Zahl aendert
-    /// oder die Texturen neu angelegt werden.
+    /// Wie viele Zeichen beim letzten Update sichtbar waren, wie viele Bytes
+    /// sie sind und wie breit in der Schrift. Neu gemessen nur, wenn sich die
+    /// Zahl aendert oder ein Setter sie veraltet (measure_stale).
     ///
+    bool measure_stale;
     size_t visible_count;
+    size_t visible_bytes;
     int32_t visible_width;
-
-    ///
-    /// Der ganze Text und der Cursor, gerendert. Nach jedem Setter veraltet
-    /// (textures_stale) und im naechsten RAD_UpdateTypewriterView neu angelegt
-    /// -- erst dort gibt es einen Renderer. NULL, wenn es nichts zu rendern
-    /// gibt oder SDL_ttf es nicht rendern konnte.
-    ///
-    bool textures_stale;
-    SDL_Texture *text_texture;
-    SDL_Texture *cursor_texture;
 };
 
 
-static void RAD_TypewriterViewBuildTextures(RAD_TypewriterView_t *typewriter_view, SDL_Renderer *renderer);
-static void RAD_TypewriterViewDestroyTextures(RAD_TypewriterView_t *typewriter_view);
-static SDL_Texture* RAD_TypewriterViewRender(TTF_Font *font, const char *text, SDL_Color color, SDL_Renderer *renderer);
-static int32_t RAD_TypewriterViewMeasure(RAD_TypewriterView_t *typewriter_view, size_t count);
 static size_t RAD_Utf8CharacterCount(const char *text);
 static size_t RAD_Utf8ByteOffset(const char *text, size_t count);
 
@@ -93,11 +80,10 @@ RAD_TypewriterView_t* RAD_CreateTypewriterView(int32_t x, int32_t y, int32_t wid
         .character_count = 0,
         .started = false,
         .start_ms = 0,
+        .measure_stale = false,
         .visible_count = 0,
-        .visible_width = 0,
-        .textures_stale = false,
-        .text_texture = NULL,
-        .cursor_texture = NULL
+        .visible_bytes = 0,
+        .visible_width = 0
     };
 
     return typewriter_view;
@@ -107,7 +93,6 @@ void RAD_DestroyTypewriterView(RAD_TypewriterView_t **typewriter_view)
 {
     RAD_TypewriterView_t *v = *typewriter_view;
 
-    RAD_TypewriterViewDestroyTextures(v);
     free(v->text);
     free(v);
     *typewriter_view = NULL;
@@ -131,20 +116,19 @@ bool RAD_TypewriterViewSetText(RAD_TypewriterView_t *typewriter_view, const char
     typewriter_view->text = copy;
     typewriter_view->character_count = RAD_Utf8CharacterCount(copy);
     typewriter_view->started = false;
-    typewriter_view->textures_stale = true;
+    typewriter_view->measure_stale = true;
     return true;
 }
 
-void RAD_TypewriterViewSetFont(RAD_TypewriterView_t *typewriter_view, TTF_Font *font)
+void RAD_TypewriterViewSetFont(RAD_TypewriterView_t *typewriter_view, const RAD_Font_t *font)
 {
     typewriter_view->font = font;
-    typewriter_view->textures_stale = true;
+    typewriter_view->measure_stale = true;
 }
 
 void RAD_TypewriterViewSetColor(RAD_TypewriterView_t *typewriter_view, SDL_Color color)
 {
     typewriter_view->color = color;
-    typewriter_view->textures_stale = true;
 }
 
 int32_t RAD_TypewriterViewTextWidth(const RAD_TypewriterView_t *typewriter_view)
@@ -154,14 +138,8 @@ int32_t RAD_TypewriterViewTextWidth(const RAD_TypewriterView_t *typewriter_view)
         return 0;
     }
 
-    int text_width = 0;
-    int cursor_width = 0;
-    if(TTF_SizeUTF8(typewriter_view->font, typewriter_view->text, &text_width, NULL) != 0
-       || TTF_SizeUTF8(typewriter_view->font, RAD_TYPEWRITER_CURSOR, &cursor_width, NULL) != 0)
-    {
-        return 0;
-    }
-    return text_width + cursor_width;
+    return RAD_FontMeasure(typewriter_view->font, typewriter_view->text, strlen(typewriter_view->text))
+           + RAD_FontMeasure(typewriter_view->font, RAD_TYPEWRITER_CURSOR, strlen(RAD_TYPEWRITER_CURSOR));
 }
 
 void RAD_UpdateTypewriterView(RAD_TypewriterView_t *typewriter_view, SDL_Renderer *renderer)
@@ -175,15 +153,8 @@ void RAD_UpdateTypewriterView(RAD_TypewriterView_t *typewriter_view, SDL_Rendere
         v->start_ms = now;
     }
 
-    if(v->textures_stale)
-    {
-        RAD_TypewriterViewBuildTextures(v, renderer);
-        v->textures_stale = false;
-        v->visible_count = 0;
-        v->visible_width = 0;
-    }
-
-    if(v->text_texture == NULL)
+    // Ohne Schrift oder Text gibt es nichts zu zeichnen, auch keinen Cursor.
+    if(v->font == NULL || v->text == NULL)
     {
         return;
     }
@@ -195,129 +166,27 @@ void RAD_UpdateTypewriterView(RAD_TypewriterView_t *typewriter_view, SDL_Rendere
     {
         count = v->character_count;
     }
-    if(count != v->visible_count)
+    if(v->measure_stale || count != v->visible_count)
     {
+        v->measure_stale = false;
         v->visible_count = count;
-        v->visible_width = RAD_TypewriterViewMeasure(v, count);
+        v->visible_bytes = RAD_Utf8ByteOffset(v->text, count);
+        v->visible_width = RAD_FontMeasure(v->font, v->text, v->visible_bytes);
     }
 
-    // Vom ganzen Text nur den getippten Anfang, und nur was in die Flaeche passt.
-    int text_h = 0;
-    SDL_QueryTexture(v->text_texture, NULL, NULL, NULL, &text_h);
-    const int w = v->visible_width < v->area.w ? v->visible_width : v->area.w;
-    const int h = text_h < v->area.h ? text_h : v->area.h;
-    if(w > 0 && h > 0)
-    {
-        const SDL_Rect source = { .x = 0, .y = 0, .w = w, .h = h };
-        const SDL_Rect destination = { .x = v->area.x, .y = v->area.y, .w = w, .h = h };
-        SDL_RenderCopy(renderer, v->text_texture, &source, &destination);
-    }
+    // Vom ganzen Text nur den getippten Anfang; was nicht in die Flaeche
+    // passt, schneidet die Schrift ab.
+    RAD_FontDraw(v->font, renderer, v->text, v->visible_bytes, v->area.x, v->area.y, v->color, &v->area);
 
     // Der Cursor leuchtet beim Tippen durchgehend und blinkt, wenn alles da ist.
-    if(v->cursor_texture == NULL)
-    {
-        return;
-    }
     if(count == v->character_count && (now / RAD_TYPEWRITER_CURSOR_BLINK_MS) % 2 == 1)
     {
         return;
     }
-
-    int cursor_w = 0, cursor_h = 0;
-    SDL_QueryTexture(v->cursor_texture, NULL, NULL, &cursor_w, &cursor_h);
-    const int space = v->area.w - v->visible_width;
-    if(space <= 0)
-    {
-        return;
-    }
-    if(cursor_w > space)
-    {
-        cursor_w = space;
-    }
-    if(cursor_h > v->area.h)
-    {
-        cursor_h = v->area.h;
-    }
-
-    const SDL_Rect cursor_source = { .x = 0, .y = 0, .w = cursor_w, .h = cursor_h };
-    const SDL_Rect cursor_destination = { .x = v->area.x + v->visible_width, .y = v->area.y, .w = cursor_w, .h = cursor_h };
-    SDL_RenderCopy(renderer, v->cursor_texture, &cursor_source, &cursor_destination);
+    RAD_FontDraw(v->font, renderer, RAD_TYPEWRITER_CURSOR, strlen(RAD_TYPEWRITER_CURSOR),
+                 v->area.x + v->visible_width, v->area.y, v->color, &v->area);
 }
 
-
-static void RAD_TypewriterViewBuildTextures(RAD_TypewriterView_t *typewriter_view, SDL_Renderer *renderer)
-{
-    RAD_TypewriterViewDestroyTextures(typewriter_view);
-
-    // Ohne Schrift oder Text gibt es nichts zu zeichnen, auch keinen Cursor.
-    if(typewriter_view->font == NULL || typewriter_view->text == NULL)
-    {
-        return;
-    }
-
-    typewriter_view->text_texture = RAD_TypewriterViewRender(typewriter_view->font, typewriter_view->text,
-                                                             typewriter_view->color, renderer);
-    typewriter_view->cursor_texture = RAD_TypewriterViewRender(typewriter_view->font, RAD_TYPEWRITER_CURSOR,
-                                                               typewriter_view->color, renderer);
-}
-
-static void RAD_TypewriterViewDestroyTextures(RAD_TypewriterView_t *typewriter_view)
-{
-    if(typewriter_view->text_texture != NULL)
-    {
-        SDL_DestroyTexture(typewriter_view->text_texture);
-        typewriter_view->text_texture = NULL;
-    }
-    if(typewriter_view->cursor_texture != NULL)
-    {
-        SDL_DestroyTexture(typewriter_view->cursor_texture);
-        typewriter_view->cursor_texture = NULL;
-    }
-}
-
-static SDL_Texture* RAD_TypewriterViewRender(TTF_Font *font, const char *text, SDL_Color color, SDL_Renderer *renderer)
-{
-    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, text, color);
-    if(surface == NULL)
-    {
-        printf("TTF_RenderUTF8_Blended \"%s\": %s\n", text, TTF_GetError());
-        return NULL;
-    }
-
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
-    if(texture == NULL)
-    {
-        printf("SDL_CreateTextureFromSurface: %s\n", SDL_GetError());
-    }
-    return texture;
-}
-
-///
-/// Wie breit die ersten "count" Zeichen des Textes in der Schrift sind, in
-/// Pixeln. Setzt dafuer kurz ein '\0' in die eigene Kopie des Textes.
-///
-static int32_t RAD_TypewriterViewMeasure(RAD_TypewriterView_t *typewriter_view, size_t count)
-{
-    if(count == 0)
-    {
-        return 0;
-    }
-
-    char *text = typewriter_view->text;
-    const size_t offset = RAD_Utf8ByteOffset(text, count);
-    const char kept = text[offset];
-    text[offset] = '\0';
-
-    int width = 0;
-    if(TTF_SizeUTF8(typewriter_view->font, text, &width, NULL) != 0)
-    {
-        width = 0;
-    }
-
-    text[offset] = kept;
-    return width;
-}
 
 ///
 /// Zaehlt die Zeichen eines UTF-8-Textes: jedes Byte, das kein

@@ -72,7 +72,7 @@ static void RAD_DebugViewSetValue(RAD_DebugView_t *debug_view, RAD_DebugViewRow_
 static void RAD_DebugViewSetMs(RAD_DebugView_t *debug_view, RAD_DebugViewRow_t row, float ms);
 
 
-RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font)
+RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font)
 {
     RAD_DebugView_t *debug_view = calloc(1, sizeof(struct RAD_DebugView));
     if(debug_view == NULL)
@@ -82,7 +82,7 @@ RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_
 
     // So hoch wie alle Zeilen samt Rand, hoechstens "height", an der Oberkante
     // der Flaeche.
-    const int32_t line = TTF_FontLineSkip(font);
+    const int32_t line = RAD_FontLineHeight(font);
     const int32_t step = line + RAD_DEBUG_VIEW_GAP;
     int32_t content_height = 2 * RAD_DEBUG_VIEW_PADDING + RAD_DEBUG_VIEW_ROW_COUNT * line + (RAD_DEBUG_VIEW_ROW_COUNT - 1) * RAD_DEBUG_VIEW_GAP;
     if(content_height > height)
@@ -95,8 +95,8 @@ RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_
     int32_t key_width = 0;
     for(int32_t row = 0; row < RAD_DEBUG_VIEW_ROW_COUNT; row++)
     {
-        int w = 0;
-        if(TTF_SizeUTF8(font, RAD_DEBUG_VIEW_KEYS[row], &w, NULL) == 0 && w > key_width)
+        const int32_t w = RAD_FontMeasure(font, RAD_DEBUG_VIEW_KEYS[row], strlen(RAD_DEBUG_VIEW_KEYS[row]));
+        if(w > key_width)
         {
             key_width = w;
         }

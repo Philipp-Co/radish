@@ -3,6 +3,7 @@
 #include <radish/view/typewriter_view.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 ///
@@ -54,7 +55,7 @@ struct RAD_UnitInfoView
     ///
     SDL_Rect max_area;
     SDL_Rect area;
-    TTF_Font *font;
+    const RAD_Font_t *font;
 
     ///
     /// Alle Kinder liegen relativ zur linken oberen Ecke von "area"; gezeichnet
@@ -89,7 +90,7 @@ static void RAD_UnitInfoViewFitToContent(RAD_UnitInfoView_t *unit_info_view);
 static void RAD_UnitInfoViewDestroyHeader(RAD_UnitInfoView_t *unit_info_view);
 
 
-RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font)
+RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font)
 {
     RAD_UnitInfoView_t *unit_info_view = malloc(sizeof(struct RAD_UnitInfoView));
     if(unit_info_view == NULL)
@@ -97,13 +98,9 @@ RAD_UnitInfoView_t* RAD_CreateUnitInfoView(int32_t x, int32_t y, int32_t width, 
         return NULL;
     }
 
-    const int32_t line = TTF_FontLineSkip(font);
+    const int32_t line = RAD_FontLineHeight(font);
 
-    int indent = 0;
-    if(TTF_SizeUTF8(font, RAD_UNIT_INFO_VIEW_INDENT_SAMPLE, &indent, NULL) != 0)
-    {
-        indent = line * 2;
-    }
+    const int32_t indent = RAD_FontMeasure(font, RAD_UNIT_INFO_VIEW_INDENT_SAMPLE, strlen(RAD_UNIT_INFO_VIEW_INDENT_SAMPLE));
 
     // Die Zeile unter dem Namen: links die Lebenspunkte, rechts die
     // Bewegungsreichweite, je die halbe Breite.
@@ -192,7 +189,7 @@ bool RAD_UnitInfoViewAddLine(RAD_UnitInfoView_t *unit_info_view, const char *tex
         return false;
     }
 
-    const int32_t line = TTF_FontLineSkip(unit_info_view->font);
+    const int32_t line = RAD_FontLineHeight(unit_info_view->font);
     const int32_t x = RAD_UNIT_INFO_VIEW_PADDING + (indented ? unit_info_view->indent : 0);
     const int32_t width = unit_info_view->max_area.w - RAD_UNIT_INFO_VIEW_PADDING - x;
     const int32_t top = RAD_UnitInfoViewLinesBottom(unit_info_view, unit_info_view->number_of_lines);
@@ -272,7 +269,7 @@ void RAD_UpdateUnitInfoView(RAD_UnitInfoView_t *unit_info_view, SDL_Renderer *re
 ///
 static int32_t RAD_UnitInfoViewLinesBottom(const RAD_UnitInfoView_t *unit_info_view, size_t number_of_lines)
 {
-    const int32_t line = TTF_FontLineSkip(unit_info_view->font);
+    const int32_t line = RAD_FontLineHeight(unit_info_view->font);
     return RAD_UNIT_INFO_VIEW_FIRST_LINE_TOP(line) + (int32_t)number_of_lines * line;
 }
 

@@ -24,6 +24,14 @@ endif()
 # emcc minifiziert client.js ab -O2 trotzdem.
 string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
+# Link Time Optimization im Release, nur fuer den Wasm-Build: emcc setzt daraus
+# -flto beim Kompilieren und Linken. Hier vor den add_subdirectory()-Aufrufen,
+# damit die Vorgabe fuer alle Ziele gilt, die in den Client gelinkt werden
+# (radish_protobuf, client). Der Host-Build bleibt unberuehrt.
+if(EMSCRIPTEN)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+endif()
+
 # Vor add_subdirectory(game): radish_game bindet die Serialisierung ein und
 # braucht jsmn::jsmn beim Konfigurieren seines Ziels.
 include(cmake/jsmn.cmake)

@@ -2,7 +2,7 @@
 #define __RAD_VIEW_CONTEXT_MENU_CONTEXT_MENU_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/io/net_session.h>
@@ -220,7 +220,7 @@ typedef struct
 /// und die Zustandsmaschine ab und nullt den Zeiger des Aufrufers.
 ///
 RAD_ContextMenuView_t* RAD_CreateContextMenuView(int32_t center_x, int32_t center_y, int32_t radius,
-                                                 TTF_Font *font, int32_t deployment_width, int32_t deployment_height,
+                                                 const RAD_Font_t *font, int32_t deployment_width, int32_t deployment_height,
                                                  RAD_IoNetSession_t *session, const RAD_IsoMap_t *map,
                                                  const RAD_ClientWorld_t *world);
 void RAD_DestroyContextMenuView(RAD_ContextMenuView_t **context_menu_view);

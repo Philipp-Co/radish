@@ -2,7 +2,7 @@
 #define __RAD_VIEW_DEBUG_DEBUG_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdint.h>
 
 ///
@@ -43,7 +43,7 @@ typedef struct RAD_DebugView RAD_DebugView_t;
 /// RAD_ViewFont) und muss die DebugView ueberleben. RAD_DestroyDebugView nullt
 /// den Zeiger des Aufrufers.
 ///
-RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font);
+RAD_DebugView_t* RAD_CreateDebugView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font);
 void RAD_DestroyDebugView(RAD_DebugView_t **debug_view);
 
 ///

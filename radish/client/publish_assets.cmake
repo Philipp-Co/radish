@@ -30,9 +30,13 @@ file(GLOB_RECURSE asset_files RELATIVE "${ASSETS_DIR}"
     "${ASSETS_DIR}/effects/*.png"
 )
 # Dieselbe Schrift wie im Frontend (Michroma, SIL OFL, siehe
-# assets/fonts/michroma/OFL.txt) -- als TTF, weil FreeType im Emscripten-Port
-# ohne Brotli gebaut ist und die woff2-Dateien des Frontends nicht liest.
-list(APPEND asset_files "fonts/michroma/Michroma-Regular.ttf")
+# assets/fonts/michroma/OFL.txt) -- als Bitmap-Atlas im BMFont-Textformat,
+# erzeugt aus Michroma-Regular.ttf (rendering/bitmap_font.c). Die TTF selbst
+# liest der Client nicht mehr.
+list(APPEND asset_files
+    "fonts/michroma/michroma_32.fnt"
+    "fonts/michroma/michroma_32.png"
+)
 list(SORT asset_files)
 
 set(manifest_entries "")

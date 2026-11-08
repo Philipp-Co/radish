@@ -2,7 +2,7 @@
 #define __RAD_VIEW_UNIT_DEPLOYMENT_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <radish/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/model/reserve.h>
@@ -57,7 +57,7 @@ typedef struct RAD_UnitDeploymentView RAD_UnitDeploymentView_t;
 /// RAD_ViewFont) und muss die UnitDeploymentView ueberleben.
 /// RAD_DestroyUnitDeploymentView nullt den Zeiger des Aufrufers.
 ///
-RAD_UnitDeploymentView_t* RAD_CreateUnitDeploymentView(int32_t x, int32_t y, int32_t width, int32_t height, TTF_Font *font);
+RAD_UnitDeploymentView_t* RAD_CreateUnitDeploymentView(int32_t x, int32_t y, int32_t width, int32_t height, const RAD_Font_t *font);
 void RAD_DestroyUnitDeploymentView(RAD_UnitDeploymentView_t **unit_deployment_view);
 
 ///

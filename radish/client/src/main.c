@@ -27,9 +27,10 @@
 #define MAX_INPUT_LENGTH 64
 ///
 /// Dieselbe Schrift wie im Frontend: Michroma (assets/fonts/michroma/), nur der
-/// Schnitt 400 -- wie dort.
+/// Schnitt 400 -- wie dort. Als Bitmap-Atlas in 32 Pixeln (rendering/font.h);
+/// FONT_SIZE verkleinert ihn.
 ///
-#define FONT_PATH "/assets/fonts/michroma/Michroma-Regular.ttf"
+#define FONT_PATH "/assets/fonts/michroma/michroma_32.fnt"
 #define FONT_SIZE 16
 
 ///

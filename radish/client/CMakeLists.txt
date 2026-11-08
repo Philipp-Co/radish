@@ -1,4 +1,4 @@
-# emcc fuegt den Header-Suchpfad fuer per USE_SDL=2/USE_SDL_TTF=2 gezogene Ports
+# emcc fuegt den Header-Suchpfad fuer per USE_SDL=2/USE_SDL_IMAGE=2 gezogene Ports
 # nur intern beim eigentlichen Aufruf hinzu -- er taucht nicht in den Flags auf,
 # die CMake in compile_commands.json schreibt. Fuer clangd/vim muss er deshalb
 # hier explizit ergaenzt werden.
@@ -22,6 +22,7 @@ add_executable(client
     src/rendering/iso_unit_images.c
     src/rendering/iso_effect_images.c
     src/rendering/iso_effect.c
+    src/rendering/bitmap_font.c
     src/rendering/iso_tile/iso_tile.c
     src/rendering/iso_tile/void.c
     src/rendering/iso_tile/ground.c
@@ -127,7 +128,7 @@ target_link_libraries(client PRIVATE
 # Compiler-Suchpfad von emcc und liesse ihn bei target_include_directories()
 # aus den generierten -I-Flags herausfallen -- und damit auch aus
 # compile_commands.json. Als rohe Compile-Option bleibt er erhalten, sodass
-# clangd/vim SDL2/SDL_ttf-Header findet.
+# clangd/vim SDL2/SDL_image-Header findet.
 #
 # --target=wasm32-unknown-emscripten wird von emcc ebenfalls nur intern an
 # clang durchgereicht. Ohne es faellt clangd auf das Host-Target (macOS/
@@ -151,7 +152,7 @@ target_compile_options(client PRIVATE
     "-sUSE_SDL_IMAGE=2"
 )
 
-# Bilder und Font stecken nicht im Wasm, sondern liegen einzeln mit Hash im
+# Bilder und Schrift stecken nicht im Wasm, sondern liegen einzeln mit Hash im
 # Namen unter web/assets/, dazu manifest.json (siehe publish_assets.cmake). So
 # kann der Browser jede Datei fuer sich cachen, und eine Code-Aenderung laedt
 # nicht alle Bilder neu. Das Frontend legt sie vor main() ins Dateisystem des
@@ -171,8 +172,9 @@ add_custom_target(client_assets ALL
 add_dependencies(client client_assets)
 
 target_link_options(client PRIVATE
+    # Kein -sUSE_SDL_TTF=2: Text zeichnet rendering/bitmap_font.c aus einem
+    # Atlas. SDL_ttf braechte FreeType und HarfBuzz mit, rund 900 KB im Wasm.
     "-sUSE_SDL=2"
-    "-sUSE_SDL_TTF=2"
     "-sUSE_SDL_IMAGE=2"
     "-sSDL2_IMAGE_FORMATS=[\"png\"]"
     # Ohne --embed-file sieht emcc keine eingebetteten Dateien mehr; das volle
