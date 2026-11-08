@@ -41,15 +41,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends protobuf-compiler protobuf-c-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Die SDL-Ports vorab, in eigener Schicht: emcc laedt und uebersetzt sie sonst
-# beim ersten Linken, und jede Aenderung unter radish/ wuerde das wiederholen.
-RUN embuilder build sdl2 sdl2_ttf sdl2_image sdl2_image-png libpng zlib freetype harfbuzz
-
 WORKDIR /src
 
 # Kein zucchini/: unter Emscripten zieht radish/CMakeLists.txt es nicht.
 COPY jsmn/ jsmn/
 COPY protobuf-c/ protobuf-c/
+# SDL2 und SDL_image als Klone, keine Emscripten-Ports: radish/cmake/sdl2.cmake
+# uebersetzt sie mit dem Client.
+COPY SDL/ SDL/
+COPY SDL_image/ SDL_image/
 COPY radish/ radish/
 
 # Nur das Ziel "client": es schreibt client.js/client.wasm nach radish/web/ und

@@ -56,6 +56,9 @@ add_subdirectory(protobuf)
 # jsmn: unter emcc liesse sich zucchini_api nicht uebersetzen, und ein
 # Wasm-Build soll nicht an einem fehlenden zucchini-Klon scheitern.
 if(EMSCRIPTEN)
+    # SDL2 und SDL_image aus den Klonen neben dem Projekt, vor client/: der
+    # Client linkt gegen ihre Ziele (cmake/sdl2.cmake).
+    include(cmake/sdl2.cmake)
     add_subdirectory(client)
 else()
     include(cmake/zucchini.cmake)

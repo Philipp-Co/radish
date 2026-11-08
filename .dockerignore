@@ -10,6 +10,10 @@
 .gitignore
 .claude/
 
+# Die Git-Daten der SDL-Klone; der Wasm-Build braucht nur ihre Quellen.
+SDL/.git/
+SDL_image/.git/
+
 # Das Emscripten-SDK: nur fuer den Wasm-Build auf dem Host, nie im Image.
 emsdk/
 

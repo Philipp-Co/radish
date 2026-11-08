@@ -3,11 +3,6 @@
 #include <assert.h>
 #include <stddef.h>
 
-///
-/// Um so viele Pixel verschiebt ein Druck auf eine Pfeiltaste die Kamera.
-///
-#define RAD_IO_CAMERA_KEY_STEP 25
-
 static void RAD_IoCameraControlDefaultOnViewChanged(void *user_argument);
 static void RAD_IoCameraControlClamp(RAD_IoCameraControl_t *control);
 static int32_t RAD_IoCameraControlClampAxis(int32_t value, int32_t map_min, int32_t map_max, int32_t viewport);
@@ -80,27 +75,6 @@ bool RAD_IoCameraControlHandleEvent(RAD_IoCameraControl_t *control, const SDL_Ev
             RAD_IoCameraControlMoveBy(control, -event->motion.xrel, -event->motion.yrel);
             control->moved_while_dragging = true;
             return false;
-
-        case SDL_KEYUP:
-            switch(event->key.keysym.scancode)
-            {
-                case SDL_SCANCODE_UP:
-                    RAD_IoCameraControlMoveBy(control, 0, RAD_IO_CAMERA_KEY_STEP);
-                    break;
-                case SDL_SCANCODE_DOWN:
-                    RAD_IoCameraControlMoveBy(control, 0, -RAD_IO_CAMERA_KEY_STEP);
-                    break;
-                case SDL_SCANCODE_LEFT:
-                    RAD_IoCameraControlMoveBy(control, RAD_IO_CAMERA_KEY_STEP, 0);
-                    break;
-                case SDL_SCANCODE_RIGHT:
-                    RAD_IoCameraControlMoveBy(control, -RAD_IO_CAMERA_KEY_STEP, 0);
-                    break;
-                default:
-                    return false;
-            }
-            control->subscriber.view_changed(control->subscriber.user_argument);
-            return true;
 
         default:
             return false;

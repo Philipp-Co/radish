@@ -53,7 +53,7 @@ const ZUC_STATE_CLOSED = 2;
     <div class="game-canvas">
       <!-- Die rechte Maustaste verschiebt die Kamera (client/src/io/camera_control.c):
            das Kontextmenue des Browsers darf dabei nicht aufgehen. -->
-      <canvas id="canvas" #canvas width="640" height="420" tabindex="0" (contextmenu)="$event.preventDefault()"></canvas>
+      <canvas id="canvas" #canvas width="640" height="420" (contextmenu)="$event.preventDefault()"></canvas>
     </div>
   `,
   styles: [
@@ -91,36 +91,6 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private wasmModule: any = null;
 
-  /*
-   * Der Emscripten/SDL2-Client haengt seine Tastatur-Handler (keydown/
-   * keypress/keyup) global an `window` an -- nicht an das <canvas> --, weil
-   * SDL2s HTML5-Backend das absichtlich so macht, damit Tasteneingaben auch
-   * ohne zuverlaessigen Canvas-Fokus ankommen (per Browser-DevTools verifiziert:
-   * beim Aufruf von createZucchiniModule() registriert client.js u.a.
-   * "window:keydown"/"window:keyup"/"window:keypress", nichts davon an
-   * `document`). client.js exportiert dafuer kein Aufraeum-Hook
-   * (`JSEvents.removeAllEventListeners` ist Teil der Emscripten-Runtime,
-   * aber nicht in EXPORTED_RUNTIME_METHODS enthalten -- siehe
-   * radish/client/CMakeLists.txt), und ohne eigenes Nachrunterfahren blieben
-   * diese `window`-Listener nach dem Verlassen dieser Komponente fuer den
-   * Rest der SPA aktiv: jede Taste, die das Spiel waehrend einer laufenden
-   * Partie fuer Steuerung nutzt (z.B. WASD/Pfeile), wuerde dann per
-   * `e.preventDefault()` global geschluckt -- inklusive in ganz normalen
-   * Text-/Passwort-Feldern auf anderen Seiten (siehe games-shell/join).
-   * Deshalb werden hier `window.addEventListener` UND (vorsichtshalber,
-   * falls eine kuenftige client.js-Version doch an `document` registriert)
-   * `document.addEventListener` waehrend des WASM-Ladens abgefangen, um
-   * genau die von client.js registrierten Tastatur-Listener zu merken und
-   * sie in ngOnDestroy() wieder zu entfernen.
-   */
-  private readonly capturedKeyListeners: {
-    target: Document | Window;
-    type: string;
-    listener: EventListenerOrEventListenerObject;
-    options?: boolean | AddEventListenerOptions;
-  }[] = [];
-  private restoreAddEventListeners: (() => void) | null = null;
-
   async ngAfterViewInit(): Promise<void> {
     try {
       this.wasmModule = await this.loadWasmModule();
@@ -144,7 +114,6 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     this.gameSocket.setPlayerIdHandler(null);
     this.gameSocket.setConnectionStateHandler(null);
     this.scriptEl?.remove();
-    this.releaseGlobalKeyListeners();
   }
 
   /**
@@ -248,8 +217,9 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
     assets.catch(() => undefined);
 
     return new Promise((resolve, reject) => {
+      // Ohne tabindex und Fokus: der Client wertet keine Tastatur aus, und
+      // SDL meldet dafuer keine Listener an (client/src/view/view.c).
       const canvas = this.canvasRef.nativeElement;
-      canvas.addEventListener('click', () => canvas.focus());
 
       const script = document.createElement('script');
       // Von radish/client/CMakeLists.txt (RUNTIME_OUTPUT_DIRECTORY) nach
@@ -279,50 +249,8 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
           .then(resolve, reject);
       };
       script.onerror = () => reject(new Error(`${script.src} konnte nicht geladen werden.`));
-      this.interceptGlobalKeyListeners();
       document.body.appendChild(script);
       this.scriptEl = script;
     });
-  }
-
-  /**
-   * Faengt window.addEventListener(...)/document.addEventListener(...) fuer
-   * "keydown"/"keypress"/"keyup" ab, solange der WASM-Client laedt bzw.
-   * laeuft, und merkt sich jeden so registrierten Listener, um ihn in
-   * releaseGlobalKeyListeners() gezielt wieder zu entfernen (siehe Kommentar
-   * bei capturedKeyListeners oben).
-   */
-  private interceptGlobalKeyListeners(): void {
-    const captured = this.capturedKeyListeners;
-    const KEY_EVENT_TYPES = new Set(['keydown', 'keypress', 'keyup']);
-    const restoreFns: (() => void)[] = [];
-
-    for (const target of [window, document] as (Window | Document)[]) {
-      const original = target.addEventListener.bind(target);
-      target.addEventListener = ((
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: boolean | AddEventListenerOptions,
-      ) => {
-        if (KEY_EVENT_TYPES.has(type)) {
-          captured.push({ target, type, listener, options });
-        }
-        return original(type, listener, options);
-      }) as typeof target.addEventListener;
-      restoreFns.push(() => {
-        target.addEventListener = original;
-      });
-    }
-
-    this.restoreAddEventListeners = () => restoreFns.forEach((restore) => restore());
-  }
-
-  private releaseGlobalKeyListeners(): void {
-    for (const { target, type, listener, options } of this.capturedKeyListeners) {
-      target.removeEventListener(type, listener, options);
-    }
-    this.capturedKeyListeners.length = 0;
-    this.restoreAddEventListeners?.();
-    this.restoreAddEventListeners = null;
   }
 }

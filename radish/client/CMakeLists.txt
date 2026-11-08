@@ -1,13 +1,14 @@
-# emcc fuegt den Header-Suchpfad fuer per USE_SDL=2/USE_SDL_IMAGE=2 gezogene Ports
+# emcc fuegt den Header-Suchpfad des Sysroots (emscripten.h, emscripten/*.h)
 # nur intern beim eigentlichen Aufruf hinzu -- er taucht nicht in den Flags auf,
 # die CMake in compile_commands.json schreibt. Fuer clangd/vim muss er deshalb
-# hier explizit ergaenzt werden.
+# hier explizit ergaenzt werden. Die SDL2-/SDL_image-Header kommen dagegen ueber
+# die Ziele aus cmake/sdl2.cmake.
 #
 # EMSCRIPTEN_SYSROOT setzt die Toolchain-Datei bereits selbst; sie ruft em-config
 # ueber den absoluten emsdk-Pfad auf. Ein eigener "em-config"-Aufruf wuerde
 # dagegen voraussetzen, dass emsdk_env.sh den PATH gesetzt hat -- ohne das bleibt
 # die Ausgabe leer und in compile_commands.json landet ein nutzloses
-# "-I/sysroot/include", woraufhin clangd die SDL2-Header nicht findet.
+# "-I/sysroot/include", woraufhin clangd die Emscripten-Header nicht findet.
 if(NOT EMSCRIPTEN_SYSROOT)
     message(FATAL_ERROR "EMSCRIPTEN_SYSROOT ist nicht gesetzt -- wurde wirklich mit der Emscripten-Toolchain konfiguriert?")
 endif()
@@ -120,15 +121,23 @@ target_include_directories(client PRIVATE
 # radish_protobuf traegt den generierten Protobuf-Code (protobuf/CMakeLists.txt)
 # und bringt ueber protobuf-c::protobuf-c auch dessen Header/Bibliothek mit --
 # das braucht ausschliesslich src/io/net_codec.c, siehe dort.
+#
+# SDL2 und SDL_image stammen aus den Klonen neben dem Projekt, nicht aus den
+# Emscripten-Ports (cmake/sdl2.cmake). Ihr Include-Pfad steht BEFORE vor allen
+# anderen, damit <SDL2/SDL_image.h> nie eine Port-Kopie im Sysroot trifft.
 target_link_libraries(client PRIVATE
     radish_protobuf
+    SDL2_image::SDL2_image-static
+    SDL2::SDL2-static
 )
+target_include_directories(client BEFORE PRIVATE "${SDL2_IMAGE_INCLUDE_DIR}")
 
 # CMake erkennt "${EMSCRIPTEN_CACHE_DIR}/sysroot/include" als impliziten
 # Compiler-Suchpfad von emcc und liesse ihn bei target_include_directories()
 # aus den generierten -I-Flags herausfallen -- und damit auch aus
 # compile_commands.json. Als rohe Compile-Option bleibt er erhalten, sodass
-# clangd/vim SDL2/SDL_image-Header findet.
+# clangd/vim die Emscripten-Header findet. Er steht hinter den Include-Pfaden
+# der SDL-Ziele, die damit Vorrang haben.
 #
 # --target=wasm32-unknown-emscripten wird von emcc ebenfalls nur intern an
 # clang durchgereicht. Ohne es faellt clangd auf das Host-Target (macOS/
@@ -141,15 +150,10 @@ target_link_libraries(client PRIVATE
 # explizites -std, aeltere clangd-Versionen (z.B. das in YouCompleteMe
 # gebuendelte clangd 14) aber nicht -- dort kommt sonst "expected expression"
 # in promise.h.
-#
-# -sUSE_SDL_IMAGE=2 auch hier: emcc legt die Header eines Ports erst in den
-# Sysroot, wenn er ihn zum ersten Mal zieht -- sonst erst beim Linken, und
-# rendering/iso_tile_images.c faende SDL2/SDL_image.h davor nicht.
 target_compile_options(client PRIVATE
     "-I${EMSCRIPTEN_SYSROOT}/include"
     "--target=wasm32-unknown-emscripten"
     "-std=gnu2x"
-    "-sUSE_SDL_IMAGE=2"
 )
 
 # Bilder und Schrift stecken nicht im Wasm, sondern liegen einzeln mit Hash im
@@ -174,14 +178,17 @@ add_dependencies(client client_assets)
 target_link_options(client PRIVATE
     # Kein -sUSE_SDL_TTF=2: Text zeichnet rendering/bitmap_font.c aus einem
     # Atlas. SDL_ttf braechte FreeType und HarfBuzz mit, rund 900 KB im Wasm.
-    "-sUSE_SDL=2"
-    "-sUSE_SDL_IMAGE=2"
-    "-sSDL2_IMAGE_FORMATS=[\"png\"]"
+    #
+    # Kein -sUSE_SDL=2 / -sUSE_SDL_IMAGE=2: SDL kommt aus cmake/sdl2.cmake.
+    # Zwei Dinge, die der SDL2-Port sonst selbst einstellt, stehen deshalb hier:
+    # SDL ruft eglGetProcAddress() (GL_ENABLE_GET_PROC_ADDRESS) und greift auf
+    # Module['createContext'] zu (in EXPORTED_RUNTIME_METHODS unten).
+    "-sGL_ENABLE_GET_PROC_ADDRESS=1"
     # Ohne --embed-file sieht emcc keine eingebetteten Dateien mehr; das volle
     # Dateisystem soll trotzdem sicher mitkommen, das Frontend schreibt hinein.
     "-sFORCE_FILESYSTEM"
     "-sEXPORTED_FUNCTIONS=['_main','_RAD_OnMessageReceived','_zuc_on_connection_state','_RAD_ClientSetPlayerId','_malloc','_free']"
-    "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','FS']"
+    "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','FS','createContext']"
     "-sMODULARIZE=1"
     "-sEXPORT_NAME=createZucchiniModule"
     "-sENVIRONMENT=web"

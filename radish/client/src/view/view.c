@@ -58,6 +58,14 @@
 #define RAD_VIEW_UNIT_DEPLOYMENT_WIDTH 200
 
 ///
+/// Id eines Elements, das es auf keiner Seite gibt: das Ziel fuer SDLs
+/// Tastatur-Listener (SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT), damit es keines
+/// findet. Ohne "#" davor -- "#window", "#canvas" usw. sind bei SDL besondere
+/// Ziele.
+///
+#define RAD_VIEW_NO_KEYBOARD_ELEMENT "radish-no-keyboard"
+
+///
 /// Groesse der ContextMenuView (view/view.h): Radius des Rings, in Pixeln.
 /// Ihre Eintraege legt sie selbst an (view/context_menu/context_menu_view.h).
 ///
@@ -230,6 +238,13 @@ RAD_RootView_t* RAD_CreateView(
         .unit_info_stale = false
     };
 
+    // Keine Tastatur: der Client wertet keine Taste aus. Ohne den Hint haengt
+    // SDLs Emscripten-Backend keydown/keyup/keypress an "window" und schluckt
+    // damit Tasten auf der ganzen Seite. Ein Element mit dieser Id gibt es
+    // nicht; Emscripten findet kein Ziel und registriert nichts. Muss vor
+    // SDL_CreateWindow stehen, dort meldet SDL seine Handler an.
+    SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, RAD_VIEW_NO_KEYBOARD_ELEMENT);
+
     if(SDL_Init(SDL_INIT_VIDEO) != 0)
     {
         printf("SDL_Init: %s\n", SDL_GetError());
@@ -362,8 +377,6 @@ RAD_RootView_t* RAD_CreateView(
     view->debug_metrics.update_time.interval_start = now;
     view->debug_metrics.update_time.max_start = now + RAD_VIEW_MAX_UPDATE_DELAY_MS;
 
-    SDL_StartTextInput();
-
     return view;
 }
 
@@ -375,8 +388,6 @@ RAD_RootView_t* RAD_CreateView(
 void RAD_DestroyView(RAD_RootView_t **view)
 {
     RAD_RootView_t *v = *view;
-
-    SDL_StopTextInput();
 
     if(v->debug_view != NULL)
     {
@@ -480,7 +491,7 @@ const RAD_Font_t* RAD_ViewFont(const RAD_RootView_t *view)
 ///
 static void RAD_ViewHandleEvent(RAD_RootView_t *view, const SDL_Event *event)
 {
-    // Zuerst die Kamera: rechte Maustaste und Pfeiltasten gehoeren ihr.
+    // Zuerst die Kamera: die rechte Maustaste gehoert ihr.
     if(RAD_IoCameraControlHandleEvent(&view->camera_control, event))
     {
         return;

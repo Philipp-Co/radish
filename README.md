@@ -48,7 +48,7 @@ unterscheiden.
 | `radish/client/` | Das Wasm-Programm: `main.c` und die isometrische Darstellung mit SDL2 |
 | `radish/game-server-core/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
-| `radish/cmake/` | CMake-Beiwerk: die Einbindung von `jsmn`, `zucchini` und `Unity` |
+| `radish/cmake/` | CMake-Beiwerk: die Einbindung von `jsmn`, `zucchini`, `Unity`, `protobuf-c` und SDL |
 | `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` und unter `assets/` die Bilder und die Schrift mit Hash im Namen samt `manifest.json` |
 | `radish/frontend/` | Angular-Frontend: Login, Spielübersicht, Spielansicht, Adminbereich (Rolle "Radish-Admin", listet angemeldete Game-Server) — bindet `radish/web/` unter `/wasm/` ein — siehe [radish/frontend/README.md](radish/frontend/README.md) |
 | `radish/backend/` | Django-Matchmaking-API + Keycloak-Login (`api/`), liefert `radish/frontend/` und `radish/web/` unter `/` bzw. `/wasm/` mit aus (`web/`) |
@@ -56,7 +56,7 @@ unterscheiden.
 | `docker/` | Dockerfiles: Backend (Zucchini + Spielserver + Django, baut dabei `radish/frontend/` mit) |
 
 Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,
-`zucchini/`, `Unity/`.
+`zucchini/`, `Unity/`, `SDL/`, `SDL_image/`.
 
 ## Aufbau
 
@@ -326,8 +326,15 @@ Dieser Build kopiert die `compile_commands.json` bewusst *nicht* nach `radish/` 
 sonst stünden dort Einträge ohne die SDL2- und Emscripten-Suchpfade, und clangd
 fände die Header des Clients nicht mehr.
 
-SDL2 und SDL_image werden nicht separat installiert — Emscripten zieht sie über
-`-sUSE_SDL=2` / `-sUSE_SDL_IMAGE=2` als Ports. Text zeichnet der Client ohne
+SDL2 und SDL_image kommen nicht als Emscripten-Ports (`-sUSE_SDL=2`), sondern
+werden aus den Klonen `SDL/` und `SDL_image/` neben dem Projekt mitübersetzt —
+abgespeckt auf das, was der Client braucht: kein Audio, kein Joystick, kein
+Software-Renderer (`SDL_LEAN_AND_MEAN`), PNG über stb_image statt libpng und
+zlib. Das hält `client.wasm` bei rund 390 KB statt rund 1 MB; die Einzelheiten
+stehen in [radish/cmake/sdl2.cmake](radish/cmake/sdl2.cmake). Deshalb müssen
+alle Bilder unter `radish/assets/` RGBA-PNGs sein: Andere Pixelformate kann
+SDL ohne die Blitter nicht mehr in Texturen umwandeln, `IMG_LoadTexture`
+scheitert dann beim Start. Text zeichnet der Client ohne
 SDL_ttf aus einem Bitmap-Atlas (`radish/assets/fonts/michroma/michroma_32.fnt`
 samt PNG, siehe `radish/client/src/rendering/bitmap_font.c`).
 
@@ -430,8 +437,8 @@ Emscripten-Stage (`emscripten/emsdk`, dieselbe Version wie `emsdk/`) und
 [radish/frontend/README.md](radish/frontend/README.md)). Ein lokaler
 Emscripten-Build oder ein `npm install` auf dem Host ist dafür nicht nötig; ein
 lokal gebautes `radish/web/client.*` geht nicht ins Image. Der erste Bau lädt das
-Emscripten-Image (rund 750 MB) und übersetzt die SDL-Ports, danach liegen sie im
-Layer-Cache.
+Emscripten-Image (rund 750 MB), danach liegt es im Layer-Cache. SDL2 und
+SDL_image übersetzt der Client-Build jedes Mal mit.
 
 ### Datenbank
 
@@ -539,7 +546,7 @@ verworfen und nur geloggt.
 
 ## Externe Abhängigkeiten
 
-Drei Verzeichnisse gehören nicht ins Repository und sind in der
+Diese Verzeichnisse gehören nicht ins Repository und sind in der
 [.gitignore](.gitignore) ausgenommen; sie müssen vor dem ersten Bauen daneben
 liegen:
 
@@ -549,12 +556,26 @@ liegen:
 | `jsmn/` | JSON-Tokenizer, ein Header, MIT | <https://github.com/zserge/jsmn> |
 | `zucchini/` | UDP-Backend, eigenes Projekt | separat auschecken |
 | `Unity/` | Testrahmen für die Unit-Tests, MIT | <https://github.com/ThrowTheSwitch/Unity> |
+| `SDL/` | SDL2, Tag `release-2.32.10`, zlib-Lizenz | <https://github.com/libsdl-org/SDL> |
+| `SDL_image/` | SDL_image, Tag `release-2.6.0`, zlib-Lizenz | <https://github.com/libsdl-org/SDL_image> |
 
 `jsmn` wird nicht kopiert, sondern aus dem Klon eingebunden — die Suche und das
 zugehörige CMake-Target stehen in [radish/cmake/jsmn.cmake](radish/cmake/jsmn.cmake).
 Fehlt der Klon, bricht CMake mit einer entsprechenden Meldung ab, statt später
 über einen fehlenden Header zu stolpern. Wer ihn woanders liegen hat, setzt
 `-DJSMN_INCLUDE_DIR=<pfad>`.
+
+`SDL` und `SDL_image` ebenso, nur für den Wasm-Build
+([radish/cmake/sdl2.cmake](radish/cmake/sdl2.cmake)); andere Orte über
+`-DSDL2_DIR_SOURCE=<pfad>` und `-DSDL2_IMAGE_DIR_SOURCE=<pfad>`:
+
+```bash
+git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git SDL
+```
+
+```bash
+git clone --depth 1 --branch release-2.6.0 https://github.com/libsdl-org/SDL_image.git SDL_image
+```
 
 `zucchini` genauso, seit es den Server gibt: es ist nicht mehr nur zur Laufzeit
 nötig, sondern beim Bauen. Aus dem Klon werden zwei Bibliotheken mitübersetzt,

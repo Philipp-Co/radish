@@ -7,8 +7,8 @@
 #include <radish/rendering/iso_map.h>
 
 ///
-/// Steuert die Kamera der Iso-Map: Ziehen mit gedrueckter rechter Maustaste und
-/// die Pfeiltasten.
+/// Steuert die Kamera der Iso-Map: Ziehen mit gedrueckter rechter Maustaste.
+/// Die Tastatur wertet der Client nicht aus (view/view.c).
 ///
 /// **Rechts und nicht links**, weil die linke Taste der RootView gehoert
 /// (view/view.h): ihr Loslassen waehlt ein Feld fuer die ContextMenuView aus.
@@ -20,8 +20,7 @@
 /// der Bildschirm nicht ueber ihren Rand hinaus zeigt.
 ///
 /// **view_changed meldet, wenn eine Bewegung abgeschlossen ist** -- beim
-/// Loslassen der Taste und nach einem Tastendruck, nicht bei jedem Pixel
-/// dazwischen. Dann ist ein anderer Ausschnitt zu sehen, und main.c fragt ihn
+/// Loslassen der Taste, nicht bei jedem Pixel dazwischen. Dann ist ein anderer Ausschnitt zu sehen, und main.c fragt ihn
 /// beim Server an.
 ///
 
@@ -66,8 +65,8 @@ void RAD_IoCameraControlSubscribeToViewChanged(
 
 ///
 /// Wertet ein SDL-Ereignis aus. true, wenn es damit erledigt ist und sonst
-/// niemand es auswerten soll -- das gilt fuer die rechte Maustaste und die
-/// Pfeiltasten. Mausbewegungen liefern immer false: auch waehrend des Ziehens
+/// niemand es auswerten soll -- das gilt fuer die rechte Maustaste.
+/// Mausbewegungen liefern immer false: auch waehrend des Ziehens
 /// soll der Fokus dem Mauszeiger folgen.
 ///
 bool RAD_IoCameraControlHandleEvent(RAD_IoCameraControl_t *control, const SDL_Event *event);

@@ -83,8 +83,9 @@
 /// sie sich aendert.
 ///
 /// **Sie haelt die Kamera-Steuerung** (io/camera_control.h) fuer die Iso-Map
-/// und gibt ihr in RAD_UpdateView jedes SDL-Ereignis zuerst: rechte Maustaste
-/// und Pfeiltasten verschieben die Kamera. **Danach gehen Maustasten an die
+/// und gibt ihr in RAD_UpdateView jedes SDL-Ereignis zuerst: die rechte
+/// Maustaste verschiebt die Kamera. Die Tastatur wertet sie nicht aus; SDL
+/// meldet dafuer im Browser gar nicht erst Listener an. **Danach gehen Maustasten an die
 /// ContextMenuView**, solange sie zu sehen ist (RAD_ContextMenuViewHandleMouseButton);
 /// trifft eine einen ihrer Eintraege, ist sie damit erledigt. Danach an die
 /// EndTurnView (RAD_EndTurnViewHandleMouseButton); was ihre Flaeche trifft,
@@ -114,8 +115,7 @@ typedef struct RAD_RootView RAD_RootView_t;
 ///
 /// Initialisiert SDL, oeffnet ein Fenster "title" mit width x height Pixeln
 /// samt Renderer, laedt die Schrift "font_path" (rendering/font.h) in
-/// "font_size" Pixeln, legt ihre Views an, alle sichtbar, und schaltet die
-/// Texteingabe ein. Die
+/// "font_size" Pixeln und legt ihre Views an, alle sichtbar. Die
 /// IsoMapView zeichnet "map", die Kamera-Steuerung verschiebt deren Kamera; die
 /// Map gehoert dem Aufrufer und muss die RootView ueberleben. Ebenso
 /// "session" (io/net_session.h): die RootView liest daraus die eigene
