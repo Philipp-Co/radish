@@ -113,12 +113,12 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * genau die von client.js registrierten Tastatur-Listener zu merken und
    * sie in ngOnDestroy() wieder zu entfernen.
    */
-  private readonly capturedKeyListeners: Array<{
+  private readonly capturedKeyListeners: {
     target: Document | Window;
     type: string;
     listener: EventListenerOrEventListenerObject;
     options?: boolean | AddEventListenerOptions;
-  }> = [];
+  }[] = [];
   private restoreAddEventListeners: (() => void) | null = null;
 
   async ngAfterViewInit(): Promise<void> {
@@ -208,7 +208,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * dauerhaft cachen (radish/backend/web/interfaces/serving.py) -- nur das Manifest wird
    * jedes Mal neu geprueft.
    */
-  private async loadAssets(): Promise<Array<[string, Uint8Array]>> {
+  private async loadAssets(): Promise<[string, Uint8Array][]> {
     const baseUrl = `${environment.wasmBaseUrl}/assets`;
     const manifestResponse = await fetch(`${baseUrl}/manifest.json`);
     if (!manifestResponse.ok) {
@@ -232,7 +232,7 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
    * main() -- der C-Code findet sie dort, wo frueher --embed-file sie ablegte.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private writeAssets(module: any, assets: Array<[string, Uint8Array]>): void {
+  private writeAssets(module: any, assets: [string, Uint8Array][]): void {
     for (const [path, data] of assets) {
       module.FS.mkdirTree(path.substring(0, path.lastIndexOf('/')));
       module.FS.writeFile(path, data);
@@ -295,9 +295,9 @@ export class GameCanvasComponent implements AfterViewInit, OnDestroy {
   private interceptGlobalKeyListeners(): void {
     const captured = this.capturedKeyListeners;
     const KEY_EVENT_TYPES = new Set(['keydown', 'keypress', 'keyup']);
-    const restoreFns: Array<() => void> = [];
+    const restoreFns: (() => void)[] = [];
 
-    for (const target of [window, document] as Array<Window | Document>) {
+    for (const target of [window, document] as (Window | Document)[]) {
       const original = target.addEventListener.bind(target);
       target.addEventListener = ((
         type: string,

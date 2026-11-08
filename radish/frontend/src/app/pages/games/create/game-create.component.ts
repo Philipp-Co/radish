@@ -89,7 +89,7 @@ export class GameCreateComponent {
     this.creating.set(true);
     this.errorMessage.set(null);
     this.api.createGame(this.name, this.password, this.pointsLimit, this.armyId).subscribe({
-      next: (game) => {
+      next: () => {
         this.creating.set(false);
         // Erst in die Lobby: das Spiel laeuft erst, wenn der Host es gestartet
         // und die Spielinstanz sich bereit gemeldet hat -- dann fuehrt die

@@ -134,3 +134,46 @@ Ergebnis mit hinein -- siehe dort und `radish/backend/web/interfaces/serving.py`
   Erstellen/Beitreten (`create/`/`join/`) geht es nicht mehr hierher,
   sondern zu `/games/lobby` -- die Route bleibt aber fuer einen direkten
   Aufruf bestehen.
+
+## Code-Qualitaet
+
+Neben dem Compiler -- TypeScript mit `"strict": true` und Angular mit
+`strictTemplates` (siehe `tsconfig.json`) -- prueft ESLint den Code. Es gibt
+noch keine CI und keine pre-commit-Hooks: die Pruefung wird vor dem Commit
+von Hand ausgefuehrt und soll ohne Befund durchgehen.
+
+```bash
+npm install
+npm run lint
+```
+
+### Stil
+
+Der Code orientiert sich an zwei Style Guides:
+
+- [Angular Style Guide](https://angular.dev/style-guide) -- Aufbau, Benennung
+  und Dateistruktur von Komponenten, Services und Routen (z.B. eine
+  Komponente je Datei, `*.component.ts`, Praefix `app`).
+- [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)
+  -- fuer TypeScript allgemein, passend zum Google Python Style Guide im
+  Backend und im game-server.
+
+Die Werkzeuge pruefen davon nur einen Teil; der Rest ist Sache des Reviews.
+Kommentare sind deutsch, wie im uebrigen Projekt.
+
+### Statische Analyse mit ESLint
+
+Konfiguration: [`eslint.config.js`](eslint.config.js), aufgerufen ueber
+`ng lint` (Ziel `lint` in `angular.json`, Builder von angular-eslint).
+
+- Regelsaetze: die empfohlenen von ESLint, `typescript-eslint` (inklusive
+  `stylistic`, z.B. `T[]` statt `Array<T>`) und `angular-eslint` fuer
+  TypeScript und Templates, dazu dessen Regeln zur Barrierefreiheit in
+  Templates.
+- Selektoren: Komponenten `app-...` (kebab-case), Direktiven `appName`
+  (camelCase), wie das Praefix in `angular.json`.
+- Ausnahmen an einzelnen Stellen nur mit Begruendung in der Zeile darueber,
+  z.B. `<!-- eslint-disable-next-line ... -->` in Templates.
+
+Die Versionen passen zu Angular 18: `angular-eslint` 18.x unterstuetzt ESLint
+8 und 9, nicht 10 -- deshalb ESLint 9.

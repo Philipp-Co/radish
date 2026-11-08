@@ -33,6 +33,9 @@ export interface CatalogField {
   template: `
     <div class="grid">
       @for (field of fields; track field.key) {
+        <!-- Das Eingabefeld steckt im Label, nur innerhalb von @switch -- das
+             erkennt die Regel nicht. -->
+        <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
         <label
           [class.wide]="field.type === 'text'"
           [class.checkbox]="field.type === 'checkbox'"

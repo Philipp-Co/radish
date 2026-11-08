@@ -105,7 +105,7 @@ export class GameJoinComponent implements OnInit {
     this.joining.set(true);
     this.errorMessage.set(null);
     this.api.joinGame(this.name, this.password, this.armyId).subscribe({
-      next: (game) => {
+      next: () => {
         this.joining.set(false);
         // Erst in die Lobby: das Spiel laeuft erst, wenn der Host es gestartet
         // und die Spielinstanz sich bereit gemeldet hat -- dann fuehrt die
