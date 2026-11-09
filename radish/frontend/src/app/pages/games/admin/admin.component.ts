@@ -15,7 +15,6 @@ import { ApiService, GameServerEntry } from '../../../core/api.service';
  */
 @Component({
   selector: 'app-admin',
-  standalone: true,
   template: `
     <section class="card">
       <div class="list-header">

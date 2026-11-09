@@ -60,7 +60,6 @@ const ADMIN_TILE: HubTile = {
  */
 @Component({
   selector: 'app-home',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <section class="welcome">

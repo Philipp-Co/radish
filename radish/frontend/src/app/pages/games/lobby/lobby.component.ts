@@ -22,7 +22,6 @@ const POLL_INTERVAL_MS = 2000;
  */
 @Component({
   selector: 'app-lobby',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <section class="card">

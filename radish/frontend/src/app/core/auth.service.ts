@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
@@ -103,6 +103,7 @@ function decodeClaims(accessToken: string | null): TokenClaims {
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private readonly http = inject(HttpClient);
   private readonly tokens = signal<StoredTokens | null>(this.loadTokens());
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -155,7 +156,7 @@ export class AuthService {
   /** Ob der angemeldete Nutzer die Keycloak-Realm-Rolle "Radish-Admin" hat. */
   readonly isAdmin = computed(() => this.roles().includes('Radish-Admin'));
 
-  constructor(private readonly http: HttpClient) {
+  constructor() {
     const current = this.tokens();
     if (current) {
       this.scheduleRefresh(current.expiresAt);

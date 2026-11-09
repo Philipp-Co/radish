@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
 export interface GameListEntry {
@@ -295,7 +295,7 @@ export interface CatalogFilter {
  */
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  constructor(private readonly http: HttpClient) {}
+  private readonly http = inject(HttpClient);
 
   listGames(page = 1): Observable<GameListPage> {
     return this.http.get<GameListPage>('/api/client/games/', { params: { page } });

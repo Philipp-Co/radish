@@ -30,7 +30,6 @@ const MAX_RESULTS = 25;
  */
 @Component({
   selector: 'app-catalog-edit',
-  standalone: true,
   imports: [
     FormsModule,
     RouterLink,

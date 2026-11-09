@@ -39,7 +39,6 @@ import { UnitDetailComponent } from './unit-detail.component';
  */
 @Component({
   selector: 'app-army-edit',
-  standalone: true,
   imports: [FormsModule, RouterLink, UnitDetailComponent],
   template: `
     <section class="card">

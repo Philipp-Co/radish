@@ -28,7 +28,6 @@ export interface CatalogField {
  */
 @Component({
   selector: 'app-catalog-entry-form',
-  standalone: true,
   imports: [FormsModule],
   template: `
     <div class="grid">

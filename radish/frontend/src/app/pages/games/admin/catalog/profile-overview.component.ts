@@ -17,7 +17,6 @@ import { CATALOG_BASE } from './catalog-shell.component';
  */
 @Component({
   selector: 'app-profile-overview',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <div class="header">

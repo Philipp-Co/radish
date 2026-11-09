@@ -22,7 +22,6 @@ import { ApiService, GameListEntry, GameListPage } from '../../../core/api.servi
  */
 @Component({
   selector: 'app-games-list',
-  standalone: true,
   template: `
     <section class="card">
       <div class="list-header">

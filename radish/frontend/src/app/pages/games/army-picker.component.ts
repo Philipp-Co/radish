@@ -13,7 +13,6 @@ import { ApiService, ArmyListEntry } from '../../core/api.service';
  */
 @Component({
   selector: 'app-army-picker',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <fieldset>

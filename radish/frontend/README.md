@@ -25,7 +25,7 @@ Django-Backend (`radish/backend/`, Service `backend` in
 
 ## Voraussetzungen
 
-- Node.js (LTS) + npm
+- Node.js (LTS, mindestens 20.19 oder 22.12 -- Vorgabe von Angular 20) + npm
 - Das uebrige `docker compose up` (Backend, Keycloak, ggf. game-server) muss
   laufen, siehe Root-`README.md`.
 
@@ -158,6 +158,16 @@ Der Code orientiert sich an zwei Style Guides:
   -- fuer TypeScript allgemein, passend zum Google Python Style Guide im
   Backend und im game-server.
 
+### Ohne zone.js
+
+Die App laeuft zonenlos (`provideZonelessChangeDetection()` in
+[`src/app/app.config.ts`](src/app/app.config.ts)); zone.js ist weder
+Abhaengigkeit noch Polyfill. Angular zeichnet nur neu, wenn sich ein Signal
+aendert, ein Template-Ereignis oder ein Output feuert. Zustand, der sich
+asynchron aendert -- HTTP-Antworten, Polling, Timer, WebSocket --, gehoert
+deshalb in ein `signal()`. Ein normales Feld, das nur in einem `subscribe()`
+oder `.then()` gesetzt wird, erscheint sonst erst beim naechsten Neuzeichnen.
+
 Die Werkzeuge pruefen davon nur einen Teil; der Rest ist Sache des Reviews.
 Kommentare sind deutsch, wie im uebrigen Projekt.
 
@@ -175,5 +185,5 @@ Konfiguration: [`eslint.config.js`](eslint.config.js), aufgerufen ueber
 - Ausnahmen an einzelnen Stellen nur mit Begruendung in der Zeile darueber,
   z.B. `<!-- eslint-disable-next-line ... -->` in Templates.
 
-Die Versionen passen zu Angular 18: `angular-eslint` 18.x unterstuetzt ESLint
+Die Versionen passen zu Angular 20: `angular-eslint` 20.x unterstuetzt ESLint
 8 und 9, nicht 10 -- deshalb ESLint 9.

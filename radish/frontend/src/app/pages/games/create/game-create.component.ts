@@ -9,7 +9,6 @@ import { ArmyPickerComponent } from '../army-picker.component';
 
 @Component({
   selector: 'app-game-create',
-  standalone: true,
   imports: [FormsModule, ArmyPickerComponent],
   template: `
     <section class="card">

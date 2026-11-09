@@ -14,7 +14,6 @@ import { GameCanvasComponent } from '../../shared/game-canvas/game-canvas.compon
  */
 @Component({
   selector: 'app-game',
-  standalone: true,
   imports: [RouterLink, GameCanvasComponent],
   template: `
     <main class="page">

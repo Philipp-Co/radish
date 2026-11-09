@@ -24,7 +24,6 @@ import { AuthService } from '../../core/auth.service';
  */
 @Component({
   selector: 'app-games-shell',
-  standalone: true,
   imports: [RouterLink, RouterOutlet],
   template: `
     <header class="topbar">

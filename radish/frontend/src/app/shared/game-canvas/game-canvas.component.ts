@@ -48,7 +48,6 @@ const ZUC_STATE_CLOSED = 2;
 
 @Component({
   selector: 'app-game-canvas',
-  standalone: true,
   template: `
     <div class="game-canvas">
       <!-- Die rechte Maustaste verschiebt die Kamera (client/src/io/camera_control.c):

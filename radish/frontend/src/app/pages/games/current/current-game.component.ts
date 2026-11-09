@@ -23,7 +23,6 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
  */
 @Component({
   selector: 'app-current-game',
-  standalone: true,
   imports: [GameCanvasComponent],
   template: `
     <section class="card">

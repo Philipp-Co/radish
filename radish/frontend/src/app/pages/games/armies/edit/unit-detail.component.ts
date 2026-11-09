@@ -33,7 +33,6 @@ import {
  */
 @Component({
   selector: 'app-unit-detail',
-  standalone: true,
   imports: [FormsModule],
   template: `
     <div class="header">

@@ -22,7 +22,9 @@
 # bisher, WebSocket-Verbindungen (siehe radish/backend/api/interfaces/routing.py,
 # api/interfaces/player/views/consumers.py) laufen ueber Channels. Ausgeliefert wird beides ueber
 # Daphne (siehe entrypoint.sh) -- weiterhin kein Reverse-Proxy davor.
-FROM node:20-alpine AS frontend-builder
+# Node 22: Angular 20 verlangt ^20.19 || ^22.12 || >=24, und Node 20 bekommt
+# seit April 2026 keine Updates mehr.
+FROM node:22-alpine AS frontend-builder
 WORKDIR /frontend-src
 COPY radish/frontend/package.json radish/frontend/package-lock.json* ./
 RUN npm install

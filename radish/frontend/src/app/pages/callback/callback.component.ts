@@ -5,7 +5,6 @@ import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-callback',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <main class="callback-page">

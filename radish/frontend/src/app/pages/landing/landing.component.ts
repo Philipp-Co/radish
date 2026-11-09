@@ -5,7 +5,6 @@ import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-landing',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <header class="topbar">

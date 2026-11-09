@@ -13,7 +13,6 @@ export const CATALOG_BASE = '/games/admin/catalog';
  */
 @Component({
   selector: 'app-catalog-shell',
-  standalone: true,
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <nav class="model-tabs">
@@ -60,7 +59,6 @@ export class CatalogShellComponent {
 /** Kopf einer Katalogseite: Titel des Modells und Wechsel zwischen Neu/Ändern. */
 @Component({
   selector: 'app-catalog-page-header',
-  standalone: true,
   imports: [RouterLink, RouterLinkActive],
   template: `
     <div class="header">

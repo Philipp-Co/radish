@@ -5,7 +5,6 @@ import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-login',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <main class="login-page">

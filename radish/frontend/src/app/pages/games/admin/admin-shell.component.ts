@@ -10,7 +10,6 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
  */
 @Component({
   selector: 'app-admin-shell',
-  standalone: true,
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <nav class="subnav">

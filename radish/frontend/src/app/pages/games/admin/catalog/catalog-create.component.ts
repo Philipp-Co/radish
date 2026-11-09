@@ -23,7 +23,6 @@ import { CATALOG_BASE, CatalogPageHeaderComponent } from './catalog-shell.compon
  */
 @Component({
   selector: 'app-catalog-create',
-  standalone: true,
   imports: [FormsModule, RouterLink, CatalogEntryFormComponent, CatalogPageHeaderComponent],
   template: `
     <section class="card">

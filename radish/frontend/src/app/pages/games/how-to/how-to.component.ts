@@ -116,7 +116,6 @@ const SECTIONS: HowToSection[] = [
  */
 @Component({
   selector: 'app-how-to',
-  standalone: true,
   template: `
     <section class="intro">
       <h2>How To</h2>

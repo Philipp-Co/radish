@@ -12,7 +12,6 @@ import { ApiService, ArmyListEntry } from '../../../../core/api.service';
  */
 @Component({
   selector: 'app-army-list',
-  standalone: true,
   imports: [RouterLink],
   template: `
     <section class="card">

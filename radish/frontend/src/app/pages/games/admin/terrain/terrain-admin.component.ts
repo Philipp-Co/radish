@@ -29,7 +29,6 @@ const FIELD_LABELS: Record<string, string> = {
  */
 @Component({
   selector: 'app-terrain-admin',
-  standalone: true,
   imports: [FormsModule],
   template: `
     <section class="card">
