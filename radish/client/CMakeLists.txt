@@ -21,6 +21,7 @@ add_executable(client
     src/rendering/iso_tile_images.c
     src/rendering/iso_facing.c
     src/rendering/iso_unit_images.c
+    src/rendering/iso_unit_sprite.c
     src/rendering/iso_effect_images.c
     src/rendering/iso_effect.c
     src/rendering/bitmap_font.c
@@ -40,6 +41,7 @@ add_executable(client
     src/rendering/iso_tile/unknown.c
     
     src/io/net_codec.c
+    src/io/jsmn_impl.c
     src/io/net_inbox.c
     src/io/camera_control.c
     src/io/net_transport.c
@@ -127,6 +129,9 @@ target_include_directories(client PRIVATE
 # anderen, damit <SDL2/SDL_image.h> nie eine Port-Kopie im Sysroot trifft.
 target_link_libraries(client PRIVATE
     radish_protobuf
+    # Header-only; die Implementierung uebersetzt src/io/jsmn_impl.c. Fuer die
+    # sprite.json der Einheitenbilder (rendering/iso_unit_sprite.c).
+    jsmn::jsmn
     SDL2_image::SDL2_image-static
     SDL2::SDL2-static
 )

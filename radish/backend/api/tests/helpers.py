@@ -183,6 +183,8 @@ class ProfilePayload(TypedDict, total=False):
     accuracy: int
     equipment_slots: int
     weapon_slots: int
+    heavy_weapon_slots: int
+    super_heavy_weapon_slots: int
     cost: int
     min_count: int
     max_count: int

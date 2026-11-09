@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "animations": {
+    "turn": {
+      "file": "turn.png",
+      "frame_width": 64,
+      "frame_height": 64,
+      "frame_count": 16,
+      "key_frames": [
+        0,
+        4,
+        8,
+        12
+      ]
+    },
+    "aim": {
+      "sw": {
+        "file": "turn.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 16,
+        "key_frames": [
+          0,
+          4,
+          8,
+          12
+        ]
+      },
+      "se": {
+        "file": "turn.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 16,
+        "key_frames": [
+          0,
+          4,
+          8,
+          12
+        ]
+      },
+      "ne": {
+        "file": "turn.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 16,
+        "key_frames": [
+          0,
+          4,
+          8,
+          12
+        ]
+      },
+      "nw": {
+        "file": "turn.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 16,
+        "key_frames": [
+          0,
+          4,
+          8,
+          12
+        ]
+      }
+    },
+    "move": {
+      "sw": {
+        "file": "walk_sw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 8,
+        "fps": 12
+      },
+      "se": {
+        "file": "walk_se.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 8,
+        "fps": 12
+      },
+      "ne": {
+        "file": "walk_ne.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 8,
+        "fps": 12
+      },
+      "nw": {
+        "file": "walk_nw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 8,
+        "fps": 12
+      }
+    },
+    "fire": {
+      "sw": {
+        "file": "fire_sw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 4,
+        "fps": 20
+      },
+      "se": {
+        "file": "fire_se.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 4,
+        "fps": 20
+      },
+      "ne": {
+        "file": "fire_ne.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 4,
+        "fps": 20
+      },
+      "nw": {
+        "file": "fire_nw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 4,
+        "fps": 20
+      }
+    },
+    "destroyed": {
+      "sw": {
+        "file": "fall_sw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 6,
+        "fps": 10
+      },
+      "se": {
+        "file": "fall_se.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 6,
+        "fps": 10
+      },
+      "ne": {
+        "file": "fall_ne.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 6,
+        "fps": 10
+      },
+      "nw": {
+        "file": "fall_nw.png",
+        "frame_width": 64,
+        "frame_height": 64,
+        "frame_count": 6,
+        "fps": 10
+      }
+    }
+  },
+  "anchor": {
+    "x": 0.5,
+    "y": 0.8
+  },
+  "draw_width": 96
+}

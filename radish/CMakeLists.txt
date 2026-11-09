@@ -79,6 +79,8 @@ else()
 
         add_subdirectory(game/test)
         add_subdirectory(game-server-core/test)
+        # Was vom Client ohne SDL auskommt, laeuft ebenfalls auf dem Host.
+        add_subdirectory(client/test)
     endif()
 endif()
 

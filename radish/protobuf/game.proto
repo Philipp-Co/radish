@@ -144,6 +144,11 @@ message NetUnit
     // nach, wie er Wege mit dem Gelaende nachrechnet; was er sehen darf,
     // entscheidet der Server.
     uint32 sight_range = 12;
+
+    // Welches Bild der Client zeichnet (RAD_Unit_t.sprite): der Ordner unter
+    // assets/units/, nur [a-z0-9_], hoechstens 31 Zeichen. Leer: kein Bild,
+    // der Client zeichnet ein Rechteck. Belegt bis zu 33 Byte des Platzes oben.
+    string sprite = 13;
 }
 
 // Eine Einheit in der Reserve, als Antwort auf NetDiscoverReserveRequest

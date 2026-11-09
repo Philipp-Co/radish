@@ -65,6 +65,7 @@ class UnitDocument(TypedDict):
     """$defs/einheit"""
 
     typ: str
+    bild: str
     bewegung: int
     sichtweite: int
     transportkapazitaet: int
@@ -138,6 +139,7 @@ def _army_document(army: Army) -> ArmyDocument:
         "einheiten": [
             {
                 "typ": unit.unit_type.name,
+                "bild": unit.unit_type.sprite,
                 "bewegung": unit.unit_type.movement,
                 "sichtweite": unit.unit_type.sight_range,
                 "transportkapazitaet": unit.unit_type.transport_capacity,

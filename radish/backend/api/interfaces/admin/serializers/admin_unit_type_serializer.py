@@ -33,6 +33,7 @@ class AdminUnitTypeSerializer(_CatalogAdminSerializer):
             "can_capture_objectives",
             "movement",
             "sight_range",
+            "sprite",
             "in_use",
             "profiles",
         ]

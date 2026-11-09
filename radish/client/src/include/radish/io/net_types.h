@@ -147,6 +147,14 @@ typedef struct
 #define RAD_NET_UNIT_NAME_MAX 32
 
 ///
+/// Platz fuer den Bild-Schluessel einer Einheit samt Null -- derselbe wie im
+/// Spiel (RAD_UNIT_SPRITE_KEY_MAX). Anders als ein Name wird er **nicht
+/// gekuerzt**: ein gekuerzter Schluessel naennte ein anderes Bild. Ist er zu
+/// lang, bleibt er leer, und der Client zeichnet ein Rechteck.
+///
+#define RAD_NET_UNIT_SPRITE_KEY_MAX 32
+
+///
 /// Hoechstzahl der Mitglieder einer Einheit und der Waffen eines Mitglieds --
 /// dieselben wie im Spiel (RAD_UNIT_MAX_MEMBERS, RAD_UNIT_MAX_WEAPONS). Eine
 /// Nachricht mit mehr liest der Codec nicht (net_codec.h).
@@ -200,6 +208,8 @@ typedef struct
     RAD_NetEntityId_t unit;
     RAD_NetUserId_t owner;
     char name[RAD_NET_UNIT_NAME_MAX];
+    /// Welches Bild sie hat (NetUnit.sprite); leer fuer keins.
+    char sprite[RAD_NET_UNIT_SPRITE_KEY_MAX];
     uint32_t movement;
     /// Wie weit sie sieht, in Feldern waagerecht plus senkrecht (NetUnit.sight_range).
     uint32_t sight_range;

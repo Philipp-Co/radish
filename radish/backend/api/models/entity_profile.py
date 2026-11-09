@@ -1,7 +1,7 @@
 from django.core.validators import MaxValueValidator
 from django.db import models
 
-from api.models.limits import MAX_UNIT_ENTITIES
+from api.models.limits import MAX_NAME_BYTES, MAX_UNIT_ENTITIES, MaxUtf8BytesValidator
 from api.models.unit_type import UnitType
 
 
@@ -15,7 +15,10 @@ class EntityProfile(models.Model):
     unit_type = models.ForeignKey(
         UnitType, on_delete=models.CASCADE, related_name="profiles"
     )
-    name = models.CharField(max_length=255)
+    # Geht ins Spiel; Grenze in Bytes, siehe limits.py.
+    name = models.CharField(
+        max_length=MAX_NAME_BYTES, validators=[MaxUtf8BytesValidator(MAX_NAME_BYTES)]
+    )
     health = models.PositiveSmallIntegerField()
     armor = models.PositiveSmallIntegerField()
     # Widerstand gegen einen Schuss, der die Ruestung durchschlagen hat: der

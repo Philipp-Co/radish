@@ -143,6 +143,8 @@ void test_message_packt_eine_einheit_der_reserve(void)
     unit.state = RAD_UNIT_STATE_RESERVE;
     // Der laengste Name, den eine Einheit tragen kann.
     memset(unit.name, 'T', RAD_UNIT_NAME_MAX - 1);
+    // Und der laengste Bild-Schluessel.
+    memset(unit.sprite, 's', RAD_UNIT_SPRITE_KEY_MAX - 1);
     unit.number_of_members = 10;
 
     // Ein Ringpuffer-Platz (1024 Byte, ZUC_RING_BUFFER_SLOT_SIZE) reicht mit Abstand.
@@ -164,6 +166,7 @@ void test_message_packt_eine_einheit_der_reserve(void)
     TEST_ASSERT_EQUAL_UINT32(5, net_unit->unit_id);
     TEST_ASSERT_EQUAL_UINT64(0x614233784B397051ull, net_unit->owner_id);
     TEST_ASSERT_EQUAL_STRING(unit.name, net_unit->name);
+    TEST_ASSERT_EQUAL_STRING(unit.sprite, net_unit->sprite);
     TEST_ASSERT_EQUAL_UINT32(10, net_unit->number_of_members);
 
     net_server_message__free_unpacked(message, NULL);
@@ -188,6 +191,8 @@ void test_message_packt_eine_aufgestellte_einheit(void)
     unit.owner = 0x614233784B397051ull;
     unit.state = RAD_UNIT_STATE_DEPLOYED;
     memset(unit.name, 'T', RAD_UNIT_NAME_MAX - 1);
+    // Und der laengste Bild-Schluessel.
+    memset(unit.sprite, 's', RAD_UNIT_SPRITE_KEY_MAX - 1);
     unit.number_of_members = 10;
 
     uint8_t buffer[1024];
@@ -211,6 +216,7 @@ void test_message_packt_eine_aufgestellte_einheit(void)
     TEST_ASSERT_EQUAL_UINT32(5, net_unit->unit_id);
     TEST_ASSERT_EQUAL_UINT64(0x614233784B397051ull, net_unit->owner_id);
     TEST_ASSERT_EQUAL_STRING(unit.name, net_unit->name);
+    TEST_ASSERT_EQUAL_STRING(unit.sprite, net_unit->sprite);
     TEST_ASSERT_EQUAL_UINT32(10, net_unit->number_of_members);
 
     net_server_message__free_unpacked(message, NULL);
@@ -372,6 +378,7 @@ void test_message_packt_eine_einheit(void)
     unit.owner = 0x614233784B397051ull;
     unit.state = RAD_UNIT_STATE_DEPLOYED;
     strcpy(unit.name, "Trupp");
+    strcpy(unit.sprite, "heavy_tank");
     unit.number_of_members = 3;
 
     uint8_t buffer[1024];
@@ -391,6 +398,7 @@ void test_message_packt_eine_einheit(void)
     TEST_ASSERT_EQUAL_UINT32(4, net_unit->unit_id);
     TEST_ASSERT_EQUAL_UINT64(0x614233784B397051ull, net_unit->owner_id);
     TEST_ASSERT_EQUAL_STRING("Trupp", net_unit->name);
+    TEST_ASSERT_EQUAL_STRING("heavy_tank", net_unit->sprite);
     TEST_ASSERT_EQUAL_UINT32(3, net_unit->number_of_members);
 
     net_server_message__free_unpacked(message, NULL);

@@ -38,6 +38,8 @@ static RAD_GameStartResult_t RAD_ReadEquipment(const RAD_GameStartTokens_t *t, i
 static RAD_GameStartResult_t RAD_ReadTerrains(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES]);
 static RAD_GameStartResult_t RAD_ReadTerrain(const RAD_GameStartTokens_t *t, int32_t index, RAD_Terrain_t terrain[RAD_NUMBER_OF_TILE_TYPES], bool seen[RAD_NUMBER_OF_TILE_TYPES]);
 static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_NAME_MAX]);
+static RAD_GameStartResult_t RAD_ReadSpriteKey(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_SPRITE_KEY_MAX]);
+static bool RAD_IsSpriteKeyCharacter(char c);
 static bool RAD_ReadValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
 static bool RAD_ReadSignedValue(const RAD_GameStartTokens_t *t, int32_t index, int16_t *value);
 static bool RAD_ReadByteValue(const RAD_GameStartTokens_t *t, int32_t index, uint8_t *value);
@@ -548,7 +550,7 @@ static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_
     unit->x = -1;
     unit->y = -1;
 
-    enum { TYP, BEWEGUNG, SICHTWEITE, TRANSPORT, ZIELE, ENTITAETEN, ALLE = (1u << 6) - 1 };
+    enum { TYP, BILD, BEWEGUNG, SICHTWEITE, TRANSPORT, ZIELE, ENTITAETEN, ALLE = (1u << 7) - 1 };
     uint32_t found = 0;
 
     int32_t key = index + 1;
@@ -561,6 +563,11 @@ static RAD_GameStartResult_t RAD_ReadUnit(const RAD_GameStartTokens_t *t, int32_
         {
             result = RAD_ReadName(t, value, unit->name);
             found |= RAD_FOUND(TYP);
+        }
+        else if(RAD_KeyIs(t, key, "bild"))
+        {
+            result = RAD_ReadSpriteKey(t, value, unit->sprite);
+            found |= RAD_FOUND(BILD);
         }
         else if(RAD_KeyIs(t, key, "bewegung"))
         {
@@ -971,6 +978,36 @@ static RAD_GameStartResult_t RAD_ReadName(const RAD_GameStartTokens_t *t, int32_
 }
 
 ///
+/// Der Schluessel des Bildes ("bild" im Schema): leer oder bis zu 31 Zeichen aus
+/// [a-z0-9_]. Kein String oder ein anderes Zeichen ist ein Schemafehler, zu lang
+/// fuer RAD_UNIT_SPRITE_KEY_MAX eine Grenze des Spiels -- wie bei RAD_ReadName.
+/// Weil nur diese Zeichen gehen, gibt es keine Maskierung, die der rohe
+/// Ausschnitt verfaelschen koennte.
+///
+static RAD_GameStartResult_t RAD_ReadSpriteKey(const RAD_GameStartTokens_t *t, int32_t index, char out[RAD_UNIT_SPRITE_KEY_MAX])
+{
+    const int32_t length = RAD_StringLength(t, index);
+    if(length < 0)
+    {
+        return RAD_GAME_START_ERROR_SCHEMA;
+    }
+
+    const char *text = t->json + t->tokens[index].start;
+    for(int32_t i=0;i < length; ++i)
+    {
+        if(!RAD_IsSpriteKeyCharacter(text[i]))
+        {
+            return RAD_GAME_START_ERROR_SCHEMA;
+        }
+    }
+    if(length >= RAD_UNIT_SPRITE_KEY_MAX)
+    {
+        return RAD_GAME_START_ERROR_LIMIT;
+    }
+    return RAD_CopyString(t, index, out, RAD_UNIT_SPRITE_KEY_MAX, 0) ? RAD_GAME_START_OK : RAD_GAME_START_ERROR_SCHEMA;
+}
+
+///
 /// Ein Spielwert ("wert" im Schema): eine ganze Zahl in 0..32767, ohne Vorzeichen,
 /// ohne Nachkommastellen und ohne Exponent. Passt damit immer in int16_t.
 ///
@@ -1102,6 +1139,11 @@ static bool RAD_ReadBool(const RAD_GameStartTokens_t *t, int32_t index, bool *va
 static bool RAD_IsIdentifierCharacter(char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+}
+
+static bool RAD_IsSpriteKeyCharacter(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '_');
 }
 
 ///

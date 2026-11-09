@@ -88,6 +88,12 @@ static int16_t RAD_IoNetValue(uint32_t value)
 void RAD_IoNetUnitToClient(const RAD_NetUnit_t *unit, RAD_ClientUnit_t *out)
 {
     RAD_ClientUnitInit(out, unit->unit, unit->owner, unit->name);
+    // Passt immer: beide Felder sind gleich gross, und der Codec laesst einen
+    // zu langen Schluessel leer statt ihn zu kuerzen.
+    _Static_assert(RAD_CLIENT_UNIT_SPRITE_KEY_MAX == RAD_NET_UNIT_SPRITE_KEY_MAX,
+                   "Bild-Schluessel in Modell und Codec gleich gross");
+    memcpy(out->sprite, unit->sprite, sizeof(out->sprite));
+    out->sprite[sizeof(out->sprite) - 1] = '\0';
     out->movement = RAD_IoNetValue(unit->movement);
     out->sight_range = RAD_IoNetValue(unit->sight_range);
     out->deployed = unit->deployed;

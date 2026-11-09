@@ -287,7 +287,7 @@ int main(void)
     // Fehlt ein Bild, zeichnen die Felder ihren Wuerfel und die Einheiten ihr
     // Rechteck, ein Effekt bleibt unsichtbar -- kein Abbruch.
     RAD_IsoTileImagesLoad(RAD_ViewRenderer(view));
-    RAD_IsoUnitImagesLoad(RAD_ViewRenderer(view));
+    RAD_IsoUnitImagesInit(RAD_ViewRenderer(view));
     RAD_IsoEffectImagesLoad(RAD_ViewRenderer(view));
 
     // Welche Explosion ein Angriff zeigt, waehlt jeder Client selbst

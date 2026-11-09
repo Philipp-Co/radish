@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radish.local/schema/sprite.schema.json",
+  "title": "radish Einheiten-Sprite",
+  "description": "Die Animationen einer Figur und wie ihre Atlanten aufgeteilt sind. Liegt als assets/units/<schluessel>/sprite.json neben ihren PNGs; den Schluessel nennt der Einheitentyp im Katalog (UnitType.sprite). Jede Figur bietet alle Animationen an -- fehlt eine, laedt der Client die Figur nicht und zeichnet ein Rechteck. Gelesen wird in feste Puffer (client/src/include/radish/rendering/iso_unit_sprite.h); was die Grenzen hier ueberschreitet, weist der Client ab. Dieselben Regeln prueft er beim Laden selbst, dazu was ein Schema nicht ausdruecken kann (key_frames aufsteigend und kleiner als frame_count).",
+  "type": "object",
+  "required": ["version", "animations", "anchor", "draw_width"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "animations": {
+      "type": "object",
+      "required": ["turn", "aim", "move", "fire", "destroyed"],
+      "additionalProperties": false,
+      "properties": {
+        "turn":      { "description": "Die Figur dreht sich; zugleich ihr Standbild je Blickrichtung (Schluesselbilder).", "$ref": "#/$defs/rotation" },
+        "aim":       { "description": "Zielen bei fester Blickrichtung: je Blickrichtung eine volle Drehung.", "$ref": "#/$defs/per_facing_rotation" },
+        "move":      { "description": "Ein Schritt von Feld zu Feld; laeuft in Schleife, solange die Figur zieht.", "$ref": "#/$defs/per_facing_sequence" },
+        "fire":      { "description": "Der Schuss; laeuft einmal, danach wieder das Standbild.", "$ref": "#/$defs/per_facing_sequence" },
+        "destroyed": { "description": "Die Zerstoerung; laeuft einmal, das letzte Bild bleibt stehen.", "$ref": "#/$defs/per_facing_sequence" }
+      }
+    },
+    "anchor": {
+      "description": "Wo die Figur in ihrer Zelle auf dem Boden steht, als Anteil an Breite und Hoehe der Zelle.",
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "draw_width": { "description": "Breite einer Zelle auf dem Bildschirm in Pixeln (RAD_ISO_UNIT_DRAW_WIDTH_MAX).", "type": "integer", "minimum": 1, "maximum": 1024 },
+    "own_shadow": { "description": "Ob der Schatten schon in den Bildern steckt.", "type": "boolean", "default": false },
+    "timing_ms": {
+      "description": "Dauer in Millisekunden. Fehlt ein Wert, gilt der Standard aus iso_unit_images.h.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "step":     { "description": "Ein Feld weit ziehen.", "$ref": "#/$defs/duration" },
+        "turn":     { "description": "Eine Vierteldrehung der Figur.", "$ref": "#/$defs/duration" },
+        "aim":      { "description": "Eine Vierteldrehung beim Zielen.", "$ref": "#/$defs/duration" },
+        "aim_hold": { "description": "Wie lange nach dem Schuss auf das Ziel gerichtet bleibt.", "$ref": "#/$defs/duration" }
+      }
+    }
+  },
+  "$defs": {
+    "duration": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 },
+    "atlas": {
+      "description": "Gemeinsame Felder jedes Atlas: zeilenweise von links oben belegt. Mehrere Atlanten duerfen dieselbe Datei nennen; der Client laedt sie dann einmal.",
+      "type": "object",
+      "required": ["file", "frame_width", "frame_height", "frame_count"],
+      "properties": {
+        "file":         { "description": "Dateiname im Ordner des Sprites, hoechstens 31 Zeichen (RAD_ISO_UNIT_FILE_NAME_MAX).", "type": "string", "pattern": "^[a-z0-9_]{1,27}\\.png$" },
+        "frame_width":  { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "frame_height": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "frame_count":  { "description": "RAD_ISO_UNIT_FRAMES_MAX.", "type": "integer", "minimum": 1, "maximum": 1024 }
+      }
+    },
+    "rotation": {
+      "description": "Eine volle Drehung; key_frames sind die Bilder bei 0 (sw), 90 (se), 180 (ne) und 270 Grad (nw), streng aufsteigend und kleiner als frame_count.",
+      "$ref": "#/$defs/atlas",
+      "required": ["key_frames"],
+      "properties": {
+        "key_frames": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "integer", "minimum": 0, "maximum": 1023 } }
+      },
+      "unevaluatedProperties": false
+    },
+    "sequence": {
+      "description": "Bilder, die nacheinander abgespielt werden; ob in Schleife, legt die Animation fest.",
+      "$ref": "#/$defs/atlas",
+      "required": ["fps"],
+      "properties": {
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 }
+      },
+      "unevaluatedProperties": false
+    },
+    "per_facing_rotation": { "$ref": "#/$defs/facings", "additionalProperties": { "$ref": "#/$defs/rotation" } },
+    "per_facing_sequence": { "$ref": "#/$defs/facings", "additionalProperties": { "$ref": "#/$defs/sequence" } },
+    "facings": {
+      "description": "Je Blickrichtung auf dem Bildschirm ein Atlas, alle vier Pflicht: sw = -x, se = +y, ne = +x, nw = -y (rendering/iso_facing.h).",
+      "type": "object",
+      "required": ["sw", "se", "ne", "nw"],
+      "propertyNames": { "enum": ["sw", "se", "ne", "nw"] }
+    }
+  }
+}

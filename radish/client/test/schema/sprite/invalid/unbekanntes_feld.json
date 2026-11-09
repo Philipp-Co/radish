@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "animations": {
+    "turn": {
+      "file": "turn.png",
+      "frame_width": 128,
+      "frame_height": 128,
+      "frame_count": 396,
+      "key_frames": [
+        0,
+        100,
+        198,
+        298
+      ]
+    },
+    "aim": {
+      "sw": {
+        "file": "turret_rotation_0.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 196,
+        "key_frames": [
+          0,
+          49,
+          96,
+          147
+        ]
+      },
+      "se": {
+        "file": "turret_rotation_90.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 196,
+        "key_frames": [
+          0,
+          49,
+          96,
+          147
+        ]
+      },
+      "ne": {
+        "file": "turret_rotation_180.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 196,
+        "key_frames": [
+          0,
+          49,
+          96,
+          147
+        ]
+      },
+      "nw": {
+        "file": "turret_rotation_270.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 196,
+        "key_frames": [
+          0,
+          49,
+          96,
+          147
+        ]
+      }
+    },
+    "move": {
+      "sw": {
+        "file": "still_sw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "se": {
+        "file": "still_se.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "ne": {
+        "file": "still_ne.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "nw": {
+        "file": "still_nw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      }
+    },
+    "fire": {
+      "sw": {
+        "file": "still_sw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "se": {
+        "file": "still_se.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "ne": {
+        "file": "still_ne.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "nw": {
+        "file": "still_nw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      }
+    },
+    "destroyed": {
+      "sw": {
+        "file": "still_sw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "se": {
+        "file": "still_se.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "ne": {
+        "file": "still_ne.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      },
+      "nw": {
+        "file": "still_nw.png",
+        "frame_width": 128,
+        "frame_height": 128,
+        "frame_count": 1,
+        "fps": 1
+      }
+    }
+  },
+  "anchor": {
+    "x": 0.5,
+    "y": 0.523
+  },
+  "draw_width": 256,
+  "own_shadow": true,
+  "timing_ms": {
+    "step": 750,
+    "turn": 1000,
+    "aim": 500,
+    "aim_hold": 500
+  },
+  "scale": 2
+}

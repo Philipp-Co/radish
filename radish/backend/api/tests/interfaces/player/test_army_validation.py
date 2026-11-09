@@ -119,6 +119,15 @@ class ArmyValidationTests(ArmyTestCase):
             [self.cannon.id, self.cannon.id],
         )
 
+    def test_more_weapons_than_the_game_allows(self) -> None:
+        # Ein Profil mit mehr Slots, als das Spiel kennt -- so legt es der
+        # Katalog nicht mehr an, aber es kann aus der Zeit davor stammen.
+        self.soldier.weapon_slots = 5
+        self.soldier.save(update_fields=["weapon_slots"])
+        unit: UnitPayload = self.squad_payload()
+        unit["entities"][1]["weapon_ids"] = [self.rifle.id] * 5
+        self.assertRejected([unit])
+
     def test_more_heavy_weapons_than_slots(self) -> None:
         self.assertRejected([self.squad_payload(heavy=[self.cannon.id] * 2)])
 

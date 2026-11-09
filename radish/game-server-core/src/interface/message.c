@@ -362,6 +362,7 @@ static void RAD_NetUnitFromUnit(const RAD_Unit_t *unit, RAD_NetUnitStorage_t *st
     // Wie bei "description" in der Antwort: protobuf-c will einen String und nimmt
     // ihn nur zum Lesen; der Cast nimmt die Konstanz weg, die es nicht kennt.
     net_unit->name = (char *)unit->name;
+    net_unit->sprite = (char *)unit->sprite;
     net_unit->number_of_members = (uint32_t)unit->number_of_members;
     net_unit->movement = RAD_NetUnsigned(unit->movement);
     net_unit->transport_capacity = RAD_NetUnsigned(unit->transport_capacity);

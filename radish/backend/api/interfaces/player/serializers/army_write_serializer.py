@@ -9,6 +9,7 @@ from rest_framework import serializers
 from api.interfaces.player.serializers.unit_write_serializer import UnitWriteSerializer
 from api.models import (
     MAX_UNIT_ENTITIES,
+    MAX_WEAPONS_PER_ENTITY,
     Army,
     EntityProfile,
     Equipment,
@@ -185,6 +186,7 @@ def _validate_entity_weapons(
     species: Species, profile: EntityProfile, entity: ValidatedEntity, label: str
 ) -> None:
     """Je Waffenklasse: Slots des Profils, Klasse und Spezies jeder Waffe."""
+    _validate_entity_weapon_total(entity, label)
     key: WeaponKey
     weapon_class: WeaponClass
     slots_of: Callable[[EntityProfile], int]
@@ -203,6 +205,21 @@ def _validate_entity_weapons(
             )
         for weapon in weapons:
             _validate_weapon(species, weapon, weapon_class, class_label, label)
+
+
+def _validate_entity_weapon_total(entity: ValidatedEntity, label: str) -> None:
+    """
+    Alle Waffen einer Entitaet zusammen, gleich welcher Klasse, hoechstens
+    MAX_WEAPONS_PER_ENTITY (RAD_UNIT_MAX_WEAPONS). Geprueft vor den Slots:
+    auch ein Profil aus der Zeit vor der Grenze, mit mehr Slots, als das Spiel
+    kennt, darf keine Armee ergeben, die die Spielinstanz beim Start ablehnt.
+    """
+    total: int = sum(len(entity[key]) for key in ENTITY_WEAPON_CLASSES)
+    if total > MAX_WEAPONS_PER_ENTITY:
+        raise serializers.ValidationError(
+            f"{label}: hoechstens {MAX_WEAPONS_PER_ENTITY} Waffen je Entitaet, "
+            f"gleich welcher Klasse, sind aber {total}."
+        )
 
 
 def _validate_weapon(

@@ -19,7 +19,8 @@
     "transport_capacity": 0,
     "can_capture_objectives": false,
     "movement": 5,
-    "sight_range": 8
+    "sight_range": 8,
+    "sprite": "heavy_tank"
   }
 },
 {

@@ -4,6 +4,7 @@
 
 from django.db import models
 
+from api.models.limits import MAX_NAME_BYTES, MaxUtf8BytesValidator
 from api.models.species import Species
 from api.models.weapon_class import WeaponClass
 
@@ -18,7 +19,10 @@ class Weapon(models.Model):
     species = models.ForeignKey(
         Species, on_delete=models.PROTECT, related_name="weapons"
     )
-    name = models.CharField(max_length=255)
+    # Geht ins Spiel; Grenze in Bytes, siehe limits.py.
+    name = models.CharField(
+        max_length=MAX_NAME_BYTES, validators=[MaxUtf8BytesValidator(MAX_NAME_BYTES)]
+    )
     weapon_class = models.CharField(
         max_length=20, choices=WeaponClass.choices, default=WeaponClass.STANDARD
     )

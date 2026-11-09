@@ -94,6 +94,11 @@ export interface UnitType {
   movement: number;
   /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
   sight_range: number;
+  /**
+   * Bild im Spiel: der Ordner unter radish/assets/units/, z.B. "heavy_tank".
+   * Leer, solange es keins gibt -- dann zeichnet der Client ein Rechteck.
+   */
+  sprite: string;
   profiles: EntityProfile[];
 }
 
@@ -235,6 +240,11 @@ export interface AdminUnitType {
   movement: number;
   /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
   sight_range: number;
+  /**
+   * Bild im Spiel: der Ordner unter radish/assets/units/, z.B. "heavy_tank".
+   * Leer, solange es keins gibt -- dann zeichnet der Client ein Rechteck.
+   */
+  sprite: string;
   in_use: boolean;
   profiles: AdminEntityProfile[];
 }

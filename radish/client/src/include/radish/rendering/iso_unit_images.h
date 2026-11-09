@@ -5,177 +5,168 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/rendering/iso_facing.h>
+#include <radish/rendering/iso_unit_sprite.h>
 
 ///
-/// Die Bilder der Einheiten (RAD_IsoEntity_t.sprite), einmal geladen und von
-/// allen Figuren geteilt -- wie die Bilder der Felder
-/// (rendering/iso_tile_images.h): main() laedt sie nach dem Renderer vorab.
+/// Die Bilder der Einheiten (RAD_IsoEntity_t.sprite), von allen Figuren mit
+/// demselben Bild geteilt.
 ///
-/// **Je Einheit mehrere Atlanten** (RAD_IsoUnitAtlas_t): Bilder, in denen die
-/// Einzelbilder einer vollen Drehung in einem Raster liegen, zeilenweise von
-/// links oben, im Drehsinn von RAD_IsoFacing_t; nach dem letzten kommt wieder
-/// das erste.
+/// **Welche Einheit welches Bild hat, sagt ihr Bild-Schluessel**
+/// (RAD_ClientUnit_t.sprite, UnitType.sprite im Katalog) -- nicht ihr Typname,
+/// der sich aendern darf. Der Schluessel ist ein Ordner unter assets/units/; was
+/// darin liegt und wie es aufgeteilt ist, beschreibt seine sprite.json
+/// (rendering/iso_unit_sprite.h, client/schema/sprite.schema.json). Ein neues
+/// Bild braucht also nur einen Ordner mit PNGs und sprite.json, keinen Code.
 ///
-///   - Der Atlas der Drehung (RAD_ISO_UNIT_ATLAS_TURN) dreht die ganze Figur,
-///     der Turm zeigt nach vorn. Vier seiner Bilder sind die Blickrichtungen,
-///     in denen sie steht (RAD_IsoUnitFacingFrame); die dazwischen zeigt sie
-///     nur, waehrend sie sich dreht (RAD_IsoUnitTurnFrame).
-///   - Je Blickrichtung ein Atlas des Turms (RAD_IsoUnitTurretAtlas): die Wanne
-///     steht, der Turm dreht sich einmal herum, beginnend nach vorn
-///     (RAD_IsoUnitTurretFrame). Eine Figur ohne sie hat keinen drehbaren Turm
-///     (RAD_IsoUnitHasTurret).
+/// **Geladen wird bei Bedarf**: das erste RAD_IsoUnitSpriteOf mit einem
+/// Schluessel liest dessen sprite.json und laedt die Atlanten; jedes weitere
+/// bekommt dasselbe Bild. Ein Bild, das nicht zu laden war, bleibt bis
+/// RAD_IsoUnitImagesFree ein Rechteck und wird nicht bei jeder Figur neu
+/// versucht -- der Grund steht einmal auf der Konsole.
 ///
-/// In jedem Atlas stehen die Bilder bei 0, 90, 180 und 270 Grad fest
-/// (rendering/iso_facing.h), dazwischen wird linear gezaehlt -- die Abstaende
-/// muessen nicht gleich sein. Groesse der Zellen, Zahl der Bilder und diese
-/// vier stehen je Einheit und Atlas in iso_unit_images.c; die Spalten ergeben
-/// sich aus der Breite des Atlas, die Groesse auf dem Bildschirm aus einer
-/// eigenen Breite -- ein Atlas in anderer Aufloesung braucht dort nur andere
-/// Zahlen. Alle Atlanten einer Einheit haben Zellen im selben Seitenverhaeltnis
-/// und die Figur an derselben Stelle darin.
+/// **Alles in festen Plaetzen, nichts auf dem Heap**: hoechstens
+/// RAD_ISO_UNIT_SPRITES_MAX Bilder, je Bild genau RAD_ISO_UNIT_ATLASES Atlanten,
+/// ein statischer Lesepuffer fuer die sprite.json. Ein Bild mehr wird als
+/// Rechteck gezeichnet. Die Texturen selbst legt SDL an.
 ///
-/// Die Dateien liegen unter assets/units/; das Frontend legt sie vor main() ins
-/// Dateisystem des Moduls (client/publish_assets.cmake).
+/// **Je Bild alle Animationen** (RAD_IsoUnitAnimation_t): die Drehung
+/// (RAD_ISO_UNIT_ATLAS_TURN), deren vier Schluesselbilder zugleich die Standbilder
+/// sind (RAD_IsoUnitFacingFrame, RAD_IsoUnitTurnFrame), das Zielen je
+/// Blickrichtung (RAD_IsoUnitAimAtlas, RAD_IsoUnitAimFrame) und die Folgen fuer
+/// Ziehen, Schiessen und Zerstoertwerden (RAD_IsoUnitSequenceFrameOf). Alle
+/// Atlanten eines Bildes haben Zellen im selben Seitenverhaeltnis und die Figur
+/// an derselben Stelle darin.
 ///
-/// **Welche Einheit welches Bild hat, sagt ihr Typname** (RAD_IsoUnitSpriteOf).
-/// Der Katalog kennt noch kein Feld dafuer; bis dahin steht die Zuordnung hier.
+/// Die Dateien legt das Frontend vor main() ins Dateisystem des Moduls
+/// (client/publish_assets.cmake).
 ///
-typedef enum
-{
-    RAD_ISO_UNIT_SPRITE_NONE = -1,
-    RAD_ISO_UNIT_SPRITE_HEAVY_TANK = 0,
-    RAD_ISO_UNIT_SPRITES
-} RAD_IsoUnitSprite_t;
 
 ///
-/// Das Bild fuer Einheiten vom Typ "type_name" (RAD_ClientUnit_t.name), ohne
-/// Ruecksicht auf Gross- und Kleinschreibung; RAD_ISO_UNIT_SPRITE_NONE fuer einen
-/// Typ ohne Bild oder NULL.
+/// Ein Bild: seine Stelle unter den geladenen. RAD_ISO_UNIT_SPRITE_NONE fuer
+/// keines -- die Figur wird als Rechteck gezeichnet.
 ///
-RAD_IsoUnitSprite_t RAD_IsoUnitSpriteOf(const char *type_name);
+typedef int32_t RAD_IsoUnitSprite_t;
+#define RAD_ISO_UNIT_SPRITE_NONE (-1)
 
 ///
-/// Wie lange ein Schritt von Feld zu Feld dauert, wenn eine Figur ohne eigenen
-/// Wert zieht -- auch eine ohne Bild (RAD_ISO_UNIT_SPRITE_NONE).
+/// Wie viele verschiedene Bilder gleichzeitig geladen sein koennen. Ein Spiel hat
+/// zwei Armeen aus wenigen Einheitentypen; 32 laesst viel Luft.
+///
+#define RAD_ISO_UNIT_SPRITES_MAX 32
+
+///
+/// Setzt den Renderer, an dem die Texturen haengen. Vor dem ersten
+/// RAD_IsoUnitSpriteOf; vorher liefert es fuer jeden Schluessel
+/// RAD_ISO_UNIT_SPRITE_NONE, ohne sich das als Fehler zu merken.
+///
+void RAD_IsoUnitImagesInit(SDL_Renderer *renderer);
+
+///
+/// Gibt alle Bilder frei und vergisst auch die, die nicht zu laden waren. Vor dem
+/// Renderer: die Texturen haengen an ihm. Danach gilt keine Stelle mehr, die
+/// RAD_IsoUnitSpriteOf geliefert hat.
+///
+void RAD_IsoUnitImagesFree(void);
+
+///
+/// Das Bild zum Schluessel "key" (RAD_ClientUnit_t.sprite), beim ersten Mal
+/// geladen. RAD_ISO_UNIT_SPRITE_NONE fuer einen leeren Schluessel oder NULL --
+/// ohne Meldung, leer heisst "noch kein Bild" --, und fuer einen, dessen Bild
+/// fehlt oder nicht zu seiner sprite.json passt, mit einer Meldung beim ersten Mal.
+///
+RAD_IsoUnitSprite_t RAD_IsoUnitSpriteOf(const char *key);
+
+///
+/// Die Zeiten, wenn ein Bild keine eigenen nennt (sprite.json "timing_ms") --
+/// auch fuer eine Figur ohne Bild.
 ///
 #define RAD_ISO_UNIT_STEP_MS_DEFAULT 150.0f
+#define RAD_ISO_UNIT_TURN_MS_DEFAULT 1000.0f
+#define RAD_ISO_UNIT_AIM_MS_DEFAULT 500.0f
+#define RAD_ISO_UNIT_AIM_HOLD_MS_DEFAULT 500.0f
 
 ///
 /// Wie lange eine Figur mit dem Bild "sprite" fuer einen Schritt von Feld zu Feld
 /// braucht, in Millisekunden (view/iso_map_view.c): kleiner ist schneller. Nur
 /// die Darstellung, wie weit sie ziehen darf, sagt ihr Typ (movement).
-/// RAD_ISO_UNIT_STEP_MS_DEFAULT fuer ein Bild ohne eigenen Wert oder ausserhalb
-/// der Aufzaehlung.
 ///
 float RAD_IsoUnitStepMs(RAD_IsoUnitSprite_t sprite);
 
 ///
-/// Wie lange eine Vierteldrehung dauert, wenn eine Figur ohne eigenen Wert
-/// sich dreht -- auch eine ohne Bild.
-///
-#define RAD_ISO_UNIT_TURN_MS_DEFAULT 1000.0f
-
-///
-/// Wie lange eine Figur mit dem Bild "sprite" fuer eine Vierteldrehung braucht,
-/// von einer Blickrichtung zur naechsten, in Millisekunden; eine Kehrtwende
-/// dauert doppelt so lange. RAD_ISO_UNIT_TURN_MS_DEFAULT fuer ein Bild ohne
-/// eigenen Wert oder ausserhalb der Aufzaehlung.
+/// Wie lange sie fuer eine Vierteldrehung braucht, von einer Blickrichtung zur
+/// naechsten; eine Kehrtwende dauert doppelt so lange.
 ///
 float RAD_IsoUnitTurnMs(RAD_IsoUnitSprite_t sprite);
 
 ///
-/// Wie lange der Turm fuer eine Vierteldrehung braucht, und wie lange er nach
-/// einem Angriff auf das Ziel gerichtet bleibt, bevor er zuruecklaeuft, wenn
-/// eine Figur ohne eigene Werte zielt.
+/// Wie lange sie beim Zielen fuer eine Vierteldrehung braucht; weniger weit
+/// dauert anteilig kuerzer.
 ///
-#define RAD_ISO_UNIT_TURRET_MS_DEFAULT 500.0f
-#define RAD_ISO_UNIT_FIRE_HOLD_MS_DEFAULT 500.0f
+float RAD_IsoUnitAimMs(RAD_IsoUnitSprite_t sprite);
 
 ///
-/// Wie lange der Turm einer Figur mit dem Bild "sprite" fuer eine
-/// Vierteldrehung braucht, in Millisekunden; weniger weit dauert anteilig
-/// kuerzer. RAD_ISO_UNIT_TURRET_MS_DEFAULT fuer ein Bild ohne eigenen Wert oder
-/// ausserhalb der Aufzaehlung.
+/// Wie lange sie nach einem Angriff auf das Ziel gerichtet bleibt, bevor sie
+/// wieder nach vorn zielt.
 ///
-float RAD_IsoUnitTurretMs(RAD_IsoUnitSprite_t sprite);
+float RAD_IsoUnitAimHoldMs(RAD_IsoUnitSprite_t sprite);
 
 ///
-/// Wie lange der Turm einer Figur mit dem Bild "sprite" nach einem Angriff auf
-/// das Ziel gerichtet bleibt, bevor er nach vorn zuruecklaeuft, in
-/// Millisekunden. RAD_ISO_UNIT_FIRE_HOLD_MS_DEFAULT fuer ein Bild ohne eigenen
-/// Wert oder ausserhalb der Aufzaehlung.
+/// Der Atlas des Zielens bei Blickrichtung "facing"; -1 ausserhalb der
+/// Aufzaehlung.
 ///
-float RAD_IsoUnitFireHoldMs(RAD_IsoUnitSprite_t sprite);
+RAD_IsoUnitAtlas_t RAD_IsoUnitAimAtlas(RAD_IsoFacing_t facing);
 
 ///
-/// Die Atlanten einer Einheit: der der Drehung und je Blickrichtung einer des
-/// Turms, in der Reihenfolge von RAD_IsoFacing_t.
-///
-typedef enum
-{
-    RAD_ISO_UNIT_ATLAS_TURN = 0,
-    RAD_ISO_UNIT_ATLAS_TURRET_X_MINUS,
-    RAD_ISO_UNIT_ATLAS_TURRET_Y_PLUS,
-    RAD_ISO_UNIT_ATLAS_TURRET_X_PLUS,
-    RAD_ISO_UNIT_ATLAS_TURRET_Y_MINUS,
-    RAD_ISO_UNIT_ATLASES
-} RAD_IsoUnitAtlas_t;
-
-///
-/// Der Atlas des Turms fuer eine Wanne in Blickrichtung "facing";
-/// RAD_ISO_UNIT_ATLASES ausserhalb der Aufzaehlung.
-///
-RAD_IsoUnitAtlas_t RAD_IsoUnitTurretAtlas(RAD_IsoFacing_t facing);
-
-///
-/// Laedt alle Bilder fuer "renderer". false, wenn eines fehlt oder nicht zu
-/// seinen Angaben passt; die uebrigen sind trotzdem geladen, und eine Figur ohne
-/// ihr Bild wird als Rechteck gezeichnet.
-///
-bool RAD_IsoUnitImagesLoad(SDL_Renderer *renderer);
-
-///
-/// Gibt alle Bilder frei. Vor dem Renderer: die Texturen haengen an ihm.
-///
-void RAD_IsoUnitImagesFree(void);
-
-///
-/// Der Atlas "atlas" des Bildes "sprite", oder NULL, wenn er nicht geladen ist
-/// oder einer der beiden ausserhalb seiner Aufzaehlung liegt.
+/// Der Atlas "atlas" des Bildes "sprite", oder NULL, wenn das Bild nicht geladen
+/// ist oder der Atlas ausserhalb [0, RAD_ISO_UNIT_ATLASES) liegt.
 ///
 SDL_Texture* RAD_IsoUnitAtlasTexture(RAD_IsoUnitSprite_t sprite, RAD_IsoUnitAtlas_t atlas);
 
 ///
-/// Ob "sprite" einen drehbaren Turm hat: alle vier Atlanten des Turms sind
-/// geladen. false ausserhalb der Aufzaehlung.
+/// Ob "sprite" zielen kann, ohne sich zu drehen. Jedes geladene Bild kann es --
+/// jede Figur bietet alle Animationen an --, eines, das nicht geladen ist, nicht.
 ///
-bool RAD_IsoUnitHasTurret(RAD_IsoUnitSprite_t sprite);
+bool RAD_IsoUnitCanAim(RAD_IsoUnitSprite_t sprite);
 
 ///
-/// Das Einzelbild im Atlas der Drehung von "sprite", das die Figur in
-/// Blickrichtung "facing" stehend zeigt; -1, wenn einer der beiden ausserhalb seiner
-/// Aufzaehlung liegt.
+/// Das Einzelbild im Atlas der Drehung, das die Figur in Blickrichtung "facing"
+/// stehend zeigt; -1, wenn das Bild nicht geladen ist oder "facing" ausserhalb
+/// der Aufzaehlung liegt.
 ///
 int32_t RAD_IsoUnitFacingFrame(RAD_IsoUnitSprite_t sprite, RAD_IsoFacing_t facing);
 
 ///
-/// Das Einzelbild im Atlas der Drehung von "sprite" fuer eine Drehung von
-/// "from" nach "to", zum Anteil "progress" (0 bis 1, darueber hinaus begrenzt)
-/// -- auf dem kuerzeren Weg (RAD_IsoFacingQuarterTurns), gegen die Reihenfolge
-/// des Atlas rueckwaerts durch ihn hindurch. Bei 0 das Bild von "from", bei 1 das von
-/// "to"; bei gleicher Richtung immer das von "from". -1, wenn eine der Angaben
-/// ausserhalb ihrer Aufzaehlung liegt.
+/// Das Einzelbild im Atlas der Drehung fuer eine Drehung von "from" nach "to",
+/// zum Anteil "progress" (0 bis 1, darueber hinaus begrenzt) -- auf dem kuerzeren
+/// Weg (RAD_IsoFacingQuarterTurns), gegen die Reihenfolge des Atlas rueckwaerts
+/// durch ihn hindurch. Bei 0 das Bild von "from", bei 1 das von "to"; bei
+/// gleicher Richtung immer das von "from". -1 wie oben.
 ///
 int32_t RAD_IsoUnitTurnFrame(RAD_IsoUnitSprite_t sprite, RAD_IsoFacing_t from, RAD_IsoFacing_t to, float progress);
 
 ///
-/// Das Einzelbild im Atlas des Turms fuer eine Wanne in Blickrichtung "facing"
-/// (RAD_IsoUnitTurretAtlas), dessen Rohr um "angle" Grad gegen die Wanne
-/// gedreht ist -- 0 nach vorn, gezaehlt wie in rendering/iso_facing.h,
-/// beliebig gross oder negativ. -1, wenn eine der Angaben ausserhalb ihrer
-/// Aufzaehlung liegt.
+/// Das Einzelbild im Atlas des Zielens bei Blickrichtung "facing"
+/// (RAD_IsoUnitAimAtlas), das um "angle" Grad gegen die Blickrichtung zielt --
+/// 0 nach vorn, gezaehlt wie in rendering/iso_facing.h, beliebig gross oder
+/// negativ. -1 wie oben.
 ///
-int32_t RAD_IsoUnitTurretFrame(RAD_IsoUnitSprite_t sprite, RAD_IsoFacing_t facing, float angle);
+int32_t RAD_IsoUnitAimFrame(RAD_IsoUnitSprite_t sprite, RAD_IsoFacing_t facing, float angle);
+
+///
+/// Fuer eine Folge (MOVE, FIRE, DESTROYED) bei Blickrichtung "facing": ihr Atlas
+/// nach "atlas" und das Bild, das "elapsed_ms" nach ihrem Beginn zu sehen ist --
+/// MOVE in Schleife, die anderen bis zum letzten Bild und dort stehend
+/// (RAD_IsoUnitAnimationLoops). -1, wenn das Bild nicht geladen ist oder
+/// "animation" keine Folge ist; "atlas" bleibt dann unberuehrt.
+///
+int32_t RAD_IsoUnitSequenceFrameOf(RAD_IsoUnitSprite_t sprite, RAD_IsoUnitAnimation_t animation, RAD_IsoFacing_t facing,
+                                   float elapsed_ms, RAD_IsoUnitAtlas_t *atlas);
+
+///
+/// Wie lange die Folge "animation" bei "facing" einmal durchlaeuft, in
+/// Millisekunden; 0, wenn das Bild nicht geladen ist oder es keine Folge ist.
+///
+float RAD_IsoUnitSequenceMsOf(RAD_IsoUnitSprite_t sprite, RAD_IsoUnitAnimation_t animation, RAD_IsoFacing_t facing);
 
 ///
 /// Wo das Einzelbild "frame" im Atlas "atlas" von "sprite" liegt, nach
@@ -187,16 +178,15 @@ bool RAD_IsoUnitFrameSource(RAD_IsoUnitSprite_t sprite, RAD_IsoUnitAtlas_t atlas
 ///
 /// Wohin ein Einzelbild von "sprite" auf dem Bildschirm kommt, nach "target":
 /// so gross, wie die Figur gezeichnet wird, und so verschoben, dass der Punkt,
-/// auf dem sie steht -- die Mitte ihrer Grundflaeche, nicht die ihrer Umrisse,
-/// der Turm ragt nach oben heraus --, bei (x, y) liegt. Fuer alle Einzelbilder
-/// aller Atlanten gleich: in ihnen dreht sich die Figur auf der Stelle. false, wenn "sprite"
-/// ausserhalb der Aufzaehlung liegt; dann bleibt "target" unberuehrt.
+/// auf dem sie steht -- die Mitte ihrer Grundflaeche, nicht die ihrer Umrisse
+/// --, bei (x, y) liegt. Fuer alle Einzelbilder aller Atlanten gleich. false,
+/// wenn das Bild nicht geladen ist; dann bleibt "target" unberuehrt.
 ///
 bool RAD_IsoUnitFrameTarget(RAD_IsoUnitSprite_t sprite, int32_t x, int32_t y, SDL_Rect *target);
 
 ///
 /// Ob die Bilder von "sprite" ihren Schatten schon mitbringen. Sonst zeichnet
-/// rendering/entity.c einen darunter. false ausserhalb der Aufzaehlung.
+/// rendering/entity.c einen darunter. false, wenn das Bild nicht geladen ist.
 ///
 bool RAD_IsoUnitHasOwnShadow(RAD_IsoUnitSprite_t sprite);
 

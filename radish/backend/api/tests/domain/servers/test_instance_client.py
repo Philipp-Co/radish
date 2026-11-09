@@ -58,12 +58,22 @@ class InstanceClientTests(GameTestCase):
             (unit["typ"], unit["bewegung"], unit["sichtweite"], unit["kann_ziele_einnehmen"]),
             ("Trupp", 6, 4, True),
         )
+        # Der Trupp hat kein Bild: leer, nicht fehlend.
+        self.assertEqual(unit["bild"], "")
         leader: instance_client.EntityDocument = next(e for e in unit["entitaeten"] if e["profil"] == "Anfuehrer")
         self.assertEqual(
             (leader["leben"], leader["ruestung"], leader["widerstand"], leader["staerke"],
              leader["genauigkeit"]),
             (2, 3, 3, 4, 3),
         )
+
+    def test_document_carries_sprite_of_unit_type(self) -> None:
+        self.squad.sprite = "heavy_tank"
+        self.squad.save(update_fields=["sprite"])
+
+        guest: instance_client.PlayerDocument = instance_client.game_start_document(self.game)["spieldaten"][1]
+
+        self.assertEqual(guest["armee"]["einheiten"][0]["bild"], "heavy_tank")
 
     def test_document_query_count_is_constant(self) -> None:
         game: Game = Game.objects.select_related("host", "second_player").get(pk=self.game.pk)

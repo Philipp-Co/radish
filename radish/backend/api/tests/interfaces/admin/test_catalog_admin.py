@@ -440,3 +440,94 @@ class CatalogAdminTests(ArmyTestCase):
 
         humans: SpeciesCatalogData = next(s for s in response.data["species"] if s["name"] == "Menschen")
         self.assertIn("Granate", [e["name"] for e in humans["equipment"]])
+
+    def test_unit_type_name_fits_the_game(self) -> None:
+        # Das Spiel legt den Namen in 32 Bytes samt Null (RAD_UNIT_NAME_MAX):
+        # 31 Bytes gehen, 32 nicht -- und ein Umlaut zaehlt doppelt.
+        url: str = "/api/admin/catalog/unit-types/"
+        payload: dict[str, int | str] = {"species_id": self.humans.id, "min_entities": 1,
+                                         "max_entities": 3, "movement": 6, "sight_range": 4}
+
+        response: TestResponse = self.client.post(url, dict(payload, name="T" * 31), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        response = self.client.post(url, dict(payload, name="T" * 32), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+        # 16 Zeichen, aber 32 Bytes.
+        response = self.client.post(url, dict(payload, name="Ä" * 16), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+    def test_profile_name_fits_the_game(self) -> None:
+        response: TestResponse = self.client.post(
+            "/api/admin/catalog/profiles/", self.profile_payload(name="Ü" * 16), format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+    def test_weapon_name_fits_the_game(self) -> None:
+        response: TestResponse = self.client.post(
+            "/api/admin/catalog/weapons/", self.weapon_payload(name="W" * 32), format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data)
+
+    def test_profile_weapon_slots_fit_the_game(self) -> None:
+        # Alle Klassen zusammen hoechstens 4 (RAD_UNIT_MAX_WEAPONS).
+        url: str = "/api/admin/catalog/profiles/"
+        response: TestResponse = self.client.post(
+            url, self.profile_payload(weapon_slots=2, heavy_weapon_slots=2, super_heavy_weapon_slots=1),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Waffenslots", str(response.data))
+
+        response = self.client.post(
+            url, self.profile_payload(weapon_slots=2, heavy_weapon_slots=1, super_heavy_weapon_slots=1),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_profile_weapon_slots_checked_on_partial_update(self) -> None:
+        # Bei PATCH zaehlen die gespeicherten Slots mit: Anfuehrer hat 1 + 1 + 1.
+        response: TestResponse = self.client.patch(
+            f"/api/admin/catalog/profiles/{self.leader.id}/", {"weapon_slots": 3}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Waffenslots", str(response.data))
+
+    def test_unit_type_sprite(self) -> None:
+        # Ohne Angabe leer -- dann zeichnet der Client ein Rechteck.
+        url: str = "/api/admin/catalog/unit-types/"
+        payload: dict[str, int | str] = {"species_id": self.humans.id, "name": "Panzer", "min_entities": 1,
+                                         "max_entities": 1, "movement": 5, "sight_range": 8}
+        response: TestResponse = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["sprite"], "")
+
+        # Nachtraeglich gesetzt, und auch fuer Spieler sichtbar.
+        response = self.client.patch(f"{url}{response.data['id']}/", {"sprite": "heavy_tank"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(UnitType.objects.get(name="Panzer").sprite, "heavy_tank")
+
+    def test_unit_type_sprite_must_be_a_folder_name(self) -> None:
+        # Nur [a-z0-9_], hoechstens 31 Zeichen: der Schluessel wird zum Pfad
+        # assets/units/<schluessel>/ und im Spiel in 32 Bytes abgelegt.
+        url: str = "/api/admin/catalog/unit-types/"
+        payload: dict[str, int | str] = {"species_id": self.humans.id, "min_entities": 1,
+                                         "max_entities": 1, "movement": 5, "sight_range": 8}
+        for number, sprite in enumerate(["Heavy_Tank", "heavy-tank", "../tiles", "heavy tank", "s" * 32]):
+            with self.subTest(sprite=sprite):
+                response: TestResponse = self.client.post(
+                    url, dict(payload, name=f"Typ {number}", sprite=sprite), format="json"
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("sprite", response.data)
+
+        response = self.client.post(url, dict(payload, name="Grenze", sprite="s" * 31), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)

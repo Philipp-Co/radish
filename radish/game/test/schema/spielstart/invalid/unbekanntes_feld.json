@@ -9,6 +9,7 @@
         "einheiten": [
           {
             "typ": "Trupp",
+            "bild": "",
             "bewegung": 6,
             "sichtweite": 4,
             "transportkapazitaet": 0,
@@ -81,6 +82,7 @@
           },
           {
             "typ": "Transporter",
+            "bild": "",
             "bewegung": 12,
             "sichtweite": 4,
             "transportkapazitaet": 2,
@@ -110,6 +112,7 @@
         "einheiten": [
           {
             "typ": "Trupp",
+            "bild": "",
             "bewegung": 6,
             "sichtweite": 4,
             "transportkapazitaet": 0,
@@ -181,6 +184,7 @@
           },
           {
             "typ": "Transporter",
+            "bild": "",
             "bewegung": 12,
             "sichtweite": 4,
             "transportkapazitaet": 2,

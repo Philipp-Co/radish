@@ -1,7 +1,13 @@
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 
-from api.models.limits import MAX_UNIT_ENTITIES
+from api.models.limits import (
+    MAX_NAME_BYTES,
+    MAX_SPRITE_KEY_LENGTH,
+    MAX_UNIT_ENTITIES,
+    SPRITE_KEY_PATTERN,
+    MaxUtf8BytesValidator,
+)
 from api.models.species import Species
 
 # Obergrenze der Sichtweite: im Spiel ein Byte (RAD_Unit_t.sight_range), und
@@ -20,7 +26,10 @@ class UnitType(models.Model):
     species = models.ForeignKey(
         Species, on_delete=models.PROTECT, related_name="unit_types"
     )
-    name = models.CharField(max_length=255)
+    # Geht ins Spiel; Grenze in Bytes, siehe limits.py.
+    name = models.CharField(
+        max_length=MAX_NAME_BYTES, validators=[MaxUtf8BytesValidator(MAX_NAME_BYTES)]
+    )
     min_entities = models.PositiveSmallIntegerField(
         default=1, validators=[MinValueValidator(1), MaxValueValidator(MAX_UNIT_ENTITIES)]
     )
@@ -44,6 +53,22 @@ class UnitType(models.Model):
     # Sichtweite: wie viele Felder weit die Einheit sieht, waagerecht plus
     # senkrecht; 0 = nur ihr eigenes Feld. Wie movement ohne Default.
     sight_range = models.PositiveSmallIntegerField(validators=[MaxValueValidator(MAX_SIGHT_RANGE)])
+    # Welches Bild das Spiel fuer Einheiten dieses Typs zeichnet: der Ordner
+    # unter radish/assets/units/ (siehe limits.py). Leer, solange es keins
+    # gibt -- dann zeichnet der Client ein Rechteck. Mehrere Typen duerfen
+    # dasselbe Bild nennen, und der Name des Typs kann sich aendern, ohne
+    # dass das Bild verloren geht.
+    sprite = models.CharField(
+        max_length=MAX_SPRITE_KEY_LENGTH,
+        blank=True,
+        default="",
+        validators=[
+            RegexValidator(
+                SPRITE_KEY_PATTERN,
+                "Nur Kleinbuchstaben, Ziffern und _, hoechstens 31 Zeichen.",
+            )
+        ],
+    )
 
     class Meta:
         ordering = ["species", "name"]

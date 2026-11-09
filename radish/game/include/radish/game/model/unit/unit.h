@@ -50,6 +50,14 @@
 #define RAD_UNIT_NAME_MAX 32
 
 ///
+/// Laenge des Bild-Schluessels samt abschliessender Null (RAD_Unit_t.sprite).
+/// Der Schluessel ist der Ordner des Bildes unter assets/units/ und besteht nur
+/// aus [a-z0-9_], ein Zeichen ist also ein Byte -- 31 davon, wie
+/// MAX_SPRITE_KEY_LENGTH im Backend.
+///
+#define RAD_UNIT_SPRITE_KEY_MAX 32
+
+///
 /// Mitglieder einer Einheit, wie MAX_UNIT_ENTITIES im Backend (api/models/limits.py).
 ///
 #define RAD_UNIT_MAX_MEMBERS 10
@@ -176,6 +184,13 @@ struct RAD_Unit
     /// Der Einheitentyp aus der Armee, z.B. "Trupp", und seine Werte.
     ///
     char name[RAD_UNIT_NAME_MAX];
+
+    ///
+    /// Welches Bild der Client fuer die Einheit zeichnet (UnitType.sprite im
+    /// Backend). Das Spiel liest darin nicht, es reicht ihn nur weiter. Leer
+    /// heisst ohne Bild -- der Client zeichnet ein Rechteck.
+    ///
+    char sprite[RAD_UNIT_SPRITE_KEY_MAX];
     int16_t movement;
     ///
     /// Wie weit die Einheit sieht, in Feldern waagerecht plus senkrecht -- wie

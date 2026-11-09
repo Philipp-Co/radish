@@ -28,7 +28,7 @@
 ///
 /// **Zielen** (RAD_CreateUnitAimAnimation, RAD_UnitAnimationAppendAim) dreht
 /// den Turm auf dem kuerzeren Weg auf einen Winkel, je Vierteldrehung
-/// "turret_ms", weniger weit anteilig kuerzer. Auf Wunsch bleibt er dort
+/// "aim_ms", weniger weit anteilig kuerzer. Auf Wunsch bleibt er dort
 /// "hold_ms" stehen und laeuft danach ebenso nach vorn zurueck: dann feuert
 /// die Figur, und das Stehenbleiben ist ein eigener Abschnitt
 /// (RAD_UNIT_ANIMATION_FIRE), der mit dem Schuss beginnt
@@ -58,9 +58,9 @@ typedef enum
 ///
 /// Ein Abschnitt des Plans: von "start_ms" an "duration_ms" lang. Eine Fahrt geht
 /// von (from_x, from_y) nach (to_x, to_y), eine Drehung von "from_facing" nach
-/// "to_facing", ein Zielen von "from_turret" nach "to_turret", ein Schuss
-/// haelt den Turm auf "from_turret" gleich "to_turret" -- was der
-/// Abschnitt nicht aendert, ist vorher und nachher gleich. "to_turret" kann
+/// "to_facing", ein Zielen von "from_aim" nach "to_aim", ein Schuss
+/// haelt den Turm auf "from_aim" gleich "to_aim" -- was der
+/// Abschnitt nicht aendert, ist vorher und nachher gleich. "to_aim" kann
 /// ausserhalb von [0, 360) liegen, damit es den kuerzeren Weg nimmt.
 ///
 typedef struct RAD_UnitAnimationPhase
@@ -74,8 +74,8 @@ typedef struct RAD_UnitAnimationPhase
     float to_y;
     RAD_IsoFacing_t from_facing;
     RAD_IsoFacing_t to_facing;
-    float from_turret;
-    float to_turret;
+    float from_aim;
+    float to_aim;
 } RAD_UnitAnimationPhase_t;
 
 typedef struct RAD_UnitAnimation
@@ -94,7 +94,7 @@ typedef struct RAD_UnitAnimation
 /// Wo die Figur zu einem Zeitpunkt steht und wie sie schaut -- dieselben
 /// Bedeutungen wie in RAD_IsoEntity_t (rendering/entity.h): waehrend einer
 /// Drehung ist "turning" gesetzt, "facing" die Richtung, aus der sie kommt.
-/// "turret_angle" liegt in [0, 360).
+/// "aim_angle" liegt in [0, 360).
 ///
 typedef struct RAD_UnitAnimationState
 {
@@ -104,31 +104,31 @@ typedef struct RAD_UnitAnimationState
     bool turning;
     RAD_IsoFacing_t turn_to;
     float turn_progress;
-    float turret_angle;
+    float aim_angle;
 } RAD_UnitAnimationState_t;
 
 ///
 /// Legt den Plan fuer einen Zug entlang "count" Punkten an, deren Koordinaten in
 /// "xs" und "ys" stehen, fuer eine Figur, die zu Beginn in Richtung "facing"
-/// schaut, den Turm um "turret_angle" gedreht; die Punkte werden kopiert, die
+/// schaut, den Turm um "aim_angle" gedreht; die Punkte werden kopiert, die
 /// Arrays muessen die Animation nicht ueberleben.
 ///
 /// NULL, wenn "count" 0 ist oder kein Speicher da ist.
 /// RAD_DestroyUnitAnimation nullt den Zeiger des Aufrufers.
 ///
 RAD_UnitAnimation_t* RAD_CreateUnitAnimation(const float *xs, const float *ys, size_t count,
-                                             RAD_IsoFacing_t facing, float turret_angle,
-                                             float start_ms, float step_ms, float turn_ms, float turret_ms);
+                                             RAD_IsoFacing_t facing, float aim_angle,
+                                             float start_ms, float step_ms, float turn_ms, float aim_ms);
 
 ///
 /// Legt den Plan an, mit dem eine Figur auf (x, y) in Richtung "facing" ihren
-/// Turm von "turret_angle" auf "target_angle" richtet -- und, wenn "back"
+/// Turm von "aim_angle" auf "target_angle" richtet -- und, wenn "back"
 /// gesetzt ist, nach "hold_ms" wieder nach vorn. NULL, wenn kein Speicher da
 /// ist.
 ///
-RAD_UnitAnimation_t* RAD_CreateUnitAimAnimation(float x, float y, RAD_IsoFacing_t facing, float turret_angle,
+RAD_UnitAnimation_t* RAD_CreateUnitAimAnimation(float x, float y, RAD_IsoFacing_t facing, float aim_angle,
                                                 float target_angle, bool back, float hold_ms,
-                                                float start_ms, float turret_ms);
+                                                float start_ms, float aim_ms);
 
 void RAD_DestroyUnitAnimation(RAD_UnitAnimation_t **unit_animation);
 
@@ -138,7 +138,7 @@ void RAD_DestroyUnitAnimation(RAD_UnitAnimation_t **unit_animation);
 /// Speicher da ist; dann bleibt der Plan, wie er war.
 ///
 bool RAD_UnitAnimationAppendAim(RAD_UnitAnimation_t *unit_animation, float target_angle, bool back, float hold_ms,
-                                float turret_ms);
+                                float aim_ms);
 
 ///
 /// Wo die Figur zum Zeitpunkt "now_ms" steht und wie sie schaut. Regelmaessig zu

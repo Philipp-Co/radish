@@ -66,7 +66,7 @@ static float RAD_UnitAnimationPush(RAD_UnitAnimation_t *unit_animation, RAD_Unit
 ///
 static float RAD_UnitAnimationPushAim(RAD_UnitAnimation_t *unit_animation, float at_ms, float x, float y,
                                       RAD_IsoFacing_t facing, float from, float target, bool back, float hold_ms,
-                                      float turret_ms)
+                                      float aim_ms)
 {
     const RAD_UnitAnimationPhase_t aim = {
         .type = RAD_UNIT_ANIMATION_AIM,
@@ -80,9 +80,9 @@ static float RAD_UnitAnimationPushAim(RAD_UnitAnimation_t *unit_animation, float
 
     RAD_UnitAnimationPhase_t phase = aim;
     phase.start_ms = at_ms;
-    phase.duration_ms = turret_ms * fabsf(there) / 90.0f;
-    phase.from_turret = start;
-    phase.to_turret = start + there;
+    phase.duration_ms = aim_ms * fabsf(there) / 90.0f;
+    phase.from_aim = start;
+    phase.to_aim = start + there;
     at_ms = RAD_UnitAnimationPush(unit_animation, phase);
 
     if(back)
@@ -91,24 +91,24 @@ static float RAD_UnitAnimationPushAim(RAD_UnitAnimation_t *unit_animation, float
         phase.type = RAD_UNIT_ANIMATION_FIRE;
         phase.start_ms = at_ms;
         phase.duration_ms = hold_ms;
-        phase.from_turret = to;
-        phase.to_turret = to;
+        phase.from_aim = to;
+        phase.to_aim = to;
         at_ms = RAD_UnitAnimationPush(unit_animation, phase);
 
         const float home = RAD_IsoAngleDelta(to, 0.0f);
         phase = aim;
         phase.start_ms = at_ms;
-        phase.duration_ms = turret_ms * fabsf(home) / 90.0f;
-        phase.from_turret = to;
-        phase.to_turret = to + home;
+        phase.duration_ms = aim_ms * fabsf(home) / 90.0f;
+        phase.from_aim = to;
+        phase.to_aim = to + home;
         at_ms = RAD_UnitAnimationPush(unit_animation, phase);
     }
     return at_ms;
 }
 
 RAD_UnitAnimation_t* RAD_CreateUnitAnimation(const float *xs, const float *ys, size_t count,
-                                             RAD_IsoFacing_t facing, float turret_angle,
-                                             float start_ms, float step_ms, float turn_ms, float turret_ms)
+                                             RAD_IsoFacing_t facing, float aim_angle,
+                                             float start_ms, float step_ms, float turn_ms, float aim_ms)
 {
     if(count == 0)
     {
@@ -125,10 +125,10 @@ RAD_UnitAnimation_t* RAD_CreateUnitAnimation(const float *xs, const float *ys, s
     }
 
     float at_ms = start_ms;
-    if(RAD_IsoAngleNormalize(turret_angle) != 0.0f)
+    if(RAD_IsoAngleNormalize(aim_angle) != 0.0f)
     {
-        at_ms = RAD_UnitAnimationPushAim(unit_animation, at_ms, xs[0], ys[0], facing, turret_angle, 0.0f,
-                                         false, 0.0f, turret_ms);
+        at_ms = RAD_UnitAnimationPushAim(unit_animation, at_ms, xs[0], ys[0], facing, aim_angle, 0.0f,
+                                         false, 0.0f, aim_ms);
     }
 
     for(size_t i = 0; i < segment_count; ++i)
@@ -165,9 +165,9 @@ RAD_UnitAnimation_t* RAD_CreateUnitAnimation(const float *xs, const float *ys, s
     return unit_animation;
 }
 
-RAD_UnitAnimation_t* RAD_CreateUnitAimAnimation(float x, float y, RAD_IsoFacing_t facing, float turret_angle,
+RAD_UnitAnimation_t* RAD_CreateUnitAimAnimation(float x, float y, RAD_IsoFacing_t facing, float aim_angle,
                                                 float target_angle, bool back, float hold_ms,
-                                                float start_ms, float turret_ms)
+                                                float start_ms, float aim_ms)
 {
     RAD_UnitAnimation_t *unit_animation = RAD_UnitAnimationAllocate(3);
     if(unit_animation == NULL)
@@ -175,8 +175,8 @@ RAD_UnitAnimation_t* RAD_CreateUnitAimAnimation(float x, float y, RAD_IsoFacing_
         return NULL;
     }
 
-    RAD_UnitAnimationPushAim(unit_animation, start_ms, x, y, facing, turret_angle, target_angle,
-                             back, hold_ms, turret_ms);
+    RAD_UnitAnimationPushAim(unit_animation, start_ms, x, y, facing, aim_angle, target_angle,
+                             back, hold_ms, aim_ms);
     return unit_animation;
 }
 
@@ -188,7 +188,7 @@ void RAD_DestroyUnitAnimation(RAD_UnitAnimation_t **unit_animation)
 }
 
 bool RAD_UnitAnimationAppendAim(RAD_UnitAnimation_t *unit_animation, float target_angle, bool back, float hold_ms,
-                                float turret_ms)
+                                float aim_ms)
 {
     if(!RAD_UnitAnimationReserve(unit_animation, 3))
     {
@@ -197,7 +197,7 @@ bool RAD_UnitAnimationAppendAim(RAD_UnitAnimation_t *unit_animation, float targe
 
     const RAD_UnitAnimationPhase_t *last = &unit_animation->phases[unit_animation->phase_count - 1];
     RAD_UnitAnimationPushAim(unit_animation, last->start_ms + last->duration_ms, last->to_x, last->to_y,
-                             last->to_facing, last->to_turret, target_angle, back, hold_ms, turret_ms);
+                             last->to_facing, last->to_aim, target_angle, back, hold_ms, aim_ms);
     return true;
 }
 
@@ -230,7 +230,7 @@ RAD_UnitAnimationState_t RAD_UnitAnimationStateAt(const RAD_UnitAnimation_t *uni
         .turning = false,
         .turn_to = phase->to_facing,
         .turn_progress = 0.0f,
-        .turret_angle = RAD_IsoAngleNormalize(phase->from_turret + (phase->to_turret - phase->from_turret) * progress)
+        .aim_angle = RAD_IsoAngleNormalize(phase->from_aim + (phase->to_aim - phase->from_aim) * progress)
     };
 
     if(phase->type == RAD_UNIT_ANIMATION_TURN)

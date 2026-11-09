@@ -539,7 +539,7 @@ static void RAD_IsoMapRemoveObject(RAD_IsoMap_t *map, RAD_IsoObject_t *object)
 ///
 /// Setzt die Einheit "unit" auf Feld (x, y) oder nimmt sie weg (NULL). Einheiten
 /// stehen auf Ebene 0, in RAD_ISO_UNIT_DEPTH; die anderen Tiefen bleiben, wie
-/// sie sind. Das Bild der Figur folgt dem Typ der Einheit (RAD_IsoUnitSpriteOf);
+/// sie sind. Das Bild der Figur folgt dem Bild-Schluessel der Einheit (RAD_IsoUnitSpriteOf);
 /// kommt eine andere Einheit aufs Feld, gilt ihre Blickrichtung als nicht gesetzt.
 /// Ihr Ring ist "player" (rendering/entity.h).
 ///
@@ -571,11 +571,11 @@ static void RAD_IsoMapSetEntity(RAD_IsoMap_t *map, int32_t x, int32_t y, const R
         (*entity)->facing = RAD_ISO_FACING_X_MINUS;
         (*entity)->facing_set = false;
         (*entity)->turning = false;
-        (*entity)->turret_angle = 0.0f;
+        (*entity)->aim_angle = 0.0f;
     }
 
     (*entity)->id = unit->id;
-    (*entity)->sprite = RAD_IsoUnitSpriteOf(unit->name);
+    (*entity)->sprite = RAD_IsoUnitSpriteOf(unit->sprite);
     (*entity)->player = player;
 }
 

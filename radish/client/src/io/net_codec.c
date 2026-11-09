@@ -717,6 +717,21 @@ static void RAD_NetCopyName(char *out, const char *name)
 }
 
 ///
+/// Kopiert einen Bild-Schluessel aus der Nachricht nach "out"
+/// (RAD_NET_UNIT_SPRITE_KEY_MAX) -- ganz oder gar nicht: passt er nicht, bleibt
+/// "out" leer, statt einen gekuerzten Schluessel zu tragen, der ein anderes Bild
+/// naennte (net_types.h). Ob die Zeichen stimmen, prueft erst, wer das Bild sucht.
+///
+static void RAD_NetCopySpriteKey(char *out, const char *sprite)
+{
+    memset(out, 0, RAD_NET_UNIT_SPRITE_KEY_MAX);
+    if((sprite != NULL) && (strlen(sprite) < RAD_NET_UNIT_SPRITE_KEY_MAX))
+    {
+        strcpy(out, sprite);
+    }
+}
+
+///
 /// NetUnit (game.proto) -> RAD_NetUnit_t (io/net_types.h), vollstaendig, fuer
 /// alle drei Ereignisse, die eine Einheit tragen.
 ///
@@ -737,6 +752,7 @@ static RAD_NetCodecResult_t RAD_NetFillUnit(RAD_NetUnit_t *out, const NetUnit *u
     out->unit = (RAD_NetEntityId_t)unit->unit_id;
     out->owner = (RAD_NetUserId_t)unit->owner_id;
     RAD_NetCopyName(out->name, unit->name);
+    RAD_NetCopySpriteKey(out->sprite, unit->sprite);
     out->movement = unit->movement;
     out->sight_range = unit->sight_range;
     out->transport_capacity = unit->transport_capacity;

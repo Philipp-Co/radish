@@ -24,5 +24,6 @@ class UnitTypeSerializer(serializers.ModelSerializer):
             "can_capture_objectives",
             "movement",
             "sight_range",
+            "sprite",
             "profiles",
         ]

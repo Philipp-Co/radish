@@ -73,13 +73,19 @@
     "einheit": {
       "description": "Eine Einheit: die Werte ihres Einheitentyps und ihre Entitaeten.",
       "type": "object",
-      "required": ["typ", "bewegung", "sichtweite", "transportkapazitaet", "kann_ziele_einnehmen", "entitaeten"],
+      "required": ["typ", "bild", "bewegung", "sichtweite", "transportkapazitaet", "kann_ziele_einnehmen", "entitaeten"],
       "additionalProperties": false,
       "properties": {
         "typ": {
-          "description": "Name des Einheitentyps.",
+          "description": "Name des Einheitentyps. Hoechstens 31 Bytes in UTF-8 (RAD_UNIT_NAME_MAX samt Null, MAX_NAME_BYTES im Backend); maxLength zaehlt Zeichen und faengt nur einen Teil ab -- ein Umlaut belegt zwei Bytes, die Bytes prueft das Spiel.",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 31
+        },
+        "bild": {
+          "description": "Schluessel des Bildes (UnitType.sprite im Backend): der Ordner unter assets/units/, in dem sprite.json liegt. Leer heisst ohne Bild -- der Client zeichnet ein Rechteck. Hoechstens 31 Zeichen, im Spiel RAD_UNIT_SPRITE_KEY_MAX samt Null.",
+          "type": "string",
+          "pattern": "^([a-z0-9_]{1,31})?$"
         },
         "bewegung": {
           "description": "Bewegungsradius in Feldern.",
@@ -112,9 +118,10 @@
       "additionalProperties": false,
       "properties": {
         "profil": {
-          "description": "Name des Entitaetsprofils, z.B. 'Soldat' oder 'Anfuehrer'.",
+          "description": "Name des Entitaetsprofils, z.B. 'Soldat' oder 'Anfuehrer'. Hoechstens 31 Bytes in UTF-8 (RAD_UNIT_NAME_MAX samt Null, MAX_NAME_BYTES im Backend); maxLength zaehlt Zeichen und faengt nur einen Teil ab -- ein Umlaut belegt zwei Bytes, die Bytes prueft das Spiel.",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 31
         },
         "leben": { "$ref": "#/$defs/wert" },
         "ruestung": { "$ref": "#/$defs/wert" },
@@ -122,8 +129,9 @@
         "staerke": { "$ref": "#/$defs/wert" },
         "genauigkeit": { "$ref": "#/$defs/wert" },
         "waffen": {
-          "description": "Alle Waffen der Entitaet, gleich welcher Klasse.",
+          "description": "Alle Waffen der Entitaet, gleich welcher Klasse -- hoechstens 4 (RAD_UNIT_MAX_WEAPONS, MAX_WEAPONS_PER_ENTITY im Backend).",
           "type": "array",
+          "maxItems": 4,
           "items": { "$ref": "#/$defs/waffe" }
         },
         "ausruestung": {
@@ -137,7 +145,7 @@
       "required": ["name", "klasse", "schuesse", "staerke", "min_reichweite", "max_reichweite", "durchschlag"],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
+        "name": { "description": "Hoechstens 31 Bytes in UTF-8 (RAD_UNIT_NAME_MAX samt Null, MAX_NAME_BYTES im Backend); maxLength zaehlt Zeichen und faengt nur einen Teil ab -- ein Umlaut belegt zwei Bytes, die Bytes prueft das Spiel.", "type": "string", "minLength": 1, "maxLength": 31 },
         "klasse": {
           "description": "Waffenklasse (WeaponClass im Backend).",
           "enum": ["standard", "heavy", "super_heavy"]

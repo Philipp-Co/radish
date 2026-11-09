@@ -33,7 +33,14 @@ from api.models.game import Game
 # der Wert beim Aendern eines Preises im Katalog auseinander. Ohne Default:
 # ein vergessener Preis soll auffallen, nicht still 0 kosten.
 
-from api.models.limits import MAX_UNIT_ENTITIES
+from api.models.limits import (
+    MAX_NAME_BYTES,
+    MAX_SPRITE_KEY_LENGTH,
+    MAX_UNIT_ENTITIES,
+    MAX_WEAPONS_PER_ENTITY,
+    SPRITE_KEY_PATTERN,
+    MaxUtf8BytesValidator,
+)
 from api.models.species import Species
 from api.models.unit_type import UnitType
 from api.models.entity_profile import EntityProfile
@@ -53,7 +60,12 @@ __all__ = [
     "Player",
     "GameStatus",
     "Game",
+    "MAX_NAME_BYTES",
+    "MAX_SPRITE_KEY_LENGTH",
     "MAX_UNIT_ENTITIES",
+    "MAX_WEAPONS_PER_ENTITY",
+    "SPRITE_KEY_PATTERN",
+    "MaxUtf8BytesValidator",
     "Species",
     "UnitType",
     "EntityProfile",

@@ -6,7 +6,7 @@ from django.db.models import QuerySet
 from rest_framework import serializers
 
 from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer, _current_or_new, _value
-from api.models import EntityProfile, UnitType
+from api.models import MAX_WEAPONS_PER_ENTITY, EntityProfile, UnitType
 
 
 class AdminEntityProfileSerializer(_CatalogAdminSerializer):
@@ -59,6 +59,8 @@ class AdminEntityProfileSerializer(_CatalogAdminSerializer):
                 "Mindestanzahl darf nicht groesser als die Hoechstanzahl sein."
             )
 
+        _validate_weapon_slots(attrs, entry)
+
         others: QuerySet[EntityProfile] = unit_type.profiles.all()
         if self.instance is not None:
             others = others.exclude(pk=self.instance.pk)
@@ -69,3 +71,21 @@ class AdminEntityProfileSerializer(_CatalogAdminSerializer):
                 f"Hoechstzahl an Entitaeten von {unit_type.name} ({unit_type.max_entities})."
             )
         return attrs
+
+
+def _validate_weapon_slots(attrs: dict[str, object], entry: EntityProfile) -> None:
+    """
+    Alle Waffenslots zusammen, gleich welcher Klasse: das Spiel kennt je
+    Entitaet nur MAX_WEAPONS_PER_ENTITY Waffen (RAD_UNIT_MAX_WEAPONS). Bei PATCH
+    zaehlen die gespeicherten Werte der nicht geschickten Felder mit.
+    """
+    weapon_slots: int = (
+        _value(attrs, "weapon_slots", lambda: entry.weapon_slots, int)
+        + _value(attrs, "heavy_weapon_slots", lambda: entry.heavy_weapon_slots, int)
+        + _value(attrs, "super_heavy_weapon_slots", lambda: entry.super_heavy_weapon_slots, int)
+    )
+    if weapon_slots > MAX_WEAPONS_PER_ENTITY:
+        raise serializers.ValidationError(
+            f"Hoechstens {MAX_WEAPONS_PER_ENTITY} Waffenslots ueber alle Klassen, "
+            f"sind aber {weapon_slots}."
+        )

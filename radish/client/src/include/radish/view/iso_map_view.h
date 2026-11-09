@@ -38,7 +38,7 @@
 /// **Den Turm richtet sie auf Ziele** (RAD_IsoMapViewAim, RAD_IsoMapViewFire,
 /// RAD_IsoMapViewReleaseAim): auf Anweisung des Aufrufers -- etwa, sobald der
 /// Spieler ein Ziel gewaehlt hat -- und bei jedem Angriff, den die Welt meldet
-/// ("unit_attacked"). Auch das kennt nur der Client (RAD_IsoEntity_t.turret_angle).
+/// ("unit_attacked"). Auch das kennt nur der Client (RAD_IsoEntity_t.aim_angle).
 ///
 /// **Mit dem Schuss explodiert das Zielfeld** (RAD_IsoMapViewFire), wenn der
 /// Angriff getroffen hat oder dem leeren Feld galt: sobald der
@@ -114,24 +114,24 @@ void RAD_IsoMapViewHandleMouseMotion(RAD_IsoMapView_t *iso_map_view, const SDL_M
 /// Dreht den Turm der Figur von "unit" so, dass sein Rohr auf die Mitte von Feld
 /// (target_x, target_y) zeigt, und laesst ihn dort -- bis RAD_IsoMapViewFire
 /// oder RAD_IsoMapViewReleaseAim. Auf dem kuerzeren Weg, so schnell, wie ihr Bild
-/// es sagt (RAD_IsoUnitTurretMs); zieht sie gerade, erst an ihrem Ziel. Ein
+/// es sagt (RAD_IsoUnitAimMs); zieht sie gerade, erst an ihrem Ziel. Ein
 /// laufendes Zielen ersetzt es.
 ///
-/// Ohne Figur, ohne drehbaren Turm (RAD_IsoUnitHasTurret) oder mit einem Ziel
+/// Ohne Figur, ohne drehbaren Turm (RAD_IsoUnitCanAim) oder mit einem Ziel
 /// auf ihrem eigenen Feld geschieht nichts.
 ///
 void RAD_IsoMapViewAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y);
 
 ///
 /// Wie RAD_IsoMapViewAim, der Turm bleibt aber nur so lange auf dem Ziel, bis
-/// die Explosion dort durchgelaufen ist -- mindestens RAD_IsoUnitFireHoldMs --,
+/// die Explosion dort durchgelaufen ist -- mindestens RAD_IsoUnitAimHoldMs --,
 /// und laeuft dann nach vorn zurueck: fuer einen Angriff, der ausgefuehrt
 /// wird. Steht der Turm auf dem Ziel, explodiert es;
 /// ohne drehbaren Turm sofort -- auch ohne Figur, dann im Bild fuer
 /// RAD_ISO_FACING_X_MINUS.
 ///
 /// Ohne "explode" explodiert nichts: der Turm dreht und feuert wie sonst und
-/// bleibt RAD_IsoUnitFireHoldMs auf dem Ziel -- fuer einen Schuss, der nicht
+/// bleibt RAD_IsoUnitAimHoldMs auf dem Ziel -- fuer einen Schuss, der nicht
 /// getroffen hat.
 ///
 void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y,

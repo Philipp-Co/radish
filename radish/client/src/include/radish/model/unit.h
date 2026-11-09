@@ -54,6 +54,12 @@ typedef uint64_t RAD_ClientPlayerId_t;
 #define RAD_CLIENT_UNIT_NAME_MAX 32
 
 ///
+/// Platz fuer den Bild-Schluessel einer Einheit samt Null -- wie
+/// RAD_UNIT_SPRITE_KEY_MAX im Spiel und RAD_NET_UNIT_SPRITE_KEY_MAX im Codec.
+///
+#define RAD_CLIENT_UNIT_SPRITE_KEY_MAX 32
+
+///
 /// Mitglieder einer Einheit, wie RAD_UNIT_MAX_MEMBERS im Spiel.
 ///
 #define RAD_CLIENT_UNIT_MEMBERS_MAX 10
@@ -106,6 +112,13 @@ typedef struct
 
     /// Der Einheitentyp, z.B. "Trupp".
     char name[RAD_CLIENT_UNIT_NAME_MAX];
+
+    ///
+    /// Welches Bild sie hat: der Ordner unter assets/units/, z.B. "heavy_tank"
+    /// (RAD_IsoUnitSpriteOf). Leer fuer keins -- dann ein Rechteck. Haengt am
+    /// Einheitentyp im Katalog, nicht an seinem Namen.
+    ///
+    char sprite[RAD_CLIENT_UNIT_SPRITE_KEY_MAX];
 
     /// Bewegungsreichweite in Feldern.
     int16_t movement;

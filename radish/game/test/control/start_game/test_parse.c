@@ -21,8 +21,10 @@
     "{\"profil\":\"" profil "\",\"leben\":1,\"ruestung\":3,\"widerstand\":3,\"staerke\":3,\"genauigkeit\":4," \
     "\"waffen\":[" waffen "],\"ausruestung\":[]}"
 
-#define EINHEIT(typ, mitglieder) \
-    "{\"typ\":\"" typ "\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true," \
+#define EINHEIT(typ, mitglieder) EINHEIT_BILD(typ, "", mitglieder)
+
+#define EINHEIT_BILD(typ, bild, mitglieder) \
+    "{\"typ\":\"" typ "\",\"bild\":\"" bild "\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true," \
     "\"entitaeten\":[" mitglieder "]}"
 
 #define EINHEIT_1 EINHEIT("Trupp", MITGLIED("Soldat", ""))
@@ -96,7 +98,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
 {
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(
         SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"Transporter\",\"bewegung\":12,\"sichtweite\":9,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
+            "{\"typ\":\"Transporter\",\"bild\":\"heavy_tank\",\"bewegung\":12,\"sichtweite\":9,\"transportkapazitaet\":2,\"kann_ziele_einnehmen\":false,"
             "\"entitaeten\":["
               "{\"profil\":\"Anfuehrer\",\"leben\":2,\"ruestung\":3,\"widerstand\":6,\"staerke\":4,\"genauigkeit\":5,"
               "\"waffen\":["
@@ -107,6 +109,7 @@ void test_spielstart_liest_die_werte_der_einheiten(void)
 
     const RAD_Unit_t *unit = &start->players[0].units[0];
     TEST_ASSERT_EQUAL_STRING("Transporter", unit->name);
+    TEST_ASSERT_EQUAL_STRING("heavy_tank", unit->sprite);
     TEST_ASSERT_EQUAL_INT(12, unit->movement);
     TEST_ASSERT_EQUAL_UINT8(9, unit->sight_range);
     TEST_ASSERT_EQUAL_INT(2, unit->transport_capacity);
@@ -148,7 +151,7 @@ void test_spielstart_uebergeht_unbekannte_schluessel(void)
         "{\"neu\":1,\"spieldaten\":["
         "{\"rang\":3,\"name\":\"a\",\"kennung\":\"aaaaaaaa\","
         " \"armee\":{\"farbe\":\"rot\",\"name\":\"x\",\"einheiten\":["
-        "{\"rolle\":\"x\",\"typ\":\"Trupp\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "{\"rolle\":\"x\",\"typ\":\"Trupp\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
         "\"entitaeten\":[{\"rang\":1,\"profil\":\"S\",\"leben\":1,\"ruestung\":1,\"widerstand\":3,\"staerke\":1,\"genauigkeit\":1,"
         "\"waffen\":[],\"ausruestung\":[{\"name\":\"M\",\"wirkung\":2}]}]}"
         "]}},"
@@ -244,9 +247,9 @@ void test_spielstart_lehnt_fehlerhaftes_gelaende_ab(void)
 void test_spielstart_sichtweite_bis_255(void)
 {
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK, lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-        "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":0,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":0,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
         "\"entitaeten\":[" MITGLIED("S", "") "]},"
-        "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":255,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+        "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":255,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
         "\"entitaeten\":[" MITGLIED("S", "") "]}"))));
 
     TEST_ASSERT_EQUAL_UINT8(0, start->players[0].units[0].sight_range);
@@ -281,18 +284,18 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
         "{\"spieldaten\":[{\"name\":1,\"kennung\":\"aaaaaaaa\",\"armee\":{}}," SPIELER("b", "bbbbbbbb", EINHEIT_1) "]}",
         // Einheit ohne Pflichtschluessel "bewegung"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"Trupp\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"Trupp\",\"bild\":\"\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // Einheit ohne Pflichtschluessel "sichtweite"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"Trupp\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"Trupp\",\"bild\":\"\",\"bewegung\":6,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // Sichtweite ueber einem Byte (RAD_Unit_t.sight_range), und negativ
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":256,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":256,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":-1,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":-1,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // Mitglied ohne "ausruestung"
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("Trupp",
@@ -301,24 +304,35 @@ void test_spielstart_lehnt_fehlerhafte_dateien_ab(void)
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("Trupp",
             "{\"profil\":\"S\",\"leben\":1,\"ruestung\":3,\"staerke\":3,\"genauigkeit\":4,"
             "\"waffen\":[],\"ausruestung\":[]}"))),
+        // Einheit ohne Pflichtschluessel "bild" -- leer darf er sein, fehlen nicht
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "\"entitaeten\":[" MITGLIED("S", "") "]}")),
+        // Bild mit Zeichen ausserhalb [a-z0-9_], als Pfad gelesen, und keine Zeichenkette
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_BILD("T", "Heavy_Tank", MITGLIED("S", "")))),
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_BILD("T", "heavy-tank", MITGLIED("S", "")))),
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_BILD("T", "../tiles", MITGLIED("S", "")))),
+        ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
+            "{\"typ\":\"T\",\"bild\":1,\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // leerer Einheitentyp
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("", MITGLIED("S", "")))),
         // Wert negativ, zu gross, keine ganze Zahl, ein String
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":-1,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":-1,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":32768,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":32768,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":1.5,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":1.5,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":\"6\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":\"6\",\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":true,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // kein Wahrheitswert
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa",
-            "{\"typ\":\"T\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":1,"
+            "{\"typ\":\"T\",\"bild\":\"\",\"bewegung\":6,\"sichtweite\":4,\"transportkapazitaet\":0,\"kann_ziele_einnehmen\":1,"
             "\"entitaeten\":[" MITGLIED("S", "") "]}")),
         // unbekannte Waffenklasse
         ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED("S", WAFFE("G", "gigantisch"))))),
@@ -353,6 +367,15 @@ void test_spielstart_lehnt_ab_was_das_spiel_nicht_halten_kann(void)
 
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT(NAME_32, MITGLIED("S", ""))))));
+
+    // Der Bild-Schluessel ebenso (RAD_UNIT_SPRITE_KEY_MAX): 31 Zeichen gehen, 32 nicht.
+    #define BILD_31 "abcdefghijklmnopqrstuvwxyz_0123"
+    #define BILD_32 "abcdefghijklmnopqrstuvwxyz_01234"
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_OK,
+        lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_BILD("T", BILD_31, MITGLIED("S", ""))))));
+    TEST_ASSERT_EQUAL_STRING(BILD_31, start->players[0].units[0].sprite);
+    TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
+        lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT_BILD("T", BILD_32, MITGLIED("S", ""))))));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
         lade(ZWEI_SPIELER(SPIELER("a", "aaaaaaaa", EINHEIT("T", MITGLIED(NAME_32, ""))))));
     TEST_ASSERT_EQUAL_INT(RAD_GAME_START_ERROR_LIMIT,
@@ -422,6 +445,8 @@ void test_spielstart_aus_datei(void)
     // ohne Waffen.
     const RAD_Unit_t *trupp = &gelesen->players[0].units[0];
     TEST_ASSERT_EQUAL_STRING("Trupp", trupp->name);
+    // Ohne Bild: leer, nicht fehlend.
+    TEST_ASSERT_EQUAL_STRING("", trupp->sprite);
     TEST_ASSERT_EQUAL_UINT8(4, trupp->sight_range);
     TEST_ASSERT_EQUAL_INT(2, trupp->number_of_members);
     TEST_ASSERT_EQUAL_STRING("Kanone", trupp->members[0].weapons[1].name);

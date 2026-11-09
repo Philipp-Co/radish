@@ -23,10 +23,13 @@ endif()
 # Frisch statt ergaenzt: sonst blieben Dateien mit altem Hash liegen.
 file(REMOVE_RECURSE "${OUTPUT_DIR}")
 
-# worlds/ und die Lizenzdatei liest der Client nicht.
+# worlds/ und die Lizenzdatei liest der Client nicht. Zu den Bildern der
+# Einheiten gehoert je Ordner ihre sprite.json (rendering/iso_unit_sprite.h):
+# ein neuer Ordner unter units/ ist damit ohne weiteres Zutun im Client.
 file(GLOB_RECURSE asset_files RELATIVE "${ASSETS_DIR}"
     "${ASSETS_DIR}/tiles/*.png"
     "${ASSETS_DIR}/units/*.png"
+    "${ASSETS_DIR}/units/*/sprite.json"
     "${ASSETS_DIR}/effects/*.png"
 )
 # Dieselbe Schrift wie im Frontend (Michroma, SIL OFL, siehe

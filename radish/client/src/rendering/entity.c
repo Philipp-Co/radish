@@ -169,10 +169,10 @@ void RAD_RenderIsoEntity(SDL_Renderer *renderer, const RAD_IsoEntity_t *entity, 
     {
         frame = RAD_IsoUnitTurnFrame(entity->sprite, entity->facing, entity->turn_to, entity->turn_progress);
     }
-    else if((entity->turret_angle != 0.0f) && RAD_IsoUnitHasTurret(entity->sprite))
+    else if((entity->aim_angle != 0.0f) && RAD_IsoUnitCanAim(entity->sprite))
     {
-        atlas = RAD_IsoUnitTurretAtlas(entity->facing);
-        frame = RAD_IsoUnitTurretFrame(entity->sprite, entity->facing, entity->turret_angle);
+        atlas = RAD_IsoUnitAimAtlas(entity->facing);
+        frame = RAD_IsoUnitAimFrame(entity->sprite, entity->facing, entity->aim_angle);
     }
 
     SDL_Texture *texture = RAD_IsoUnitAtlasTexture(entity->sprite, atlas);

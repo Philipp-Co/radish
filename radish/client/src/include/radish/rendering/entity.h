@@ -38,7 +38,7 @@ typedef struct
     int32_t layer;
 
     ///
-    /// Wie die Figur aussieht: das Bild ihres Einheitentyps
+    /// Wie die Figur aussieht: das Bild zu ihrem Bild-Schluessel
     /// (RAD_IsoUnitSpriteOf), RAD_ISO_UNIT_SPRITE_NONE fuer das Rechteck. Gesetzt
     /// von der Iso-Map, sobald eine Einheit auf das Feld kommt.
     ///
@@ -77,7 +77,7 @@ typedef struct
     /// zielt (view/iso_map_view.c). Waehrend einer Drehung der Figur ist er 0 --
     /// dort zeigt der Atlas den Turm nur nach vorn.
     ///
-    float turret_angle;
+    float aim_angle;
 } RAD_IsoEntity_t;
 
 /// RAD_IsoEntity_t.player fuer eine Figur ohne bekannten Besitzer.

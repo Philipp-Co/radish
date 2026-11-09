@@ -261,7 +261,7 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
         move->entity->turning = state.turning;
         move->entity->turn_to = state.turn_to;
         move->entity->turn_progress = state.turn_progress;
-        move->entity->turret_angle = state.turret_angle;
+        move->entity->aim_angle = state.aim_angle;
 
         if(RAD_UnitAnimationIsFinished(move->animation, now_ms))
         {
@@ -280,7 +280,7 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
         RAD_IsoEntity_t *entity = RAD_IsoMapViewEntityAt(iso_map_view, aim->x, aim->y, aim->unit);
         if(entity != NULL)
         {
-            entity->turret_angle = RAD_UnitAnimationStateAt(aim->animation, now_ms).turret_angle;
+            entity->aim_angle = RAD_UnitAnimationStateAt(aim->animation, now_ms).aim_angle;
         }
         if((entity == NULL) || RAD_UnitAnimationIsFinished(aim->animation, now_ms))
         {
@@ -634,7 +634,7 @@ static bool RAD_IsoMapViewFindEntity(const RAD_IsoMapView_t *iso_map_view, RAD_C
 /// gedreht sein muss, damit sein Rohr auf die Mitte von Feld (target_x,
 /// target_y) zeigt.
 ///
-static float RAD_IsoMapViewTurretAngleTo(int32_t x, int32_t y, RAD_IsoFacing_t facing,
+static float RAD_IsoMapViewAimAngleTo(int32_t x, int32_t y, RAD_IsoFacing_t facing,
                                          int32_t target_x, int32_t target_y)
 {
     const float toward = RAD_IsoFacingAngleOf((float)(target_x - x), (float)(target_y - y));
@@ -644,11 +644,11 @@ static float RAD_IsoMapViewTurretAngleTo(int32_t x, int32_t y, RAD_IsoFacing_t f
 ///
 /// Wie lange der Turm einer Figur mit dem Bild "sprite" nach dem Schuss auf dem
 /// Ziel bleibt: bis die Explosion "explosion" dort durchgelaufen ist
-/// (RAD_IsoEffectDurationMs), mindestens aber RAD_IsoUnitFireHoldMs.
+/// (RAD_IsoEffectDurationMs), mindestens aber RAD_IsoUnitAimHoldMs.
 ///
 static float RAD_IsoMapViewFireHoldMs(RAD_IsoUnitSprite_t sprite, RAD_IsoEffectSprite_t explosion)
 {
-    return fmaxf(RAD_IsoUnitFireHoldMs(sprite), RAD_IsoEffectDurationMs(explosion));
+    return fmaxf(RAD_IsoUnitAimHoldMs(sprite), RAD_IsoEffectDurationMs(explosion));
 }
 
 ///
@@ -661,21 +661,21 @@ static float RAD_IsoMapViewFireHoldMs(RAD_IsoUnitSprite_t sprite, RAD_IsoEffectS
 /// er endet. Sonst beginnt es jetzt, vom Winkel ihres Turms aus -- ein
 /// laufendes Zielen ersetzt es.
 ///
-/// Ohne Figur, ohne drehbaren Turm (RAD_IsoUnitHasTurret), bei einem Ziel auf
+/// Ohne Figur, ohne drehbaren Turm (RAD_IsoUnitCanAim), bei einem Ziel auf
 /// ihrem eigenen Feld oder ohne freien Platz geschieht nichts.
 ///
 /// Mit "back" feuert sie; dann kommt nach "fire_ms", wann
 /// (RAD_UnitAnimationFireMs), und zurueck true. false, wenn sie nicht feuert;
 /// dann bleibt "fire_ms" unberuehrt.
 ///
-static bool RAD_IsoMapViewTurnTurret(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, bool has_target,
+static bool RAD_IsoMapViewTurnAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, bool has_target,
                                      int32_t target_x, int32_t target_y, bool back,
                                      RAD_IsoEffectSprite_t explosion, float *fire_ms)
 {
     RAD_IsoMapViewMove_t *move = RAD_IsoMapViewMoveOf(iso_map_view, unit);
     if(move != NULL)
     {
-        if(!RAD_IsoUnitHasTurret(move->entity->sprite)
+        if(!RAD_IsoUnitCanAim(move->entity->sprite)
            || (has_target && (move->to_x == target_x) && (move->to_y == target_y)))
         {
             return false;
@@ -684,10 +684,10 @@ static bool RAD_IsoMapViewTurnTurret(RAD_IsoMapView_t *iso_map_view, RAD_ClientU
         const RAD_UnitAnimationState_t end = RAD_UnitAnimationStateAt(move->animation, INFINITY);
         const RAD_IsoEntity_t *entity = move->entity;
         const float target_angle = has_target
-                                   ? RAD_IsoMapViewTurretAngleTo(move->to_x, move->to_y, end.facing, target_x, target_y)
+                                   ? RAD_IsoMapViewAimAngleTo(move->to_x, move->to_y, end.facing, target_x, target_y)
                                    : 0.0f;
         if(!RAD_UnitAnimationAppendAim(move->animation, target_angle, back, RAD_IsoMapViewFireHoldMs(entity->sprite, explosion),
-                                       RAD_IsoUnitTurretMs(entity->sprite)))
+                                       RAD_IsoUnitAimMs(entity->sprite)))
         {
             printf("[IsoMapView] Einheit %d zielt nicht: kein Speicher\n", (int)unit);
             return false;
@@ -709,7 +709,7 @@ static bool RAD_IsoMapViewTurnTurret(RAD_IsoMapView_t *iso_map_view, RAD_ClientU
     }
 
     RAD_IsoEntity_t *entity = RAD_IsoMapViewEntityAt(iso_map_view, x, y, unit);
-    if((entity == NULL) || !RAD_IsoUnitHasTurret(entity->sprite) || (has_target && (target_x == x) && (target_y == y)))
+    if((entity == NULL) || !RAD_IsoUnitCanAim(entity->sprite) || (has_target && (target_x == x) && (target_y == y)))
     {
         return false;
     }
@@ -728,15 +728,15 @@ static bool RAD_IsoMapViewTurnTurret(RAD_IsoMapView_t *iso_map_view, RAD_ClientU
         RAD_DestroyUnitAnimation(&aim->animation);
     }
 
-    const float target_angle = has_target ? RAD_IsoMapViewTurretAngleTo(x, y, entity->facing, target_x, target_y) : 0.0f;
+    const float target_angle = has_target ? RAD_IsoMapViewAimAngleTo(x, y, entity->facing, target_x, target_y) : 0.0f;
     *aim = (RAD_IsoMapViewAim_t){
         .active = true,
         .unit = unit,
         .x = x,
         .y = y,
-        .animation = RAD_CreateUnitAimAnimation((float)x, (float)y, entity->facing, entity->turret_angle,
+        .animation = RAD_CreateUnitAimAnimation((float)x, (float)y, entity->facing, entity->aim_angle,
                                                 target_angle, back, RAD_IsoMapViewFireHoldMs(entity->sprite, explosion),
-                                                RAD_IsoMapViewNow(), RAD_IsoUnitTurretMs(entity->sprite))
+                                                RAD_IsoMapViewNow(), RAD_IsoUnitAimMs(entity->sprite))
     };
     if(aim->animation == NULL)
     {
@@ -841,7 +841,7 @@ static void RAD_IsoMapViewStopExplosion(RAD_IsoMapView_t *iso_map_view, RAD_IsoM
 void RAD_IsoMapViewAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y)
 {
     printf("[IsoMapView] Einheit %d zielt auf (%d, %d)\n", (int)unit, (int)target_x, (int)target_y);
-    RAD_IsoMapViewTurnTurret(iso_map_view, unit, true, target_x, target_y, false, RAD_ISO_EFFECT_SPRITE_NONE, NULL);
+    RAD_IsoMapViewTurnAim(iso_map_view, unit, true, target_x, target_y, false, RAD_ISO_EFFECT_SPRITE_NONE, NULL);
 }
 
 void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit, int32_t target_x, int32_t target_y,
@@ -876,7 +876,7 @@ void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit,
     const RAD_IsoEffectSprite_t explosion = explode ? RAD_IsoEffectRandomExplosion() : RAD_ISO_EFFECT_SPRITE_NONE;
 
     float fire_ms = 0.0f;
-    if(!RAD_IsoMapViewTurnTurret(iso_map_view, unit, true, target_x, target_y, true, explosion, &fire_ms))
+    if(!RAD_IsoMapViewTurnAim(iso_map_view, unit, true, target_x, target_y, true, explosion, &fire_ms))
     {
         // Ohne Turm, der sich dreht, feuert sie gleich.
         fire_ms = RAD_IsoMapViewNow();
@@ -891,7 +891,7 @@ void RAD_IsoMapViewFire(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit,
 void RAD_IsoMapViewReleaseAim(RAD_IsoMapView_t *iso_map_view, RAD_ClientUnitId_t unit)
 {
     printf("[IsoMapView] Einheit %d nimmt den Turm zurueck\n", (int)unit);
-    RAD_IsoMapViewTurnTurret(iso_map_view, unit, false, 0, 0, false, RAD_ISO_EFFECT_SPRITE_NONE, NULL);
+    RAD_IsoMapViewTurnAim(iso_map_view, unit, false, 0, 0, false, RAD_ISO_EFFECT_SPRITE_NONE, NULL);
 }
 
 ///
@@ -1063,9 +1063,9 @@ static void RAD_IsoMapViewOnUnitMoved(void *user_argument, const RAD_ClientWorld
         .animation = NULL
     };
 
-    move->animation = RAD_CreateUnitAnimation(xs, ys, count, facing, entity->turret_angle, RAD_IsoMapViewNow(),
+    move->animation = RAD_CreateUnitAnimation(xs, ys, count, facing, entity->aim_angle, RAD_IsoMapViewNow(),
                                               RAD_IsoUnitStepMs(entity->sprite), RAD_IsoUnitTurnMs(entity->sprite),
-                                              RAD_IsoUnitTurretMs(entity->sprite));
+                                              RAD_IsoUnitAimMs(entity->sprite));
     if(move->animation == NULL)
     {
         // Ohne Animation gleich ans Ziel -- wie ein Zug, der schon abgelaufen ist.
