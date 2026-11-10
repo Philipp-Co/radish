@@ -47,6 +47,12 @@
 /// (RAD_IsoEffectRandomExplosion), im Bild fuer die Richtung, aus der der
 /// Schuss kommt. Sie steht so lange als Effekt in der Iso-Map (RAD_IsoMapAddEffect).
 ///
+/// **Die Folgen ihres Bildes spielt sie mit** (RAD_IsoEntity_t.sequence): MOVE,
+/// solange eine Figur faehrt, FIRE, solange sie schiesst. Eine Figur, die der
+/// Server als zerstoert meldet ("unit_destroyed"), behaelt sie als Wrack: mit
+/// dem Schuss, der sie getroffen hat, zeigt sie DESTROYED, das letzte Bild
+/// bleibt kurz stehen, dann verschwindet sie.
+///
 /// An jedem neuen Feld und jeder neuen Reserve meldet sie sich selbst an;
 /// RAD_DestroyIsoMapView meldet sie ueberall wieder ab.
 ///
@@ -89,8 +95,8 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
 
 ///
 /// Ob sie gerade abspielt, was ein Ereignis vom Server ausgeloest hat: einen
-/// Zug, einen Schuss samt Zielen (RAD_IsoMapViewFire) oder eine Explosion, die
-/// wartet oder laeuft. Ein Zielen ohne Schuss (RAD_IsoMapViewAim) zaehlt nicht
+/// Zug, einen Schuss samt Zielen (RAD_IsoMapViewFire), eine Explosion, die
+/// wartet oder laeuft, oder eine Zerstoerung. Ein Zielen ohne Schuss (RAD_IsoMapViewAim) zaehlt nicht
 /// -- das ist die Vorschau, waehrend der Spieler ein Ziel waehlt.
 ///
 /// Was durchgelaufen ist, raeumt erst RAD_UpdateIsoMapView ab; bis dahin zaehlt

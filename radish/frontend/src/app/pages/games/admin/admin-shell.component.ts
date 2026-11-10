@@ -4,8 +4,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 /**
  * Rahmen um den Adminbereich: "Game-Server" (servers/, siehe
  * AdminComponent), "Armee-Katalog" (catalog/, siehe
- * CatalogAdminComponent) und "Gelände" (terrain/, siehe
- * TerrainAdminComponent). Eine Unternavigation statt weiterer Tabs im
+ * CatalogAdminComponent), "Gelände" (terrain/, siehe
+ * TerrainAdminComponent) und "Einheitenbilder" (sprites/, siehe
+ * SpriteListComponent und SpriteEditComponent). Eine Unternavigation statt weiterer Tabs im
  * Hauptmenue -- dort ist neben den Spieler-Tabs kein Platz mehr.
  */
 @Component({
@@ -16,6 +17,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       <a routerLink="servers" routerLinkActive="active">Game-Server</a>
       <a routerLink="catalog" routerLinkActive="active">Armee-Katalog</a>
       <a routerLink="terrain" routerLinkActive="active">Gelände</a>
+      <a routerLink="sprites" routerLinkActive="active">Einheitenbilder</a>
     </nav>
     <router-outlet />
   `,

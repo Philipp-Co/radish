@@ -165,9 +165,24 @@ void RAD_RenderIsoEntity(SDL_Renderer *renderer, const RAD_IsoEntity_t *entity, 
     // beide Atlanten dasselbe.
     RAD_IsoUnitAtlas_t atlas = RAD_ISO_UNIT_ATLAS_TURN;
     int32_t frame = RAD_IsoUnitFacingFrame(entity->sprite, entity->facing);
+
+    // Eine Folge, wenn eine laeuft und ihr Bild zur Lage passt (rendering/entity.h).
+    RAD_IsoUnitAtlas_t sequence_atlas = RAD_ISO_UNIT_ATLAS_TURN;
+    const bool sequence_fits = entity->sequence_active
+                               && ((entity->sequence != RAD_ISO_UNIT_ANIMATION_FIRE) || (entity->aim_angle == 0.0f));
+    const int32_t sequence_frame = sequence_fits
+                                   ? RAD_IsoUnitSequenceFrameOf(entity->sprite, entity->sequence, entity->facing,
+                                                                entity->sequence_ms, &sequence_atlas)
+                                   : -1;
+
     if(entity->turning)
     {
         frame = RAD_IsoUnitTurnFrame(entity->sprite, entity->facing, entity->turn_to, entity->turn_progress);
+    }
+    else if(sequence_frame >= 0)
+    {
+        atlas = sequence_atlas;
+        frame = sequence_frame;
     }
     else if((entity->aim_angle != 0.0f) && RAD_IsoUnitCanAim(entity->sprite))
     {

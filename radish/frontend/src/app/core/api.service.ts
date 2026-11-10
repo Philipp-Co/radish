@@ -294,6 +294,64 @@ export interface CatalogFilter {
   search?: string;
 }
 
+/** Animationen eines Einheitenbildes, wie in der sprite.json. */
+export type SpriteAnimation = 'turn' | 'aim' | 'move' | 'fire' | 'destroyed';
+/** Blickrichtung auf dem Bildschirm; leer bei der Drehung (ein Atlas fuer alle). */
+export type SpriteFacing = '' | 'sw' | 'se' | 'ne' | 'nw';
+
+/** Eine hochgeladene PNG eines Einheitenbildes (ohne ihre Bytes). */
+export interface AdminSpriteImage {
+  id: number;
+  /** Dateiname im Ordner des Bildes, z.B. "turn.png". */
+  name: string;
+  width: number;
+  height: number;
+  sha256: string;
+}
+
+/**
+ * Ein Atlas: welche PNG eine Animation in einer Richtung zeigt und wie sie
+ * aufgeteilt ist. Drehungen (turn, aim) nennen vier Schluesselbilder, Folgen
+ * Bilder je Sekunde.
+ */
+export interface AdminSpriteAtlas {
+  animation: SpriteAnimation;
+  facing: SpriteFacing;
+  image_id: number;
+  frame_width: number;
+  frame_height: number;
+  frame_count: number;
+  key_frames: number[] | null;
+  fps: number | null;
+}
+
+/** Die Werte eines Bildes, die sich aendern lassen -- ohne Schluessel. */
+export interface AdminSpriteValues {
+  anchor_x: number;
+  anchor_y: number;
+  draw_width: number;
+  own_shadow: boolean;
+  step_ms: number | null;
+  turn_ms: number | null;
+  aim_ms: number | null;
+  aim_hold_ms: number | null;
+}
+
+/** Ein hochgeladenes Einheitenbild (radish/backend/api/interfaces/admin/views/admin_sprite_views.py). */
+export interface AdminSprite extends AdminSpriteValues {
+  id: number;
+  key: string;
+  images: AdminSpriteImage[];
+  atlases: AdminSpriteAtlas[];
+  /** Ob alle Atlanten da und gueltig sind -- erst dann ist es im Spiel. */
+  complete: boolean;
+  /** Was fehlt oder nicht stimmt, je ein Satz. */
+  problems: string[];
+  /** Die Einheitentypen, die es nennen, als "Name (Spezies)". */
+  used_by: string[];
+  updated_at: string;
+}
+
 /**
  * Duenner Wrapper um die Matchmaking-Endpunkte unter api/client/ (siehe
  * radish/backend/api/interfaces/player/views/client_views.py, urls.py). stream/ und state/
@@ -420,6 +478,11 @@ export class ApiService {
     return this.http.put<T>(`/api/admin/catalog/${resource}/${id}/`, entry);
   }
 
+  /** Aendert nur die genannten Felder (PATCH), etwa das Bild eines Einheitentyps. */
+  patchCatalogEntry<T>(resource: CatalogResource, id: number, fields: object): Observable<T> {
+    return this.http.patch<T>(`/api/admin/catalog/${resource}/${id}/`, fields);
+  }
+
   deleteCatalogEntry(resource: CatalogResource, id: number): Observable<void> {
     return this.http.delete<void>(`/api/admin/catalog/${resource}/${id}/`);
   }
@@ -433,5 +496,63 @@ export class ApiService {
 
   updateTerrainType(code: string, values: AdminTerrainValues): Observable<AdminTerrainType> {
     return this.http.put<AdminTerrainType>(`/api/admin/terrain/${code}/`, values);
+  }
+
+  // --- Einheitenbilder -------------------------------------------------------
+
+  listSprites(): Observable<AdminSprite[]> {
+    return this.http
+      .get<{ sprites: AdminSprite[] }>('/api/admin/sprites/')
+      .pipe(map((response) => response.sprites));
+  }
+
+  getSprite(id: number): Observable<AdminSprite> {
+    return this.http.get<AdminSprite>(`/api/admin/sprites/${id}/`);
+  }
+
+  createSprite(key: string): Observable<AdminSprite> {
+    return this.http.post<AdminSprite>('/api/admin/sprites/', { key });
+  }
+
+  updateSprite(id: number, values: Partial<AdminSpriteValues>): Observable<AdminSprite> {
+    return this.http.patch<AdminSprite>(`/api/admin/sprites/${id}/`, values);
+  }
+
+  deleteSprite(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/sprites/${id}/`);
+  }
+
+  /** Laedt eine PNG hoch; ohne "name" gilt der Dateiname, klein geschrieben. */
+  uploadSpriteImage(id: number, file: File, name?: string): Observable<AdminSprite> {
+    const form = new FormData();
+    form.append('file', file);
+    if (name) {
+      form.append('name', name);
+    }
+    return this.http.post<AdminSprite>(`/api/admin/sprites/${id}/images/`, form);
+  }
+
+  /** Ersetzt den Inhalt einer PNG; ihr Name bleibt. */
+  replaceSpriteImage(id: number, imageId: number, file: File): Observable<AdminSprite> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.put<AdminSprite>(`/api/admin/sprites/${id}/images/${imageId}/`, form);
+  }
+
+  deleteSpriteImage(id: number, imageId: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/sprites/${id}/images/${imageId}/`);
+  }
+
+  /**
+   * Die Bytes einer PNG fuer die Vorschau -- ueber den Client mit Token, denn
+   * ein <img src> schickt keinen mit.
+   */
+  spriteImageBlob(id: number, imageId: number): Observable<Blob> {
+    return this.http.get(`/api/admin/sprites/${id}/images/${imageId}/file/`, { responseType: 'blob' });
+  }
+
+  /** Setzt alle Atlanten auf einmal; was fehlt, gibt es danach nicht mehr. */
+  putSpriteAtlases(id: number, atlases: AdminSpriteAtlas[]): Observable<AdminSprite> {
+    return this.http.put<AdminSprite>(`/api/admin/sprites/${id}/atlases/`, atlases);
   }
 }

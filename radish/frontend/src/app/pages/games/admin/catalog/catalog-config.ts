@@ -60,8 +60,9 @@ export const CATALOG_MODELS: CatalogModel[] = [
       {
         key: 'sprite',
         label: 'Bild',
-        type: 'text',
-        hint: 'Ordner unter assets/units/, z.B. heavy_tank – nur a–z, 0–9 und _. Leer: Rechteck.',
+        type: 'select',
+        optionsFrom: 'unit-sprites',
+        hint: 'Bild im Spiel: ein Ordner unter assets/units/ mit sprite.json. Ohne Bild zeichnet das Spiel ein Rechteck.',
       },
       { key: 'min_entities', label: 'Min. Entitäten', type: 'number' },
       { key: 'max_entities', label: 'Max. Entitäten', type: 'number' },

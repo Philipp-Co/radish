@@ -34,6 +34,13 @@ from api.models.game import Game
 # ein vergessener Preis soll auffallen, nicht still 0 kosten.
 
 from api.models.limits import (
+    SPRITE_DRAW_WIDTH_MAX,
+    SPRITE_DURATION_MS_MAX,
+    SPRITE_FILE_NAME_PATTERN,
+    SPRITE_FPS_MAX,
+    SPRITE_FRAME_SIZE_MAX,
+    SPRITE_FRAMES_MAX,
+    SPRITE_IMAGE_BYTES_MAX,
     MAX_NAME_BYTES,
     MAX_SPRITE_KEY_LENGTH,
     MAX_UNIT_ENTITIES,
@@ -54,6 +61,18 @@ from api.models.unit import Unit
 from api.models.unit_entity import UnitEntity
 from api.models.unit_entity_weapon import UnitEntityWeapon
 from api.models.unit_entity_equipment import UnitEntityEquipment
+
+# ---------------------------------------------------------------------------
+# Einheitenbilder
+#
+# Hochgeladene Bilder fuer die Einheiten im Spiel (UnitSprite mit seinen PNGs
+# und Atlanten); die aus dem Build (radish/assets/units/) stehen nicht hier.
+# Ein Einheitentyp nennt eines ueber seinen Schluessel (UnitType.sprite).
+# ---------------------------------------------------------------------------
+
+from api.models.unit_sprite import UnitSprite
+from api.models.unit_sprite_image import UnitSpriteImage
+from api.models.unit_sprite_atlas import ROTATIONS, SpriteAnimation, SpriteFacing, UnitSpriteAtlas
 
 __all__ = [
     "GameServer",
@@ -79,4 +98,17 @@ __all__ = [
     "UnitEntity",
     "UnitEntityWeapon",
     "UnitEntityEquipment",
+    "UnitSprite",
+    "UnitSpriteImage",
+    "UnitSpriteAtlas",
+    "SpriteAnimation",
+    "SpriteFacing",
+    "ROTATIONS",
+    "SPRITE_FRAME_SIZE_MAX",
+    "SPRITE_FRAMES_MAX",
+    "SPRITE_DRAW_WIDTH_MAX",
+    "SPRITE_FPS_MAX",
+    "SPRITE_DURATION_MS_MAX",
+    "SPRITE_FILE_NAME_PATTERN",
+    "SPRITE_IMAGE_BYTES_MAX",
 ]

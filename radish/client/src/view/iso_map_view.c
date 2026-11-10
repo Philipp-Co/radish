@@ -31,6 +31,16 @@
 #define RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX 8
 
 ///
+/// Wie viele zerstoerte Figuren gleichzeitig ihre Zerstoerung zeigen koennen
+/// (RAD_IsoMapViewWreck_t), und wie lange das letzte Bild danach stehen bleibt,
+/// bevor die Figur verschwindet. Was darueber hinausgeht, verschwindet sofort --
+/// wie frueher. Wracks und Zuege teilen sich die Figuren ausserhalb eines Feldes
+/// (RAD_ISO_MAP_ENTITIES_MAX).
+///
+#define RAD_ISO_MAP_VIEW_WRECKS_MAX 4
+#define RAD_ISO_MAP_VIEW_WRECK_HOLD_MS 1000.0f
+
+///
 /// Wie lange ein Feld braucht, um ganz in den Nebel zu fallen oder ganz aus ihm
 /// zu kommen (RAD_IsoMapViewApplyFog).
 ///
@@ -67,6 +77,11 @@ typedef struct
     /// "entity".
     ///
     RAD_UnitAnimation_t *animation;
+
+    ///
+    /// Wann der Zug begonnen hat -- daran zaehlt die Folge MOVE ihre Bilder.
+    ///
+    float start_ms;
 } RAD_IsoMapViewMove_t;
 
 ///
@@ -99,6 +114,22 @@ typedef struct
 } RAD_IsoMapViewExplosion_t;
 
 ///
+/// Eine zerstoerte Figur, die noch ihre Zerstoerung zeigt
+/// (RAD_IsoMapViewOnUnitDestroyed): wie ein Zug von ihrem Feld geloest und als
+/// Figur ausserhalb eines Feldes in der Iso-Map, die Entitaet gehoert der
+/// IsoMapView. Die Folge DESTROYED beginnt bei "start_ms" -- mit dem Schuss, der
+/// sie getroffen hat --, bei "end_ms" verschwindet die Figur.
+///
+typedef struct
+{
+    bool active;
+    RAD_ClientUnitId_t unit;
+    RAD_IsoEntity_t *entity;
+    float start_ms;
+    float end_ms;
+} RAD_IsoMapViewWreck_t;
+
+///
 /// Die Struktur steht hier und nicht im Header, wie bei view/view.c.
 ///
 struct RAD_IsoMapView
@@ -123,6 +154,12 @@ struct RAD_IsoMapView
     /// ist. Ihre Effekte stehen in der Iso-Map, gehoeren aber hierher.
     ///
     RAD_IsoMapViewExplosion_t explosions[RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX];
+
+    ///
+    /// Die zerstoerten Figuren, die noch zu sehen sind; frei, wo "active" nicht
+    /// gesetzt ist. Ihre Entitaeten gehoeren hierher.
+    ///
+    RAD_IsoMapViewWreck_t wrecks[RAD_ISO_MAP_VIEW_WRECKS_MAX];
 
     ///
     /// Das Iso-Objekt unter dem Mauszeiger (RAD_IsoMapViewHandleMouseMotion), mit
@@ -164,6 +201,10 @@ static void RAD_IsoMapViewStopAim(RAD_IsoMapViewAim_t *aim);
 static void RAD_IsoMapViewApplyFog(RAD_IsoMapView_t *iso_map_view, float now_ms);
 static void RAD_IsoMapViewUpdateExplosions(RAD_IsoMapView_t *iso_map_view, float now_ms);
 static void RAD_IsoMapViewStopExplosion(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewExplosion_t *explosion);
+static void RAD_IsoMapViewUpdateWrecks(RAD_IsoMapView_t *iso_map_view, float now_ms);
+static void RAD_IsoMapViewStopWreck(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewWreck_t *wreck);
+static void RAD_IsoMapViewApplySequence(RAD_IsoEntity_t *entity, const RAD_UnitAnimationState_t *state,
+                                        float move_ms);
 static RAD_IsoEntity_t* RAD_IsoMapViewEntityAt(const RAD_IsoMapView_t *iso_map_view, int32_t x, int32_t y,
                                                RAD_ClientUnitId_t unit);
 static float RAD_IsoMapViewNow(void);
@@ -221,9 +262,23 @@ void RAD_DestroyIsoMapView(RAD_IsoMapView_t **iso_map_view)
     }
     for(size_t i = 0; i < RAD_ISO_MAP_VIEW_AIMS_MAX; ++i)
     {
-        if((*iso_map_view)->aims[i].active)
+        RAD_IsoMapViewAim_t *aim = &(*iso_map_view)->aims[i];
+        if(aim->active)
         {
-            RAD_IsoMapViewStopAim(&(*iso_map_view)->aims[i]);
+            // Die Figur bleibt auf der Karte: ohne laufenden Schuss.
+            RAD_IsoEntity_t *entity = RAD_IsoMapViewEntityAt(*iso_map_view, aim->x, aim->y, aim->unit);
+            if(entity != NULL)
+            {
+                entity->sequence_active = false;
+            }
+            RAD_IsoMapViewStopAim(aim);
+        }
+    }
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_WRECKS_MAX; ++i)
+    {
+        if((*iso_map_view)->wrecks[i].active)
+        {
+            RAD_IsoMapViewStopWreck(*iso_map_view, &(*iso_map_view)->wrecks[i]);
         }
     }
     for(size_t i = 0; i < RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX; ++i)
@@ -262,6 +317,7 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
         move->entity->turn_to = state.turn_to;
         move->entity->turn_progress = state.turn_progress;
         move->entity->aim_angle = state.aim_angle;
+        RAD_IsoMapViewApplySequence(move->entity, &state, now_ms - move->start_ms);
 
         if(RAD_UnitAnimationIsFinished(move->animation, now_ms))
         {
@@ -278,17 +334,25 @@ void RAD_UpdateIsoMapView(RAD_IsoMapView_t *iso_map_view, SDL_Renderer *renderer
         }
 
         RAD_IsoEntity_t *entity = RAD_IsoMapViewEntityAt(iso_map_view, aim->x, aim->y, aim->unit);
+        const bool finished = RAD_UnitAnimationIsFinished(aim->animation, now_ms);
         if(entity != NULL)
         {
-            entity->aim_angle = RAD_UnitAnimationStateAt(aim->animation, now_ms).aim_angle;
+            const RAD_UnitAnimationState_t state = RAD_UnitAnimationStateAt(aim->animation, now_ms);
+            entity->aim_angle = state.aim_angle;
+            RAD_IsoMapViewApplySequence(entity, &state, 0.0f);
+            if(finished)
+            {
+                entity->sequence_active = false;
+            }
         }
-        if((entity == NULL) || RAD_UnitAnimationIsFinished(aim->animation, now_ms))
+        if((entity == NULL) || finished)
         {
             RAD_IsoMapViewStopAim(aim);
         }
     }
 
     RAD_IsoMapViewUpdateExplosions(iso_map_view, now_ms);
+    RAD_IsoMapViewUpdateWrecks(iso_map_view, now_ms);
 
     // Der Nebel je Bild neu: die Sicht haengt an jedem Zug, jedem Aufstellen und
     // jeder Einheit, die kommt oder geht -- und sie zu rechnen kostet weniger,
@@ -336,6 +400,14 @@ bool RAD_IsoMapViewIsBusy(const RAD_IsoMapView_t *iso_map_view)
     for(size_t i = 0; i < RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX; ++i)
     {
         if(iso_map_view->explosions[i].active)
+        {
+            return true;
+        }
+    }
+
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_WRECKS_MAX; ++i)
+    {
+        if(iso_map_view->wrecks[i].active)
         {
             return true;
         }
@@ -1054,16 +1126,18 @@ static void RAD_IsoMapViewOnUnitMoved(void *user_argument, const RAD_ClientWorld
                                    : RAD_IsoFacingOf((count > 1) ? xs[1] - xs[0] : 0.0f,
                                                      (count > 1) ? ys[1] - ys[0] : 0.0f, entity->facing);
 
+    const float now_ms = RAD_IsoMapViewNow();
     *move = (RAD_IsoMapViewMove_t){
         .active = true,
         .unit = unit,
         .entity = entity,
         .to_x = to.x,
         .to_y = to.y,
-        .animation = NULL
+        .animation = NULL,
+        .start_ms = now_ms
     };
 
-    move->animation = RAD_CreateUnitAnimation(xs, ys, count, facing, entity->aim_angle, RAD_IsoMapViewNow(),
+    move->animation = RAD_CreateUnitAnimation(xs, ys, count, facing, entity->aim_angle, now_ms,
                                               RAD_IsoUnitStepMs(entity->sprite), RAD_IsoUnitTurnMs(entity->sprite),
                                               RAD_IsoUnitAimMs(entity->sprite));
     if(move->animation == NULL)
@@ -1162,6 +1236,7 @@ static void RAD_IsoMapViewFinishMove(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapV
 
     RAD_IsoMapRemoveEntity(iso_map_view->map, move->entity);
     move->entity->turning = false;
+    move->entity->sequence_active = false;
 
     const bool arrived = (tile != NULL) && (tile->unit != NULL) && (tile->unit->id == move->unit)
                          && goal->present && (goal->entities[RAD_ISO_UNIT_DEPTH] == NULL);
@@ -1189,6 +1264,171 @@ static void RAD_IsoMapViewFinishMove(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapV
 }
 
 ///
+/// Uebertraegt, was die Figur laut Animation gerade tut, auf die Folge ihres
+/// Bildes (RAD_IsoEntity_t.sequence): waehrend einer Fahrt MOVE, gezaehlt ab
+/// "move_ms" seit Beginn des Zuges, waehrend eines Schusses FIRE, gezaehlt ab
+/// dessen Beginn; sonst keine.
+///
+static void RAD_IsoMapViewApplySequence(RAD_IsoEntity_t *entity, const RAD_UnitAnimationState_t *state,
+                                        float move_ms)
+{
+    entity->sequence_active = state->driving || state->firing;
+    if(state->firing)
+    {
+        entity->sequence = RAD_ISO_UNIT_ANIMATION_FIRE;
+        entity->sequence_ms = state->firing_ms;
+    }
+    else if(state->driving)
+    {
+        entity->sequence = RAD_ISO_UNIT_ANIMATION_MOVE;
+        entity->sequence_ms = move_ms;
+    }
+}
+
+///
+/// Wann der Schuss auf Feld (x, y) faellt: der Beginn der spaetesten Explosion,
+/// die dort wartet oder laeuft (RAD_IsoMapViewFire). "now_ms", wenn keine --
+/// etwa bei einem Fehlschuss oder wenn kein Platz fuer sie war.
+///
+static float RAD_IsoMapViewImpactMs(const RAD_IsoMapView_t *iso_map_view, int32_t x, int32_t y, float now_ms)
+{
+    float impact_ms = now_ms;
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_EXPLOSIONS_MAX; ++i)
+    {
+        const RAD_IsoMapViewExplosion_t *explosion = &iso_map_view->explosions[i];
+        if(explosion->active && ((int32_t)explosion->effect.x == x) && ((int32_t)explosion->effect.y == y)
+           && (explosion->start_ms > impact_ms))
+        {
+            impact_ms = explosion->start_ms;
+        }
+    }
+    return impact_ms;
+}
+
+///
+/// Kommt vor dem "changed" des Feldes (RAD_ClientWorldRemoveUnit): die Einheit
+/// steht noch auf "position", die Iso-Map zeigt sie noch dort -- oder ihr Zug
+/// laeuft noch.
+///
+/// Die IsoMapView behaelt die Figur als Wrack (RAD_IsoMapViewWreck_t): sie loest
+/// sie vom Feld bzw. uebernimmt sie aus dem Zug und laesst sie ihre Zerstoerung
+/// zeigen (RAD_ISO_UNIT_ANIMATION_DESTROYED), beginnend mit dem Schuss, der sie
+/// getroffen hat (RAD_IsoMapViewImpactMs) -- bis dahin sieht sie aus wie zuvor.
+/// Nach der Folge bleibt ihr letztes Bild RAD_ISO_MAP_VIEW_WRECK_HOLD_MS stehen,
+/// dann verschwindet sie.
+///
+/// Ohne geladenes Bild, ohne freien Platz oder wenn die Iso-Map keine Figur mehr
+/// nimmt, verschwindet sie sofort mit dem Feld, wie frueher.
+///
+static void RAD_IsoMapViewOnUnitDestroyed(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                          RAD_ClientPosition_t position)
+{
+    (void)world;
+    RAD_IsoMapView_t *iso_map_view = (RAD_IsoMapView_t*)user_argument;
+
+    RAD_IsoMapViewWreck_t *wreck = NULL;
+    for(size_t i = 0; (wreck == NULL) && (i < RAD_ISO_MAP_VIEW_WRECKS_MAX); ++i)
+    {
+        if(!iso_map_view->wrecks[i].active)
+        {
+            wreck = &iso_map_view->wrecks[i];
+        }
+    }
+    if(wreck == NULL)
+    {
+        printf("[IsoMapView] Kein Platz fuer die Zerstoerung von Einheit %d\n", (int)unit);
+        return;
+    }
+
+    RAD_IsoMapViewAim_t *aim = RAD_IsoMapViewAimOf(iso_map_view, unit);
+    if(aim != NULL)
+    {
+        RAD_IsoMapViewStopAim(aim);
+    }
+
+    // Die Figur: aus dem Zug, der sie schon ausserhalb eines Feldes zeigt, oder
+    // von ihrem Feld.
+    RAD_IsoEntity_t *entity = NULL;
+    RAD_IsoMapViewMove_t *move = RAD_IsoMapViewMoveOf(iso_map_view, unit);
+    if(move != NULL)
+    {
+        if(!RAD_IsoUnitCanAim(move->entity->sprite))
+        {
+            return;
+        }
+        entity = move->entity;
+        RAD_DestroyUnitAnimation(&move->animation);
+        *move = (RAD_IsoMapViewMove_t){ .active = false };
+        entity->turning = false;
+    }
+    else
+    {
+        RAD_IsoObject_t *object = &iso_map_view->map->data[0][position.y][position.x];
+        entity = RAD_IsoMapViewEntityAt(iso_map_view, position.x, position.y, unit);
+        if((entity == NULL) || !RAD_IsoUnitCanAim(entity->sprite))
+        {
+            return;
+        }
+        entity->x = (float)position.x;
+        entity->y = (float)position.y;
+        entity->layer = 0;
+        if(!RAD_IsoMapAddEntity(iso_map_view->map, entity))
+        {
+            printf("[IsoMapView] Iso-Map nimmt keine weitere Figur fuer die Zerstoerung\n");
+            return;
+        }
+        object->entities[RAD_ISO_UNIT_DEPTH] = NULL;
+    }
+
+    const float start_ms = RAD_IsoMapViewImpactMs(iso_map_view, position.x, position.y, RAD_IsoMapViewNow());
+    entity->sequence_active = false;
+    *wreck = (RAD_IsoMapViewWreck_t){
+        .active = true,
+        .unit = unit,
+        .entity = entity,
+        .start_ms = start_ms,
+        .end_ms = start_ms + RAD_IsoUnitSequenceMsOf(entity->sprite, RAD_ISO_UNIT_ANIMATION_DESTROYED, entity->facing)
+                  + RAD_ISO_MAP_VIEW_WRECK_HOLD_MS
+    };
+    printf("[IsoMapView] Einheit %d wird zerstoert auf (%d, %d)\n", (int)unit, (int)position.x, (int)position.y);
+}
+
+///
+/// Bringt die Wracks auf "now_ms": vor dem Schuss ohne Folge, danach DESTROYED,
+/// nach "end_ms" weg.
+///
+static void RAD_IsoMapViewUpdateWrecks(RAD_IsoMapView_t *iso_map_view, float now_ms)
+{
+    for(size_t i = 0; i < RAD_ISO_MAP_VIEW_WRECKS_MAX; ++i)
+    {
+        RAD_IsoMapViewWreck_t *wreck = &iso_map_view->wrecks[i];
+        if(!wreck->active)
+        {
+            continue;
+        }
+        if(now_ms >= wreck->end_ms)
+        {
+            RAD_IsoMapViewStopWreck(iso_map_view, wreck);
+            continue;
+        }
+
+        wreck->entity->sequence_active = (now_ms >= wreck->start_ms);
+        wreck->entity->sequence = RAD_ISO_UNIT_ANIMATION_DESTROYED;
+        wreck->entity->sequence_ms = now_ms - wreck->start_ms;
+    }
+}
+
+///
+/// Nimmt ein Wrack aus der Iso-Map und gibt seine Figur frei.
+///
+static void RAD_IsoMapViewStopWreck(RAD_IsoMapView_t *iso_map_view, RAD_IsoMapViewWreck_t *wreck)
+{
+    RAD_IsoMapRemoveEntity(iso_map_view->map, wreck->entity);
+    free(wreck->entity);
+    *wreck = (RAD_IsoMapViewWreck_t){ .active = false };
+}
+
+///
 /// Die Zeit fuer die Animationen, in ms seit dem Start von SDL. Als float bis
 /// etwa 4,6 Stunden Laufzeit auf die Millisekunde genau.
 ///
@@ -1207,7 +1447,8 @@ static bool RAD_IsoMapViewObserveWorld(RAD_IsoMapView_t *iso_map_view)
         .unit_moved = RAD_IsoMapViewOnUnitMoved,
         .unit_attacked = RAD_IsoMapViewOnUnitAttacked,
         .attack_rejected = RAD_IsoMapViewOnAttackRejected,
-        .players_changed = RAD_IsoMapViewOnPlayersChanged
+        .players_changed = RAD_IsoMapViewOnPlayersChanged,
+        .unit_destroyed = RAD_IsoMapViewOnUnitDestroyed
     });
 }
 

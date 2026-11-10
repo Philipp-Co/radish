@@ -35,7 +35,7 @@ from django.views.static import serve
 # radish/frontend/ und radish/web/ liegen als Geschwisterverzeichnisse
 # daneben (siehe docker/web/Dockerfile fuer denselben Aufbau via nginx).
 FRONTEND_DIST_DIR = Path(settings.BASE_DIR).parent / "frontend" / "dist" / "radish-frontend" / "browser"
-WASM_DIR = Path(settings.BASE_DIR).parent / "web"
+WASM_DIR = Path(settings.RADISH_WASM_DIR)
 
 
 def _accepts_gzip(request: HttpRequest) -> bool:

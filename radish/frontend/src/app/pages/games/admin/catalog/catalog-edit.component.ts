@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Subject, catchError, debounceTime, of, switchMap } from 'rxjs';
+import { Subject, catchError, of, switchMap } from 'rxjs';
 
 import { apiErrorMessage } from '../../../../core/api-error';
 import { AdminSpecies, AdminUnitType, ApiService } from '../../../../core/api.service';
@@ -17,16 +17,15 @@ import {
 import { CatalogDraft, CatalogEntryFormComponent } from './catalog-entry-form.component';
 import { CATALOG_BASE, CatalogPageHeaderComponent } from './catalog-shell.component';
 import { ProfileOverviewComponent } from './profile-overview.component';
-
-/** Mehr Treffer zeigt die Liste nicht an -- dann lieber genauer suchen. */
-const MAX_RESULTS = 25;
+import { SpriteImagesComponent } from './sprite-images.component';
 
 /**
- * "Ändern" fuer ein Katalog-Modell: Suche im Namen (optional auf eine
- * Spezies eingeschraenkt), Treffer erst nach einer Eingabe -- es sollen
- * nicht staendig alle Eintraege auf der Seite stehen. Der gewaehlte Eintrag
- * steht als ?id= in der URL, damit "Bearbeiten" nach dem Anlegen direkt
- * hierher fuehren kann.
+ * "Ändern" fuer ein Katalog-Modell: unter der Suchzeile alle Eintraege
+ * (optional auf eine Spezies oder einen Zusatzfilter eingeschraenkt), die
+ * Suchzeile filtert sie beim Tippen im Namen -- ohne Gross-/Kleinschreibung
+ * und ohne neue Anfrage. Geladen wird die Liste einmal und bei jedem
+ * geaenderten Filter neu. Der gewaehlte Eintrag steht als ?id= in der URL,
+ * damit "Bearbeiten" nach dem Anlegen direkt hierher fuehren kann.
  */
 @Component({
   selector: 'app-catalog-edit',
@@ -36,6 +35,7 @@ const MAX_RESULTS = 25;
     CatalogEntryFormComponent,
     CatalogPageHeaderComponent,
     ProfileOverviewComponent,
+    SpriteImagesComponent,
   ],
   template: `
     <section class="card">
@@ -51,8 +51,8 @@ const MAX_RESULTS = 25;
           <input
             type="text"
             placeholder="Name eingeben..."
-            [ngModel]="searchTerm"
-            (ngModelChange)="search($event)"
+            [ngModel]="searchTerm()"
+            (ngModelChange)="searchTerm.set($event)"
           />
         </label>
         @if (model.parent !== null) {
@@ -83,12 +83,19 @@ const MAX_RESULTS = 25;
         <p class="error">{{ message }}</p>
       }
 
-      @if (results(); as found) {
+      @if (filtered(); as found) {
+        <p class="muted count">
+          @if (searchTerm().trim()) {
+            {{ found.length }} von {{ results()?.length ?? 0 }} Einträgen
+          } @else {
+            {{ found.length }} Einträge
+          }
+        </p>
         @if (found.length === 0) {
           <p class="muted">Keine Treffer.</p>
         } @else {
           <ul class="results">
-            @for (entry of found.slice(0, maxResults); track entry.id) {
+            @for (entry of found; track entry.id) {
               <li>
                 <button
                   class="result"
@@ -101,11 +108,6 @@ const MAX_RESULTS = 25;
               </li>
             }
           </ul>
-          @if (found.length > maxResults) {
-            <p class="muted hint">
-              {{ found.length }} Treffer, die ersten {{ maxResults }} angezeigt -- bitte genauer suchen.
-            </p>
-          }
         }
       }
     </section>
@@ -128,7 +130,7 @@ const MAX_RESULTS = 25;
         </h3>
 
         <app-catalog-entry-form
-          [fields]="model.fields"
+          [fields]="formFields"
           [value]="entry"
           [inUse]="entry.in_use ?? false"
           [busy]="saving()"
@@ -150,6 +152,14 @@ const MAX_RESULTS = 25;
       @if (asUnitType(entry); as unitType) {
         <section class="card">
           <app-profile-overview [unitType]="unitType" />
+        </section>
+        <section class="card">
+          <app-sprite-images
+            [spriteKey]="unitType.sprite"
+            [unitTypeId]="unitType.id"
+            [busy]="saving()"
+            (save)="saveSprite(entry, $event)"
+          />
         </section>
       }
     }
@@ -178,10 +188,17 @@ const MAX_RESULTS = 25;
         gap: 0.25rem;
         font-size: 0.9rem;
       }
+      .count {
+        margin: 0.75rem 0 0;
+        font-size: 0.8rem;
+      }
+      /* Die ganze Liste, aber nicht beliebig lang: sie scrollt in sich. */
       .results {
         list-style: none;
-        margin: 0.75rem 0 0;
+        margin: 0.25rem 0 0;
         padding: 0;
+        max-height: 22rem;
+        overflow-y: auto;
       }
       .result {
         width: 100%;
@@ -227,12 +244,26 @@ export class CatalogEditComponent implements OnInit {
 
   readonly model: CatalogModel = catalogModel(this.route.snapshot.data['resource']);
   readonly base = CATALOG_BASE;
-  readonly maxResults = MAX_RESULTS;
   readonly context = entryContext;
 
+  /**
+   * Die Felder des Formulars -- ohne das Bild eines Einheitentyps: das waehlt
+   * und speichert hier die Bild-Sektion darunter (SpriteImagesComponent), mit
+   * Vorschau. Beim Anlegen steht es weiter im Formular.
+   */
+  readonly formFields = this.model.fields.filter((field) => field.optionsFrom !== 'unit-sprites');
+
   readonly species = signal<AdminSpecies[]>([]);
-  /** null = noch nicht gesucht (keine Liste), [] = gesucht, nichts gefunden. */
+  /** Alle Eintraege zu Spezies und Zusatzfilter; null, solange sie laden. */
   readonly results = signal<CatalogEntry[] | null>(null);
+  /** Was in der Suchzeile steht -- filtert "results" im Namen. */
+  readonly searchTerm = signal('');
+  /** Die Eintraege, deren Name den Suchbegriff enthaelt. */
+  readonly filtered = computed(() => {
+    const term = this.searchTerm().trim().toLocaleLowerCase();
+    const all = this.results();
+    return all === null || !term ? all : all.filter((entry) => entry.name.toLocaleLowerCase().includes(term));
+  });
   readonly selected = signal<CatalogEntry | null>(null);
   readonly saving = signal(false);
   readonly message = signal<string | null>(null);
@@ -240,7 +271,6 @@ export class CatalogEditComponent implements OnInit {
   readonly searchError = signal<string | null>(null);
   readonly loadError = signal<string | null>(null);
 
-  searchTerm = '';
   speciesFilter: number | null = null;
   extraFilterValue: string | null = null;
   private readonly searches = new Subject<void>();
@@ -254,19 +284,11 @@ export class CatalogEditComponent implements OnInit {
 
     this.searches
       .pipe(
-        debounceTime(250),
-        switchMap(() => {
-          // Ohne Suchbegriff und ohne Zusatzfilter keine Liste -- es sollen
-          // nicht alle Eintraege auf einmal auf der Seite stehen.
-          const term = this.searchTerm.trim();
-          if (!term && this.extraFilterValue === null) {
-            return of(null);
-          }
-          // Fehler hier abfangen: im aeusseren Stream wuerde er die Suche
+        switchMap(() =>
+          // Fehler hier abfangen: im aeusseren Stream wuerde er die Liste
           // fuer den Rest der Seite beenden.
-          return this.api
+          this.api
             .listCatalogEntries<CatalogEntry>(this.model.resource, {
-              search: term,
               species: this.speciesFilter ?? undefined,
               ...(this.model.extraFilter && this.extraFilterValue !== null
                 ? { [this.model.extraFilter.key]: this.extraFilterValue }
@@ -274,11 +296,11 @@ export class CatalogEditComponent implements OnInit {
             })
             .pipe(
               catchError((err: HttpErrorResponse) => {
-                this.searchError.set(apiErrorMessage(err, 'Suche fehlgeschlagen.'));
+                this.searchError.set(apiErrorMessage(err, 'Liste konnte nicht geladen werden.'));
                 return of(null);
               }),
-            );
-        }),
+            ),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((results) => {
@@ -287,6 +309,7 @@ export class CatalogEditComponent implements OnInit {
         }
         this.results.set(results);
       });
+    this.searches.next();
 
     // Dieselbe Komponente bleibt beim Wechsel von ?id=1 auf ?id=2 bestehen.
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -301,11 +324,6 @@ export class CatalogEditComponent implements OnInit {
       }
       this.load(id);
     });
-  }
-
-  search(term: string): void {
-    this.searchTerm = term;
-    this.searches.next();
   }
 
   filterSpecies(speciesId: number | null): void {
@@ -331,6 +349,12 @@ export class CatalogEditComponent implements OnInit {
     // Die Zuordnung aendert sich nie (das Backend lehnt es ab) -- sie muss
     // beim PUT aber mitgeschickt werden.
     const payload: Record<string, unknown> = { ...draft };
+    // Das Bild steht nicht im Formular (formFields) -- gespeichert bleibt das bisherige.
+    for (const field of this.model.fields) {
+      if (field.optionsFrom === 'unit-sprites') {
+        payload[field.key] = (entry as unknown as Record<string, unknown>)[field.key] ?? '';
+      }
+    }
     if (this.model.parent === 'species') {
       payload['species_id'] = entry.species_id;
     } else if (this.model.parent === 'unit-type') {
@@ -354,6 +378,31 @@ export class CatalogEditComponent implements OnInit {
         this.errorMessage.set(
           apiErrorMessage(err, 'Speichern fehlgeschlagen.', CATALOG_FIELD_LABELS),
         );
+      },
+    });
+  }
+
+  /**
+   * Speichert nur das Bild eines Einheitentyps (PATCH) -- aus der Bild-Sektion.
+   * Das Formular darueber laedt danach den gespeicherten Stand neu; was dort
+   * noch nicht gespeichert war, ist damit verworfen.
+   */
+  saveSprite(entry: CatalogEntry, sprite: string): void {
+    this.saving.set(true);
+    this.errorMessage.set(null);
+    this.message.set(null);
+    this.api.patchCatalogEntry<CatalogEntry>(this.model.resource, entry.id, { sprite }).subscribe({
+      next: (saved) => {
+        this.saving.set(false);
+        this.selected.set(saved);
+        this.results.update((list) =>
+          list?.map((other) => (other.id === saved.id ? saved : other)) ?? null,
+        );
+        this.message.set(`Bild von „${saved.name}“ gespeichert.`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.saving.set(false);
+        this.errorMessage.set(apiErrorMessage(err, 'Bild nicht gespeichert.', CATALOG_FIELD_LABELS));
       },
     });
   }

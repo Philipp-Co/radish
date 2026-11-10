@@ -233,6 +233,9 @@ RAD_UnitAnimationState_t RAD_UnitAnimationStateAt(const RAD_UnitAnimation_t *uni
         .aim_angle = RAD_IsoAngleNormalize(phase->from_aim + (phase->to_aim - phase->from_aim) * progress)
     };
 
+    // Laeuft der Abschnitt gerade -- begonnen und noch nicht vorbei?
+    const bool running = (now_ms >= phase->start_ms) && (now_ms < phase->start_ms + phase->duration_ms);
+
     if(phase->type == RAD_UNIT_ANIMATION_TURN)
     {
         if(progress < 1.0f)
@@ -244,6 +247,16 @@ RAD_UnitAnimationState_t RAD_UnitAnimationStateAt(const RAD_UnitAnimation_t *uni
         {
             state.facing = phase->to_facing;
         }
+    }
+    else if(phase->type == RAD_UNIT_ANIMATION_DRIVE)
+    {
+        // Ein Pfad aus einem Punkt ist eine Fahrt auf der Stelle: die zieht nicht.
+        state.driving = running && ((phase->from_x != phase->to_x) || (phase->from_y != phase->to_y));
+    }
+    else if(phase->type == RAD_UNIT_ANIMATION_FIRE)
+    {
+        state.firing = running;
+        state.firing_ms = running ? now_ms - phase->start_ms : 0.0f;
     }
     return state;
 }

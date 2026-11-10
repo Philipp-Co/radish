@@ -1,24 +1,28 @@
 # Tests des Clients, die auf dem Host laufen. Der Client selbst baut nur unter
 # Emscripten (client/CMakeLists.txt); getestet wird hier, was ohne SDL
-# auskommt -- bisher der Leser der sprite.json (rendering/iso_unit_sprite.c).
-# Die Quellen werden direkt uebersetzt, es gibt keine Bibliothek des Clients.
+# auskommt -- der Leser der sprite.json (rendering/iso_unit_sprite.c) und die
+# Animationen der Figuren (view/animations/unit_animation.c). Die Quellen werden
+# direkt uebersetzt, es gibt keine Bibliothek des Clients.
 
 set(RAD_CLIENT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
-add_executable(test_client_sprite
+add_executable(test_client
     main.c
     test_iso_unit_sprite.c
+    test_unit_animation.c
     ${RAD_CLIENT_SOURCE}/rendering/iso_unit_sprite.c
+    ${RAD_CLIENT_SOURCE}/rendering/iso_facing.c
+    ${RAD_CLIENT_SOURCE}/view/animations/unit_animation.c
     ${RAD_CLIENT_SOURCE}/io/jsmn_impl.c
 )
-target_include_directories(test_client_sprite PRIVATE ${RAD_CLIENT_SOURCE}/include)
-target_link_libraries(test_client_sprite PRIVATE unity::framework jsmn::jsmn m)
+target_include_directories(test_client PRIVATE ${RAD_CLIENT_SOURCE}/include)
+target_link_libraries(test_client PRIVATE unity::framework jsmn::jsmn m)
 # Die Beispiele der Schema-Tests unten und das Bild des Panzers: der Leser muss
 # genau das annehmen und abweisen, was das Schema annimmt und abweist.
-target_compile_definitions(test_client_sprite PRIVATE
+target_compile_definitions(test_client PRIVATE
     RAD_SPRITE_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/schema/sprite"
     RAD_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../assets")
-add_test(NAME client_sprite COMMAND test_client_sprite)
+add_test(NAME client COMMAND test_client)
 
 ###
 # Das Schema der sprite.json (client/schema/sprite.schema.json), wie die

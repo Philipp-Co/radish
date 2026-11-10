@@ -27,6 +27,26 @@ MAX_NAME_BYTES = 31
 MAX_SPRITE_KEY_LENGTH = 31
 SPRITE_KEY_PATTERN = r"^[a-z0-9_]{1,31}$"
 
+# Grenzen einer sprite.json, wie der Client sie liest
+# (radish/client/src/include/radish/rendering/iso_unit_sprite.h,
+# radish/client/schema/sprite.schema.json): Zellgroesse, Zahl der Bilder je
+# Atlas, Zeichenbreite, Bilder je Sekunde und Dauern. Ein hochgeladenes Bild
+# (UnitSprite) muss in sie passen, sonst laedt der Client es nicht.
+SPRITE_FRAME_SIZE_MAX = 1024
+SPRITE_FRAMES_MAX = 1024
+SPRITE_DRAW_WIDTH_MAX = 1024
+SPRITE_FPS_MAX = 60.0
+SPRITE_DURATION_MS_MAX = 10000.0
+
+# Dateiname eines Atlas im Ordner des Bildes: hoechstens 27 Zeichen aus
+# [a-z0-9_] und ".png", zusammen 31 (RAD_ISO_UNIT_FILE_NAME_MAX samt Null).
+SPRITE_FILE_NAME_PATTERN = r"^[a-z0-9_]{1,27}\.png$"
+
+# Wie gross eine hochgeladene PNG hoechstens sein darf. Ein voller Atlas von
+# 4096 x 4096 Pixeln hat rund 3 MB; das laesst Luft, haelt die Datenbank aber
+# von Unfaellen frei.
+SPRITE_IMAGE_BYTES_MAX = 16 * 1024 * 1024
+
 # Waffen einer Entitaet, gleich welcher Klasse (RAD_UNIT_MAX_WEAPONS). Die
 # Slots eines Profils duerfen zusammen nicht mehr ergeben.
 MAX_WEAPONS_PER_ENTITY = 4

@@ -96,6 +96,12 @@ typedef struct RAD_UnitAnimation
 /// Drehung ist "turning" gesetzt, "facing" die Richtung, aus der sie kommt.
 /// "aim_angle" liegt in [0, 360).
 ///
+/// Dazu, was sie gerade tut, fuer die Folgen ihres Bildes
+/// (RAD_IsoUnitSequenceFrameOf): "driving", solange eine Fahrt laeuft, die sie
+/// wirklich vom Fleck bringt -- vor "start_ms" und nach dem Ende nicht --, und
+/// "firing", solange ein Schuss laeuft (RAD_UNIT_ANIMATION_FIRE), mit
+/// "firing_ms", wie lange schon.
+///
 typedef struct RAD_UnitAnimationState
 {
     float x;
@@ -105,6 +111,9 @@ typedef struct RAD_UnitAnimationState
     RAD_IsoFacing_t turn_to;
     float turn_progress;
     float aim_angle;
+    bool driving;
+    bool firing;
+    float firing_ms;
 } RAD_UnitAnimationState_t;
 
 ///

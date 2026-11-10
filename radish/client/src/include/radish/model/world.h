@@ -221,7 +221,8 @@ typedef enum
     RAD_CLIENT_WORLD_EVENT_UNIT_MOVED,
     RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED,
     RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED,
-    RAD_CLIENT_WORLD_EVENT_PLAYERS_CHANGED
+    RAD_CLIENT_WORLD_EVENT_PLAYERS_CHANGED,
+    RAD_CLIENT_WORLD_EVENT_UNIT_DESTROYED
 } RAD_ClientWorldEvent_t;
 
 ///
@@ -248,6 +249,12 @@ typedef enum
 /// geaendert haben (RAD_ClientWorldSetPlayers) -- und damit womoeglich die Farbe
 /// der Einheiten auf dem Feld.
 ///
+/// "unit_destroyed" meldet, dass der Server die Einheit "unit" auf dem Feld
+/// "position" als zerstoert gemeldet hat (RAD_ClientWorldRemoveUnit) -- wie
+/// "unit_moved" **bevor** die Welt sie entfernt: sie steht dabei noch auf ihrem
+/// Feld. Nicht fuer eine Einheit, die nur aus der Sicht geraet, und nicht fuer
+/// eine aus der Reserve.
+///
 typedef struct
 {
     void *user_argument;
@@ -260,6 +267,8 @@ typedef struct
                           const RAD_ClientAttackResult_t *result);
     void (*attack_rejected)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
     void (*players_changed)(void *user_argument, const RAD_ClientWorld_t *world);
+    void (*unit_destroyed)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                           RAD_ClientPosition_t position);
 } RAD_ClientWorldObserver_t;
 
 ///
@@ -388,7 +397,8 @@ bool RAD_ClientWorldRemoveReserveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId
 ///
 /// Nimmt die Einheit "id" ganz aus der Welt -- fuer eine, die der Server als
 /// zerstoert gemeldet hat (io/net_event_handler/unit_destroyed.c). Steht sie auf
-/// "position", wird das Feld frei und meldet "changed" (RAD_ClientTileSetUnit);
+/// "position", meldet die Welt zuerst "unit_destroyed", dann wird das Feld frei
+/// und meldet "changed" (RAD_ClientTileSetUnit);
 /// steht sie in einer Reserve, meldet die "unit_removed". Danach meldet die
 /// Einheit "removed" (RAD_ClientUnitRepositoryRemove).
 ///

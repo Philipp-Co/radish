@@ -12,6 +12,8 @@ typedef void (*RAD_ClientWorldUnitAttacked_t)(void *user_argument, const RAD_Cli
                                               const RAD_ClientAttackResult_t *result);
 typedef void (*RAD_ClientWorldAttackRejected_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit);
 typedef void (*RAD_ClientWorldPlayersChanged_t)(void *user_argument, const RAD_ClientWorld_t *world);
+typedef void (*RAD_ClientWorldUnitDestroyed_t)(void *user_argument, const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                               RAD_ClientPosition_t position);
 
 static bool RAD_ClientWorldInBounds(int32_t x, int32_t y)
 {
@@ -101,6 +103,22 @@ static void RAD_ClientWorldNotifyUnitAttacked(const RAD_ClientWorld_t *world, co
         if(callback != NULL)
         {
             callback(observer->user_argument, world, result);
+        }
+    }
+}
+
+static void RAD_ClientWorldNotifyUnitDestroyed(const RAD_ClientWorld_t *world, RAD_ClientUnitId_t unit,
+                                               RAD_ClientPosition_t position)
+{
+    const RAD_ModelObservable_t observable = world->observable;
+
+    for(uint32_t i = 0; i < observable.number_of_observers; ++i)
+    {
+        const RAD_ModelObserver_t *observer = &observable.observers[i];
+        const RAD_ClientWorldUnitDestroyed_t callback = (RAD_ClientWorldUnitDestroyed_t)observer->callbacks[RAD_CLIENT_WORLD_EVENT_UNIT_DESTROYED];
+        if(callback != NULL)
+        {
+            callback(observer->user_argument, world, unit, position);
         }
     }
 }
@@ -371,6 +389,8 @@ bool RAD_ClientWorldRemoveUnit(RAD_ClientWorld_t *world, RAD_ClientUnitId_t id, 
         RAD_ClientTile_t *tile = &world->tiles[position.y][position.x];
         if((tile->unit != NULL) && (tile->unit->id == id))
         {
+            // Solange sie noch dort steht: wer es zeigt, kann ihre Figur noch finden.
+            RAD_ClientWorldNotifyUnitDestroyed(world, id, position);
             RAD_ClientTileSetUnit(tile, NULL);
         }
     }
@@ -633,7 +653,8 @@ bool RAD_ClientWorldSubscribe(const RAD_ClientWorld_t *world, RAD_ClientWorldObs
             [RAD_CLIENT_WORLD_EVENT_UNIT_MOVED] = (RAD_ModelCallback_t)observer.unit_moved,
             [RAD_CLIENT_WORLD_EVENT_UNIT_ATTACKED] = (RAD_ModelCallback_t)observer.unit_attacked,
             [RAD_CLIENT_WORLD_EVENT_ATTACK_REJECTED] = (RAD_ModelCallback_t)observer.attack_rejected,
-            [RAD_CLIENT_WORLD_EVENT_PLAYERS_CHANGED] = (RAD_ModelCallback_t)observer.players_changed
+            [RAD_CLIENT_WORLD_EVENT_PLAYERS_CHANGED] = (RAD_ModelCallback_t)observer.players_changed,
+            [RAD_CLIENT_WORLD_EVENT_UNIT_DESTROYED] = (RAD_ModelCallback_t)observer.unit_destroyed
         }
     };
     return RAD_ModelObservableSubscribe(RAD_ModelObservableOf(&world->observable), &generic);

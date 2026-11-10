@@ -15,6 +15,10 @@ void test_sprite_atlanten_je_animation_und_richtung(void);
 void test_sprite_schluessel_und_pfad(void);
 void test_sprite_bilder_einer_folge(void);
 
+void test_animation_faehrt_nur_waehrend_einer_fahrt(void);
+void test_animation_auf_der_stelle_faehrt_nicht(void);
+void test_animation_feuert_waehrend_des_haltens(void);
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -29,5 +33,9 @@ int main(void)
     RUN_TEST(test_sprite_atlanten_je_animation_und_richtung);
     RUN_TEST(test_sprite_schluessel_und_pfad);
     RUN_TEST(test_sprite_bilder_einer_folge);
+
+    RUN_TEST(test_animation_faehrt_nur_waehrend_einer_fahrt);
+    RUN_TEST(test_animation_auf_der_stelle_faehrt_nicht);
+    RUN_TEST(test_animation_feuert_waehrend_des_haltens);
     return UNITY_END();
 }

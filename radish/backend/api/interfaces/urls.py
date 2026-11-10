@@ -1,6 +1,6 @@
 from django.urls import path
 
-from api.interfaces.admin.views import admin_views
+from api.interfaces.admin.views import admin_sprite_views, admin_views
 from api.interfaces.auth.views import auth_views
 from api.interfaces.player.views import army_views, client_views
 from api.interfaces.servers.views import server_views
@@ -83,6 +83,32 @@ urlpatterns = [
         "admin/catalog/equipment/<int:pk>/",
         admin_views.AdminEquipmentDetailView.as_view(),
         name="admin-catalog-equipment-detail",
+    ),
+    path("admin/sprites/", admin_sprite_views.AdminSpriteListView.as_view(), name="admin-sprite-list"),
+    path(
+        "admin/sprites/<int:pk>/",
+        admin_sprite_views.AdminSpriteDetailView.as_view(),
+        name="admin-sprite-detail",
+    ),
+    path(
+        "admin/sprites/<int:sprite_id>/images/",
+        admin_sprite_views.AdminSpriteImageListView.as_view(),
+        name="admin-sprite-image-list",
+    ),
+    path(
+        "admin/sprites/<int:sprite_id>/images/<int:image_id>/",
+        admin_sprite_views.AdminSpriteImageDetailView.as_view(),
+        name="admin-sprite-image-detail",
+    ),
+    path(
+        "admin/sprites/<int:sprite_id>/images/<int:image_id>/file/",
+        admin_sprite_views.AdminSpriteImageFileView.as_view(),
+        name="admin-sprite-image-file",
+    ),
+    path(
+        "admin/sprites/<int:sprite_id>/atlases/",
+        admin_sprite_views.AdminSpriteAtlasesView.as_view(),
+        name="admin-sprite-atlases",
     ),
     path(
         "admin/terrain/",

@@ -78,6 +78,18 @@ typedef struct
     /// dort zeigt der Atlas den Turm nur nach vorn.
     ///
     float aim_angle;
+
+    ///
+    /// Welche Folge ihres Bildes gerade laeuft (RAD_IsoUnitSequenceFrameOf) --
+    /// MOVE, FIRE oder DESTROYED -- und seit wie vielen Millisekunden; ohne
+    /// "sequence_active" keine. Gesetzt je Frame von der IsoMapView
+    /// (view/iso_map_view.c). Eine Drehung geht vor; FIRE zeigt die Figur nur,
+    /// solange sie geradeaus zielt ("aim_angle" 0), denn die Bilder einer Folge
+    /// kennen nur die Blickrichtung -- sonst bleibt das Bild des Zielens.
+    ///
+    bool sequence_active;
+    RAD_IsoUnitAnimation_t sequence;
+    float sequence_ms;
 } RAD_IsoEntity_t;
 
 /// RAD_IsoEntity_t.player fuer eine Figur ohne bekannten Besitzer.
@@ -90,8 +102,9 @@ typedef struct
 /// Bewegung duerfen das Koordinaten zwischen zwei Feldern sein.
 ///
 /// Mit Bild (entity->sprite) das Einzelbild ihrer Blickrichtung aus dem Atlas
-/// der Drehung, waehrend einer Drehung das dazwischen, mit gedrehtem Turm das
-/// aus dessen Atlas (rendering/iso_unit_images.h), so gesetzt, dass die Figur
+/// der Drehung, waehrend einer Drehung das dazwischen, waehrend einer Folge
+/// (entity->sequence) deren Bild, beim Zielen das aus dessen Atlas
+/// (rendering/iso_unit_images.h), so gesetzt, dass die Figur
 /// auf der Mitte der Raute steht; darunter ein weicher, flacher Schatten, wenn das Bild
 /// keinen eigenen mitbringt. Unter allem ein Ring in der Farbe ihres Besitzers
 /// (entity->player), flach auf der Raute -- auch unter dem Rechteck. Ohne Bild, oder solange es nicht

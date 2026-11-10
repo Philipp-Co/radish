@@ -208,6 +208,13 @@ STATIC_URL = 'static/'
 # sie nicht mehr selbst aus -- das uebernimmt dann config/urls.py.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Wo der gebaute Wasm-Client liegt (client.js, client.wasm, assets/ mit
+# manifest.json) -- im Image unter /web (docker/backend/Dockerfile), lokal
+# radish/web/. Ausgeliefert unter /wasm/ (web/interfaces/serving.py); das
+# Manifest liest auch das Hochladen von Einheitenbildern
+# (api/domain/sprites/builtin.py).
+RADISH_WASM_DIR = BASE_DIR.parent / 'web'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
