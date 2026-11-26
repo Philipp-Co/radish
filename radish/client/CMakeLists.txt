@@ -15,36 +15,40 @@ endif()
 
 add_executable(client
     src/main.c
-    src/rendering/iso_object.c
-    src/rendering/iso_map.c
-    src/rendering/entity.c
-    src/rendering/iso_tile_images.c
-    src/rendering/iso_facing.c
-    src/rendering/iso_unit_images.c
-    src/rendering/iso_unit_sprite.c
-    src/rendering/iso_effect_images.c
-    src/rendering/iso_effect.c
-    src/rendering/bitmap_font.c
-    src/rendering/iso_tile/iso_tile.c
-    src/rendering/iso_tile/void.c
-    src/rendering/iso_tile/ground.c
-    src/rendering/iso_tile/water_shallow.c
-    src/rendering/iso_tile/mud.c
-    src/rendering/iso_tile/meadow.c
-    src/rendering/iso_tile/forest.c
-    src/rendering/iso_tile/water_deep.c
-    src/rendering/iso_tile/city.c
-    src/rendering/iso_tile/road.c
-    src/rendering/iso_tile/fortification.c
-    src/rendering/iso_tile/dragons_teeth.c
-    src/rendering/iso_tile/high_grass.c
-    src/rendering/iso_tile/unknown.c
+    src/view/rendering/iso_object.c
+    src/view/rendering/iso_map.c
+    src/view/rendering/entity.c
+    src/view/rendering/iso_tile_images.c
+    src/view/rendering/iso_tile_sprite.c
+    src/view/rendering/iso_decor.c
+    src/view/rendering/iso_facing.c
+    src/view/rendering/iso_unit_images.c
+    src/view/rendering/iso_unit_sprite.c
+    src/view/rendering/iso_effect_sprite.c
+    src/view/rendering/iso_effect_images.c
+    src/view/rendering/iso_effect.c
+    src/view/rendering/bitmap_font.c
+    src/view/rendering/iso_tile/iso_tile.c
+    src/view/rendering/iso_tile/void.c
+    src/view/rendering/iso_tile/ground.c
+    src/view/rendering/iso_tile/water_shallow.c
+    src/view/rendering/iso_tile/mud.c
+    src/view/rendering/iso_tile/meadow.c
+    src/view/rendering/iso_tile/forest.c
+    src/view/rendering/iso_tile/water_deep.c
+    src/view/rendering/iso_tile/city.c
+    src/view/rendering/iso_tile/road.c
+    src/view/rendering/iso_tile/fortification.c
+    src/view/rendering/iso_tile/dragons_teeth.c
+    src/view/rendering/iso_tile/high_grass.c
+    src/view/rendering/iso_tile/unknown.c
+    src/view/rendering/animations/unit_animation.c
     
     src/io/net_codec.c
     src/io/jsmn_impl.c
     src/io/net_inbox.c
-    src/io/camera_control.c
     src/io/net_transport.c
+    src/io/net_event_manager.c
 
     src/io/net_event_handler/common.c
     src/io/net_event_handler/command_response.c
@@ -79,8 +83,6 @@ add_executable(client
     src/io/net_request/discover_reserve.c
     src/io/net_request/discover_units.c
 
-    src/events/event_manager.c
-
     src/control/terrain.c
     src/control/line_of_sight.c
     src/control/visibility.c
@@ -97,6 +99,7 @@ add_executable(client
     src/model/events/observable.c
 
     src/view/view.c
+    src/view/camera_control.c
     src/view/unit_info_view.c
     src/view/iso_map_view.c
     src/view/text_view.c
@@ -107,8 +110,6 @@ add_executable(client
     src/view/unit_deployment_view.c
     src/view/debug/debug_view.c
     src/view/end_turn_view.c
-    src/view/animations/interpolation.c
-    src/view/animations/unit_animation.c
 )
 
 target_include_directories(client PRIVATE

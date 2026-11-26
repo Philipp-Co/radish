@@ -5,15 +5,19 @@
 from django.db import models
 
 from api.models.limits import MAX_NAME_BYTES, MaxUtf8BytesValidator
+from api.models.profile_restricted import ProfileRestricted
 from api.models.species import Species
 from api.models.weapon_class import WeaponClass
 
 
-class Weapon(models.Model):
+class Weapon(ProfileRestricted):
     """
     Eine Waffe im Katalog einer Spezies. Alle Klassen (siehe WeaponClass)
     haben dieselben Werte und unterscheiden sich nur darin, wer sie traegt
     -- deshalb ein Modell mit weapon_class statt eines je Klasse.
+
+    Wer sie tragen darf, legen unit_types/profiles fest (ProfileRestricted);
+    anders als Ausruestung darf eine Entitaet dieselbe Waffe mehrfach fuehren.
     """
 
     species = models.ForeignKey(
@@ -35,7 +39,7 @@ class Weapon(models.Model):
     armor_penetration = models.PositiveSmallIntegerField()
     cost = models.PositiveIntegerField()
 
-    class Meta:
+    class Meta(ProfileRestricted.Meta):
         ordering = ["species", "name"]
         constraints = [
             models.UniqueConstraint(

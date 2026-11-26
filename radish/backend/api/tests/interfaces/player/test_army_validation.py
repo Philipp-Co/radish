@@ -1,6 +1,6 @@
 from rest_framework import status
 
-from api.models import Army, Unit
+from api.models import Army, Equipment, Unit
 from api.tests.army_test_case import ArmyTestCase
 from api.tests.helpers import EntityData, EntityPayload, TestResponse, UnitData, UnitPayload
 
@@ -61,6 +61,74 @@ class ArmyValidationTests(ArmyTestCase):
         unit: UnitPayload = self.squad_payload()
         unit["entities"][1]["equipment_ids"] = [self.medkit.id] * 2
         self.assertRejected([unit])
+
+    def test_same_equipment_twice(self) -> None:
+        unit: UnitPayload = self.squad_payload()
+        unit["entities"][0]["equipment_ids"] = [self.medkit.id] * 2  # Anfuehrer: 2 Slots
+        self.assertRejected([unit])
+
+    def test_different_equipment_together(self) -> None:
+        scope: Equipment = Equipment.objects.create(species=self.humans, name="Zielfernrohr", cost=2)
+        unit: UnitPayload = self.squad_payload()
+        unit["entities"][0]["equipment_ids"] = [self.medkit.id, scope.id]
+
+        response: TestResponse = self.create_army(self.army_payload(units=[unit]))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_equipment_restricted_to_other_unit_type(self) -> None:
+        self.medkit.unit_types.set([self.scout_team])
+        self.assertRejected([self.squad_payload()])
+
+    def test_equipment_restricted_to_own_unit_type(self) -> None:
+        self.medkit.unit_types.set([self.squad])
+
+        response: TestResponse = self.create_army(self.army_payload(units=[self.squad_payload()]))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_equipment_restricted_to_profile(self) -> None:
+        self.medkit.profiles.set([self.leader])
+        allowed: TestResponse = self.create_army(self.army_payload(units=[self.squad_payload()]))
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED, allowed.data)
+        Army.objects.all().delete()
+
+        unit: UnitPayload = self.squad_payload()
+        unit["entities"][1]["equipment_ids"] = [self.medkit.id]  # Soldat
+        self.assertRejected([unit])
+
+    def test_equipment_unit_types_and_profiles_add_up(self) -> None:
+        # Spaeher ueber den Einheitentyp, der Anfuehrer ueber sein Profil.
+        self.medkit.unit_types.set([self.scout_team])
+        self.medkit.profiles.set([self.leader])
+
+        response: TestResponse = self.create_army(self.army_payload(units=[self.squad_payload()]))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_weapon_restricted_to_other_unit_type(self) -> None:
+        self.rifle.unit_types.set([self.scout_team])
+        self.assertRejected([self.squad_payload()])
+
+    def test_weapon_restricted_to_profile(self) -> None:
+        # Der Anfuehrer darf die Kanone fuehren, der Soldat nicht.
+        self.cannon.profiles.set([self.leader])
+        allowed: TestResponse = self.create_army(
+            self.army_payload(units=[self.squad_payload(heavy=[self.cannon.id])])
+        )
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED, allowed.data)
+        Army.objects.all().delete()
+
+        self.cannon.profiles.set([self.soldier])
+        self.assertRejected([self.squad_payload(heavy=[self.cannon.id])])
+
+    def test_weapon_unit_types_and_profiles_add_up(self) -> None:
+        self.rifle.unit_types.set([self.scout_team])
+        self.rifle.profiles.set([self.leader, self.soldier])
+
+        response: TestResponse = self.create_army(self.army_payload(units=[self.squad_payload()]))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
     def test_heavy_weapon_in_entity_slot(self) -> None:
         unit: UnitPayload = self.squad_payload()

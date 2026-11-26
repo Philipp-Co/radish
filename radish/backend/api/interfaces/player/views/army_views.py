@@ -45,7 +45,11 @@ class CatalogView(APIView):
 
     def get(self, request: Request) -> Response:
         species: QuerySet[Species] = Species.objects.prefetch_related(
-            "unit_types__profiles", "weapons", "equipment"
+            "unit_types__profiles",
+            "weapons__unit_types",
+            "weapons__profiles",
+            "equipment__unit_types",
+            "equipment__profiles",
         )
         return Response({"species": SpeciesCatalogSerializer(species, many=True).data})
 

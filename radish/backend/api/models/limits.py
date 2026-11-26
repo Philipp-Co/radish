@@ -18,8 +18,8 @@ MAX_UNIT_ENTITIES = 10
 # kommt MaxUtf8BytesValidator.
 MAX_NAME_BYTES = 31
 
-# Schluessel des Bildes eines Einheitentyps (UnitType.sprite): der Name seines
-# Ordners unter radish/assets/units/, in dem sprite.json liegt. Nur
+# Schluessel des Bildes eines Einheitentyps (UnitType.sprite, UnitSprite.key):
+# im Client der Ordner unter assets/units/, in dem sprite.json liegt. Nur
 # Kleinbuchstaben, Ziffern und "_", damit er ohne Pruefung in einen Pfad passt;
 # hoechstens 31 Zeichen, denn das Spiel legt ihn wie einen Namen in 32 Bytes
 # samt Null ab (RAD_UNIT_SPRITE_KEY_MAX). Leer heisst: kein Bild, die Einheit
@@ -46,6 +46,25 @@ SPRITE_FILE_NAME_PATTERN = r"^[a-z0-9_]{1,27}\.png$"
 # 4096 x 4096 Pixeln hat rund 3 MB; das laesst Luft, haelt die Datenbank aber
 # von Unfaellen frei.
 SPRITE_IMAGE_BYTES_MAX = 16 * 1024 * 1024
+
+# Grenzen einer tile.json (radish/client/src/include/radish/view/rendering/
+# iso_tile_sprite.h, radish/client/schema/tile.schema.json): wie viele
+# Dekorationen ein Feld tragen kann (RAD_ISO_TILE_DECOR_MAX) und wie weit eine
+# gegen ihr Feld verschoben sein darf, in jede Richtung
+# (RAD_ISO_TILE_DECOR_OFFSET_MAX, eine Feldhoehe). Die PNGs der Tile-Bilder
+# folgen denselben Regeln fuer Name und Groesse wie die der Einheitenbilder
+# (SPRITE_FILE_NAME_PATTERN, SPRITE_IMAGE_BYTES_MAX).
+TERRAIN_DECOR_MAX = 2
+TERRAIN_DECOR_OFFSET_MAX = 128
+
+# Grenzen einer effect.json (radish/client/src/include/radish/view/rendering/
+# iso_effect_sprite.h, radish/client/schema/effect.schema.json): mit welcher
+# Zelle die Folge einer Richtung in ihrem Atlas beginnt
+# (RAD_ISO_EFFECT_FIRST_FRAME_MAX) -- mehrere Richtungen duerfen sich einen
+# Atlas teilen, hintereinander. Zellgroesse, Zahl der Bilder, Zeichenbreite und
+# Dauer folgen den Grenzen der sprite.json, Name und Groesse der PNGs denen der
+# Einheitenbilder.
+EFFECT_FIRST_FRAME_MAX = 4095
 
 # Waffen einer Entitaet, gleich welcher Klasse (RAD_UNIT_MAX_WEAPONS). Die
 # Slots eines Profils duerfen zusammen nicht mehr ergeben.

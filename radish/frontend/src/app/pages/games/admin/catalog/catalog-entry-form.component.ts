@@ -25,6 +25,10 @@ export interface CatalogField {
   optionsFrom?: 'unit-sprites';
   /** Erklaerung als Tooltip, z.B. was ein leeres Feld bedeutet. */
   hint?: string;
+  /** Nur bei type 'number': auch negative Werte (z.B. Modifikatoren), sonst ab 0. */
+  signed?: boolean;
+  /** Zwischenueberschrift ueber der ganzen Zeile, vor diesem Feld. */
+  section?: string;
 }
 
 /**
@@ -40,6 +44,9 @@ export interface CatalogField {
   template: `
     <div class="grid">
       @for (field of fields; track field.key) {
+        @if (field.section) {
+          <h4 class="section">{{ field.section }}</h4>
+        }
         <!-- Das Eingabefeld steckt im Label, nur innerhalb von @switch -- das
              erkennt die Regel nicht. -->
         <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
@@ -58,7 +65,7 @@ export interface CatalogField {
               {{ field.label }}
               <input
                 type="number"
-                min="0"
+                [attr.min]="field.signed ? null : 0"
                 [(ngModel)]="draft[field.key]"
               />
             }
@@ -116,6 +123,12 @@ export interface CatalogField {
       }
       label.wide {
         grid-column: 1 / -1;
+      }
+      .section {
+        grid-column: 1 / -1;
+        margin: 0.4rem 0 0;
+        font-size: 0.85rem;
+        font-weight: 600;
       }
       label.select {
         grid-column: span 2;

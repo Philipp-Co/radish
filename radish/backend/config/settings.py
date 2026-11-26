@@ -155,7 +155,7 @@ DATABASES = {
         # Ein Backend-Prozess mit wenigen gleichzeitigen Anfragen: 2 Verbindungen
         # stehen bereit, bis zu 10 gleichzeitig. Ist der Pool erschoepft, wartet
         # eine Anfrage hoechstens 10 s auf eine freie Verbindung.
-        OPTIONS={
+        options={
             'pool': {
                 'min_size': 2,
                 'max_size': 10,
@@ -210,9 +210,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Wo der gebaute Wasm-Client liegt (client.js, client.wasm, assets/ mit
 # manifest.json) -- im Image unter /web (docker/backend/Dockerfile), lokal
-# radish/web/. Ausgeliefert unter /wasm/ (web/interfaces/serving.py); das
-# Manifest liest auch das Hochladen von Einheitenbildern
-# (api/domain/sprites/builtin.py).
+# radish/web/. Ausgeliefert unter /wasm/ (web/interfaces/serving.py); sein
+# Manifest ergaenzt web/interfaces/sprite_views.py um die Einheitenbilder aus
+# der Datenbank (api/domain/sprites/client_build.py).
 RADISH_WASM_DIR = BASE_DIR.parent / 'web'
 
 # Default primary key field type

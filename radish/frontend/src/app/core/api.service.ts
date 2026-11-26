@@ -95,7 +95,7 @@ export interface UnitType {
   /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
   sight_range: number;
   /**
-   * Bild im Spiel: der Ordner unter radish/assets/units/, z.B. "heavy_tank".
+   * Bild im Spiel: der Schluessel eines Einheitenbildes, z.B. "heavy_tank".
    * Leer, solange es keins gibt -- dann zeichnet der Client ein Rechteck.
    */
   sprite: string;
@@ -115,7 +115,18 @@ export const WEAPON_CLASS_LABELS: Record<WeaponClass, string> = {
   super_heavy: 'Super-schwere Waffe',
 };
 
-export interface Weapon {
+/**
+ * Wer einen Katalogeintrag (Waffe, Ausruestung) tragen darf: jede Entitaet
+ * eines dieser Einheitentypen und jede mit einem dieser Profile. Beide leer
+ * = jede Entitaet der Spezies (siehe radish/backend/api/models/
+ * profile_restricted.py).
+ */
+export interface ProfileRestricted {
+  unit_type_ids: number[];
+  profile_ids: number[];
+}
+
+export interface Weapon extends ProfileRestricted {
   id: number;
   name: string;
   weapon_class: WeaponClass;
@@ -128,7 +139,24 @@ export interface Weapon {
   cost: number;
 }
 
-export interface Equipment {
+/**
+ * Feste Aenderungen (auch negativ) an der Entitaet, die den Gegenstand
+ * traegt: die ersten fuenf an den Werten ihres Profils, die weapon_* an
+ * jeder ihrer Waffen (Reichweite = Maximalreichweite).
+ */
+export interface EquipmentModifiers {
+  health_modifier: number;
+  armor_modifier: number;
+  toughness_modifier: number;
+  strength_modifier: number;
+  accuracy_modifier: number;
+  weapon_shots_modifier: number;
+  weapon_strength_modifier: number;
+  weapon_range_modifier: number;
+  weapon_armor_penetration_modifier: number;
+}
+
+export interface Equipment extends EquipmentModifiers, ProfileRestricted {
   id: number;
   name: string;
   cost: number;
@@ -241,7 +269,7 @@ export interface AdminUnitType {
   /** Sichtweite in Feldern (waagerecht plus senkrecht), 0..255. */
   sight_range: number;
   /**
-   * Bild im Spiel: der Ordner unter radish/assets/units/, z.B. "heavy_tank".
+   * Bild im Spiel: der Schluessel eines Einheitenbildes, z.B. "heavy_tank".
    * Leer, solange es keins gibt -- dann zeichnet der Client ein Rechteck.
    */
   sprite: string;
@@ -279,6 +307,30 @@ export interface AdminTerrainType {
   impassable: boolean;
   /** Ob das Feld die direkte Sicht auf die Felder dahinter versperrt. */
   blocks_sight: boolean;
+  /** Das Bild statt des Wuerfels, eine PNG aus "images"; null fuer keins. */
+  image_id: number | null;
+  /** Die hochgeladenen PNGs des Typs (ohne ihre Bytes). */
+  images: AdminSpriteImage[];
+  /** Was auf dem Feld steht, in der Reihenfolge, in der es gezeichnet wird -- hoechstens zwei. */
+  decor: AdminTerrainDecor[];
+}
+
+/**
+ * Eine Dekoration eines Tile-Typs (radish/backend/api/models/terrain_decor.py):
+ * eine PNG des Typs im selben Rahmen wie das Feld, verschoben um offset_x nach
+ * rechts und offset_y nach unten (je -128 bis 128), wahlweise vor den Figuren.
+ */
+export interface AdminTerrainDecor {
+  image_id: number;
+  offset_x: number;
+  offset_y: number;
+  in_front: boolean;
+}
+
+/** Wie ein Tile-Typ aussieht, auf einmal gesetzt (setTerrainLook). */
+export interface AdminTerrainLook {
+  image_id: number | null;
+  decor: AdminTerrainDecor[];
 }
 
 export type AdminTerrainValues = Pick<
@@ -349,6 +401,53 @@ export interface AdminSprite extends AdminSpriteValues {
   problems: string[];
   /** Die Einheitentypen, die es nennen, als "Name (Spezies)". */
   used_by: string[];
+  updated_at: string;
+}
+
+/** Arten von Effekten; bisher nur Explosionen. */
+export type EffectKind = 'explosion';
+/** Die Arten mit Bezeichnung fuer den Adminbereich. */
+export const EFFECT_KINDS: { kind: EffectKind; label: string }[] = [{ kind: 'explosion', label: 'Explosion' }];
+/** Bezeichnung einer Art; unbekannte so, wie das Backend sie nennt. */
+export function effectKindLabel(kind: string): string {
+  return EFFECT_KINDS.find((entry) => entry.kind === kind)?.label ?? kind;
+}
+/** Blickrichtung eines Effekt-Atlas auf dem Bildschirm, wie bei den Einheitenbildern. */
+export type EffectFacing = 'sw' | 'se' | 'ne' | 'nw';
+
+/**
+ * Ein Atlas eines Effekts: welche PNG er in einer Richtung zeigt, wie groß
+ * eine Zelle ist, ab welcher Zelle (zeilenweise von links oben) wie viele
+ * Bilder folgen und wo der Einschlag in der Zelle liegt (Anteil an Breite/Hoehe).
+ */
+export interface AdminEffectAtlas {
+  facing: EffectFacing;
+  image_id: number;
+  frame_width: number;
+  frame_height: number;
+  first_frame: number;
+  frame_count: number;
+  anchor_x: number;
+  anchor_y: number;
+}
+
+/** Die Werte eines Effekts, die sich aendern lassen -- ohne Schluessel. */
+export interface AdminEffectValues {
+  kind: EffectKind;
+  draw_width: number;
+  duration_ms: number;
+}
+
+/** Ein Effekt, etwa eine Explosion (radish/backend/api/interfaces/admin/views/). */
+export interface AdminEffect extends AdminEffectValues {
+  id: number;
+  key: string;
+  images: AdminSpriteImage[];
+  atlases: AdminEffectAtlas[];
+  /** Ob alle vier Richtungen da und gueltig sind -- erst dann ist er im Spiel. */
+  complete: boolean;
+  /** Was fehlt oder nicht stimmt, je ein Satz. */
+  problems: string[];
   updated_at: string;
 }
 
@@ -494,8 +593,42 @@ export class ApiService {
       .pipe(map((response) => response.terrain));
   }
 
+  getTerrainType(code: string): Observable<AdminTerrainType> {
+    return this.http.get<AdminTerrainType>(`/api/admin/terrain/${code}/`);
+  }
+
   updateTerrainType(code: string, values: AdminTerrainValues): Observable<AdminTerrainType> {
     return this.http.put<AdminTerrainType>(`/api/admin/terrain/${code}/`, values);
+  }
+
+  // --- Tile-Bilder ------------------------------------------------------------
+
+  /** Laedt eine PNG zu einem Tile-Typ hoch; der Name ist der Dateiname, klein geschrieben. */
+  uploadTerrainImage(code: string, file: File): Observable<AdminTerrainType> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<AdminTerrainType>(`/api/admin/terrain/${code}/images/`, form);
+  }
+
+  /** Ersetzt den Inhalt einer PNG eines Tile-Typs; ihr Name bleibt. */
+  replaceTerrainImage(code: string, imageId: number, file: File): Observable<AdminTerrainType> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.put<AdminTerrainType>(`/api/admin/terrain/${code}/images/${imageId}/`, form);
+  }
+
+  deleteTerrainImage(code: string, imageId: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/terrain/${code}/images/${imageId}/`);
+  }
+
+  /** Die Bytes einer PNG eines Tile-Typs fuer die Vorschau (siehe spriteImageBlob). */
+  terrainImageBlob(code: string, imageId: number): Observable<Blob> {
+    return this.http.get(`/api/admin/terrain/${code}/images/${imageId}/file/`, { responseType: 'blob' });
+  }
+
+  /** Setzt Bild und Dekorationen eines Tile-Typs; was fehlt, gibt es danach nicht mehr. */
+  setTerrainLook(code: string, look: AdminTerrainLook): Observable<AdminTerrainType> {
+    return this.http.put<AdminTerrainType>(`/api/admin/terrain/${code}/look/`, look);
   }
 
   // --- Einheitenbilder -------------------------------------------------------
@@ -554,5 +687,61 @@ export class ApiService {
   /** Setzt alle Atlanten auf einmal; was fehlt, gibt es danach nicht mehr. */
   putSpriteAtlases(id: number, atlases: AdminSpriteAtlas[]): Observable<AdminSprite> {
     return this.http.put<AdminSprite>(`/api/admin/sprites/${id}/atlases/`, atlases);
+  }
+
+  // --- Effekte ---------------------------------------------------------------
+
+  listEffects(): Observable<AdminEffect[]> {
+    return this.http
+      .get<{ effects: AdminEffect[] }>('/api/admin/effects/')
+      .pipe(map((response) => response.effects));
+  }
+
+  getEffect(id: number): Observable<AdminEffect> {
+    return this.http.get<AdminEffect>(`/api/admin/effects/${id}/`);
+  }
+
+  createEffect(key: string, values: AdminEffectValues): Observable<AdminEffect> {
+    return this.http.post<AdminEffect>('/api/admin/effects/', { key, ...values });
+  }
+
+  updateEffect(id: number, values: Partial<AdminEffectValues>): Observable<AdminEffect> {
+    return this.http.patch<AdminEffect>(`/api/admin/effects/${id}/`, values);
+  }
+
+  deleteEffect(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/effects/${id}/`);
+  }
+
+  /** Laedt eine PNG hoch; ohne "name" gilt der Dateiname, klein geschrieben. */
+  uploadEffectImage(id: number, file: File, name?: string): Observable<AdminEffect> {
+    const form = new FormData();
+    form.append('file', file);
+    if (name) {
+      form.append('name', name);
+    }
+    return this.http.post<AdminEffect>(`/api/admin/effects/${id}/images/`, form);
+  }
+
+  /** Ersetzt den Inhalt einer PNG; ihr Name bleibt. */
+  replaceEffectImage(id: number, imageId: number, file: File): Observable<AdminEffect> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.put<AdminEffect>(`/api/admin/effects/${id}/images/${imageId}/`, form);
+  }
+
+  /** Loescht eine PNG; 409, solange ein Atlas sie zeigt. */
+  deleteEffectImage(id: number, imageId: number): Observable<void> {
+    return this.http.delete<void>(`/api/admin/effects/${id}/images/${imageId}/`);
+  }
+
+  /** Die Bytes einer PNG eines Effekts fuer die Vorschau (siehe spriteImageBlob). */
+  effectImageBlob(id: number, imageId: number): Observable<Blob> {
+    return this.http.get(`/api/admin/effects/${id}/images/${imageId}/file/`, { responseType: 'blob' });
+  }
+
+  /** Setzt alle Atlanten auf einmal; was fehlt, gibt es danach nicht mehr. */
+  putEffectAtlases(id: number, atlases: AdminEffectAtlas[]): Observable<AdminEffect> {
+    return this.http.put<AdminEffect>(`/api/admin/effects/${id}/atlases/`, atlases);
   }
 }

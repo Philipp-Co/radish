@@ -53,8 +53,8 @@ class UnitType(models.Model):
     # Sichtweite: wie viele Felder weit die Einheit sieht, waagerecht plus
     # senkrecht; 0 = nur ihr eigenes Feld. Wie movement ohne Default.
     sight_range = models.PositiveSmallIntegerField(validators=[MaxValueValidator(MAX_SIGHT_RANGE)])
-    # Welches Bild das Spiel fuer Einheiten dieses Typs zeichnet: der Ordner
-    # unter radish/assets/units/ (siehe limits.py). Leer, solange es keins
+    # Welches Bild das Spiel fuer Einheiten dieses Typs zeichnet: der
+    # Schluessel eines UnitSprite (siehe limits.py). Leer, solange es keins
     # gibt -- dann zeichnet der Client ein Rechteck. Mehrere Typen duerfen
     # dasselbe Bild nennen, und der Name des Typs kann sich aendern, ohne
     # dass das Bild verloren geht.

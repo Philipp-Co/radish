@@ -55,8 +55,10 @@ COPY SDL_image/ SDL_image/
 COPY radish/ radish/
 
 # Nur das Ziel "client": es schreibt client.js/client.wasm nach radish/web/ und
-# (ueber client_assets) Bilder und Schrift mit Hash im Namen samt manifest.json
-# nach radish/web/assets/ (radish/client/CMakeLists.txt).
+# (ueber client_assets) Effektbilder und Schrift mit Hash im Namen
+# samt manifest.json nach radish/web/assets/ (radish/client/CMakeLists.txt).
+# Einheiten- und Gelaendebilder sind nicht dabei: die liegen in der Datenbank und kommen zur
+# Laufzeit ueber das Manifest (radish/backend/web/interfaces/sprite_views.py).
 RUN emcmake cmake -S radish -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build --target client \
     && chmod -R a+rX radish/web

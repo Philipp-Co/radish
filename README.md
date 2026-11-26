@@ -49,10 +49,10 @@ unterscheiden.
 | `radish/game-server-core/` | Das Host-Programm: `main.c`, hängt über die Zucchini-Api am Netz |
 | `radish/game/test/` | Die Tests zu `radish_game`, ein Verzeichnis und ein Programm je Modul |
 | `radish/cmake/` | CMake-Beiwerk: die Einbindung von `jsmn`, `zucchini`, `Unity`, `protobuf-c` und SDL |
-| `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` und unter `assets/` die Bilder und die Schrift mit Hash im Namen samt `manifest.json` |
+| `radish/web/` | Build-Ziel des Wasm-Clients: die daneben erzeugten `client.js` / `client.wasm` und unter `assets/` die Schrift mit Hash im Namen samt `manifest.json`; Einheiten-, Gelände- und Effektbilder ergänzt das Backend zur Laufzeit aus der Datenbank |
 | `radish/frontend/` | Angular-Frontend: Login, Spielübersicht, Spielansicht, Adminbereich (Rolle "Radish-Admin", listet angemeldete Game-Server) — bindet `radish/web/` unter `/wasm/` ein — siehe [radish/frontend/README.md](radish/frontend/README.md) |
 | `radish/backend/` | Django-Matchmaking-API + Keycloak-Login (`api/`), liefert `radish/frontend/` und `radish/web/` unter `/` bzw. `/wasm/` mit aus (`web/`) |
-| `radish/assets/` | Bilder und Schrift des Clients; der Build legt sie einzeln nach `radish/web/assets/`, das Frontend lädt sie vor dem Start ins Wasm-Dateisystem |
+| `radish/assets/` | Schrift des Clients; der Build legt sie einzeln nach `radish/web/assets/`, das Frontend lädt sie vor dem Start ins Wasm-Dateisystem. Einheiten-, Gelände- und Effektbilder liegen nicht hier, sondern in der Datenbank (siehe „Startdaten“) |
 | `docker/` | Dockerfiles: Backend (Zucchini + Spielserver + Django, baut dabei `radish/frontend/` mit) |
 
 Nicht im Repository, aber zum Bauen nötig (siehe unten): `emsdk/`, `jsmn/`,
@@ -332,7 +332,8 @@ abgespeckt auf das, was der Client braucht: kein Audio, kein Joystick, kein
 Software-Renderer (`SDL_LEAN_AND_MEAN`), PNG über stb_image statt libpng und
 zlib. Das hält `client.wasm` bei rund 390 KB statt rund 1 MB; die Einzelheiten
 stehen in [radish/cmake/sdl2.cmake](radish/cmake/sdl2.cmake). Deshalb müssen
-alle Bilder unter `radish/assets/` RGBA-PNGs sein: Andere Pixelformate kann
+alle Bilder unter `radish/assets/` und alle PNGs der Einheiten- und
+Geländebilder in der Datenbank RGBA-PNGs sein: Andere Pixelformate kann
 SDL ohne die Blitter nicht mehr in Texturen umwandeln, `IMG_LoadTexture`
 scheitert dann beim Start. Text zeichnet der Client ohne
 SDL_ttf aus einem Bitmap-Atlas (`radish/assets/fonts/michroma/michroma_32.fnt`
@@ -447,15 +448,16 @@ ein eigener, kurzlebiger Dienst, und jeder der drei Beteiligten meldet sich mit
 einem eigenen Benutzer an:
 
 1. **`backend-db`** legt beim ersten Start, also nur auf einem leeren Volume,
-   zwei Benutzer an ([01-roles.sh](docker/backend-db/init/01-roles.sh)):
+   zwei Benutzer an ([01-roles.sql](docker/backend-db/init/01-roles.sql)):
    `radish_owner` besitzt die Datenbank und darf das Schema ändern,
    `radish_app` darf nur Daten lesen und schreiben. Der `POSTGRES_USER`
    `radish` bleibt Admin, nur für lokale Entwicklung und Tests.
 2. **`backend-migrate`** startet, sobald die Datenbank bereit ist, als
-   `radish_owner`. Er führt `migrate` aus, lädt danach je nach `RADISH_DB_SEED`
-   die Kataloge und endet ([entrypoint.sh](docker/backend-migrate/entrypoint.sh)).
-   Das Image enthält nur, was dafür nötig ist: Models, Migrationen, den Dump und
-   eigene Settings ([settings_migrate.py](radish/backend/config/settings_migrate.py)).
+   `radish_owner`. Er führt `migrate` aus und endet
+   ([entrypoint.sh](docker/backend-migrate/entrypoint.sh)); Inhalte lädt er
+   nicht (siehe „Startdaten“ unten). Das Image enthält nur, was dafür nötig ist:
+   Models, Migrationen und eigene Settings
+   ([settings_migrate.py](radish/backend/config/settings_migrate.py)).
    Es bringt weder Frontend noch Wasm-Client noch die Views mit.
 3. **`backend`** startet erst, wenn der Migrator erfolgreich beendet ist, und
    meldet sich als `radish_app` an. Beim Start prüft es nur mit
@@ -482,36 +484,84 @@ python manage.py makemigrations api
 
 #### Startdaten
 
-Was in einer neuen Datenbank stehen soll, liegt in
-[api/fixtures/seed.json](radish/backend/api/fixtures/seed.json): nur die
-Kataloge, die ein Admin pflegt, also Spezies, Einheitentypen mit ihren Profilen,
-Waffen, Ausrüstung und Gelände. Benutzer, Spieler, Armeen, Spiele und
-Spielserver-Instanzen entstehen im Betrieb und stehen nicht darin.
+Laden und Dumpen der Startdaten sind Aufgaben eines Admins und passieren nur
+von Hand: weder Migrator noch Backend tun es beim Start, und der Dump liegt in
+keinem Image (`.dockerignore`).
 
-Wann der Migrator den Dump lädt, bestimmt `RADISH_DB_SEED` bei
-`backend-migrate` ([seed.py](radish/backend/api/management/commands/seed.py)):
+Was in einer neuen Datenbank stehen soll, liegt als SQL-Dump in
+[api/fixtures/seed.sql](radish/backend/api/fixtures/seed.sql) (`pg_dump
+--data-only`, nur Daten, kein Schema): nur die Kataloge, die ein Admin pflegt,
+also Spezies, Einheitentypen mit ihren Profilen, Waffen, Ausrüstung, Gelände mit
+seinen Bildern, die Einheitenbilder und die Effekte (die PNGs als `bytea`). Benutzer, Spieler, Armeen,
+Spiele und Spielserver-Instanzen entstehen im Betrieb und stehen nicht darin.
+Das Schema kommt weiter aus den Migrationen.
 
-| Wert | Verhalten |
-|---|---|
-| `if-empty` (Default) | lädt nur, wenn alle Katalog-Tabellen leer sind, also in eine neue Datenbank; eine gepflegte bleibt unberührt |
-| `always` | lädt bei jedem Start und überschreibt Datensätze mit gleichem Primärschlüssel; nur für Test- und Demo-Umgebungen |
-| `never` | lädt nie |
+**Neue Umgebung:** Nach dem ersten `docker compose up` ist die Datenbank leer.
+Bis die Startdaten geladen sind, fehlen unter anderem die Geländetypen und die
+Einheitenbilder, und jeder Spielstart scheitert. Geladen wird einmal von Hand,
+aus `radish/backend/` mit einer Python-Umgebung aus
+[requirements-migrate.txt](radish/backend/requirements-migrate.txt), gegen
+`backend-db` auf localhost:5433 (andere Datenbank über `DJANGO_DB_*` wie in
+[database.py](radish/backend/config/database.py)):
 
-Ohne die Kataloge fehlen unter anderem die Geländetypen, und jeder Spielstart
-scheitert.
+```bash
+DJANGO_SETTINGS_MODULE=config.settings_migrate python manage.py seed
+```
 
-Nach dem Pflegen der Kataloge wird der Dump aus der laufenden `backend-db`
-(localhost:5433) neu geschrieben, geprüft und committet. Dafür reicht eine lokale
-Python-Umgebung mit
-[requirements-migrate.txt](radish/backend/requirements-migrate.txt):
+[seed.py](radish/backend/api/management/commands/seed.py) lädt nur in leere
+Tabellen: hat eine davon schon Zeilen, bricht es ab, ohne etwas zu schreiben.
+Ein SQL-Dump fügt Zeilen ein, statt sie zu überschreiben, und Armeen verweisen
+auf die Kataloge; wer eine Datenbank neu befüllen will, legt sie neu an
+(`docker compose down -v`, das löscht auch Keycloaks Datenbank).
+
+Die Einheitenbilder gibt es nur in der Datenbank: der Client-Build bringt keine
+mit, das Backend liefert sie über das Asset-Manifest aus
+([sprite_views.py](radish/backend/web/interfaces/sprite_views.py)). Eine schon
+gepflegte Datenbank, die noch gar keine Einheitenbilder hat, bekommt die aus dem
+Dump, ohne die übrigen Kataloge anzufassen, so (aus `radish/backend/`, gegen
+`backend-db`):
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings_migrate python manage.py seed --table api_unitsprite --table api_unitspriteimage --table api_unitspriteatlas
+```
+
+Dasselbe gilt für die Geländebilder: Bild und Dekorationen je Tile-Typ, im
+Client als `assets/tiles/<typ>/tile.json` mit ihren PNGs
+([tile.schema.json](radish/client/schema/tile.schema.json)). Eine gepflegte
+Datenbank ohne Geländebilder bekommt sie so:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings_migrate python manage.py seed --table api_terrainimage --table api_terraindecor
+```
+
+Und für die Effekte, etwa die Explosionen: je Richtung eine Folge in einem
+Atlas, im Client als `assets/effects/<schlüssel>/effect.json` mit ihren PNGs
+([effect.schema.json](radish/client/schema/effect.schema.json)). Der Client
+nimmt jeden vollständigen Effekt, den das Manifest nennt, und wählt je Angriff
+zufällig eine Explosion:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings_migrate python manage.py seed --table api_effect --table api_effectimage --table api_effectatlas
+```
+
+`--table` lädt nur diese Tabellen samt ihren Sequenzen, und auch nur, wenn sie
+alle leer sind. Einzelne Bilder lassen sich im Adminbereich unter
+„Einheitenbilder“ hochladen, die Geländebilder unter „Gelände“ → „Aussehen“, die
+Effekte unter „Effekte“.
+
+Nach dem Pflegen der Kataloge wird der Dump aus der laufenden `backend-db` neu
+geschrieben, geprüft und committet. `pg_dump` läuft dabei im Container
+(`docker compose exec`), lokal braucht es weder Python noch Postgres-Werkzeuge:
 
 ```bash
 scripts/db-dump-seed.sh
 ```
 
 Das Skript ([db-dump-seed.sh](scripts/db-dump-seed.sh)) nennt die
-Katalog-Models ausdrücklich. Ein neues Model kommt also erst in den Dump, wenn
-es dort eingetragen ist.
+Katalog-Tabellen ausdrücklich. Eine neue kommt also erst in den Dump, wenn sie
+dort eingetragen ist. Weil der Dump nur Daten enthält, muss er nach jeder
+Migration, die eine Katalog-Tabelle ändert, neu geschrieben werden. Gleiche Daten
+ergeben dieselbe Datei; die Zeilen mit den PNGs sind allerdings mehrere MB lang.
 
 ### Das Backend-Image
 

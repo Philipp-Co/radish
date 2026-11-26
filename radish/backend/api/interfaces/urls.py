@@ -1,6 +1,6 @@
 from django.urls import path
 
-from api.interfaces.admin.views import admin_sprite_views, admin_views
+from api.interfaces.admin.views import admin_effect_views, admin_sprite_views, admin_terrain_views, admin_views
 from api.interfaces.auth.views import auth_views
 from api.interfaces.player.views import army_views, client_views
 from api.interfaces.servers.views import server_views
@@ -119,6 +119,52 @@ urlpatterns = [
         "admin/terrain/<str:code>/",
         admin_views.AdminTerrainTypeDetailView.as_view(),
         name="admin-terrain-detail",
+    ),
+    path(
+        "admin/terrain/<str:code>/images/",
+        admin_terrain_views.AdminTerrainImageListView.as_view(),
+        name="admin-terrain-image-list",
+    ),
+    path(
+        "admin/terrain/<str:code>/images/<int:image_id>/",
+        admin_terrain_views.AdminTerrainImageDetailView.as_view(),
+        name="admin-terrain-image-detail",
+    ),
+    path(
+        "admin/terrain/<str:code>/images/<int:image_id>/file/",
+        admin_terrain_views.AdminTerrainImageFileView.as_view(),
+        name="admin-terrain-image-file",
+    ),
+    path(
+        "admin/terrain/<str:code>/look/",
+        admin_terrain_views.AdminTerrainLookView.as_view(),
+        name="admin-terrain-look",
+    ),
+    path("admin/effects/", admin_effect_views.AdminEffectListView.as_view(), name="admin-effect-list"),
+    path(
+        "admin/effects/<int:pk>/",
+        admin_effect_views.AdminEffectDetailView.as_view(),
+        name="admin-effect-detail",
+    ),
+    path(
+        "admin/effects/<int:effect_id>/images/",
+        admin_effect_views.AdminEffectImageListView.as_view(),
+        name="admin-effect-image-list",
+    ),
+    path(
+        "admin/effects/<int:effect_id>/images/<int:image_id>/",
+        admin_effect_views.AdminEffectImageDetailView.as_view(),
+        name="admin-effect-image-detail",
+    ),
+    path(
+        "admin/effects/<int:effect_id>/images/<int:image_id>/file/",
+        admin_effect_views.AdminEffectImageFileView.as_view(),
+        name="admin-effect-image-file",
+    ),
+    path(
+        "admin/effects/<int:effect_id>/atlases/",
+        admin_effect_views.AdminEffectAtlasesView.as_view(),
+        name="admin-effect-atlases",
     ),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("login/callback/", auth_views.LoginCallbackView.as_view(), name="login-callback"),

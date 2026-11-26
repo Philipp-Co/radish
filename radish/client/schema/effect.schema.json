@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radish.local/schema/effect.schema.json",
+  "title": "radish Effekt",
+  "description": "Ein Effekt im Spiel, etwa eine Explosion: je Richtung eine Folge von Bildern in einem Atlas, die einmal durchlaeuft. Liegt als assets/effects/<schluessel>/effect.json neben ihren PNGs; der Client nimmt jeden Ordner unter assets/effects/, in dem eine liegt. Erzeugt vom Backend aus der Datenbank (api/domain/effects/document.py). Gelesen wird in feste Puffer (client/src/include/radish/view/rendering/iso_effect_sprite.h); was die Grenzen hier ueberschreitet, weist der Client ab. Ob jeder Atlas genug Zellen fuer seine Folge hat, prueft er erst beim Laden der PNG.",
+  "type": "object",
+  "required": ["version", "kind", "draw_width", "duration_ms", "facings"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "kind": {
+      "description": "Wofuer der Client den Effekt nimmt. explosion: bei einem Angriff waehlt er eine der Explosionen zufaellig (RAD_IsoEffectRandomExplosion).",
+      "enum": ["explosion"]
+    },
+    "draw_width": { "description": "Breite einer Zelle auf dem Bildschirm in Pixeln; die Hoehe folgt im Seitenverhaeltnis der Zelle.", "type": "integer", "minimum": 1, "maximum": 1024 },
+    "duration_ms": { "description": "Wie lange der Effekt einmal durchlaeuft. Bei einer Explosion bleibt der Turm so lange auf dem Ziel.", "type": "number", "exclusiveMinimum": 0, "maximum": 10000 },
+    "facings": {
+      "description": "Je Richtung auf dem Bildschirm eine Folge, alle vier Pflicht: sw = -x, se = +y, ne = +x, nw = -y (view/rendering/iso_facing.h) -- bei einer Explosion die, in die der Schuss fliegt.",
+      "type": "object",
+      "required": ["sw", "se", "ne", "nw"],
+      "additionalProperties": false,
+      "properties": {
+        "sw": { "$ref": "#/$defs/sequence" },
+        "se": { "$ref": "#/$defs/sequence" },
+        "ne": { "$ref": "#/$defs/sequence" },
+        "nw": { "$ref": "#/$defs/sequence" }
+      }
+    }
+  },
+  "$defs": {
+    "sequence": {
+      "description": "Die Folge einer Richtung im Atlas \"file\": Zellen von frame_width x frame_height, zeilenweise von links oben, ab Zelle first_frame fuer frame_count Bilder. Mehrere Richtungen duerfen dieselbe Datei nennen -- hintereinander darin oder mit derselben Folge; der Client laedt sie dann einmal.",
+      "type": "object",
+      "required": ["file", "frame_width", "frame_height", "first_frame", "frame_count", "anchor"],
+      "additionalProperties": false,
+      "properties": {
+        "file":         { "description": "Dateiname im Ordner des Effekts, hoechstens 31 Zeichen (RAD_ISO_EFFECT_FILE_NAME_MAX).", "type": "string", "pattern": "^[a-z0-9_]{1,27}\\.png$" },
+        "frame_width":  { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "frame_height": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "first_frame":  { "description": "RAD_ISO_EFFECT_FIRST_FRAME_MAX.", "type": "integer", "minimum": 0, "maximum": 4095 },
+        "frame_count":  { "description": "RAD_ISO_EFFECT_FRAMES_MAX.", "type": "integer", "minimum": 1, "maximum": 1024 },
+        "anchor": {
+          "description": "Wo der Effekt auf die Mitte seines Feldes kommt -- bei einer Explosion der Einschlag --, als Anteil an Breite und Hoehe der Zelle.",
+          "type": "object",
+          "required": ["x", "y"],
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    }
+  }
+}

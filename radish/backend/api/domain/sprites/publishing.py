@@ -11,9 +11,10 @@ radish/client/publish_assets.cmake: "uploaded/units/<key>/<name>.<hash>.png"
 und "uploaded/units/<key>/sprite.<hash>.json". Eine neue Fassung hat einen neuen
 Namen, und jede Datei darf dauerhaft gecacht werden.
 
-Ins Manifest kommt nur ein vollstaendiges Bild (problems.py), und nur eines,
-dessen Schluessel kein Bild aus dem Build traegt (builtin.py) -- und davon nur
-die PNGs, die ein Atlas zeigt: der Client laedt jede Datei im Manifest.
+Ins Manifest kommt nur ein vollstaendiges Bild (problems.py) -- und davon nur
+die PNGs, die ein Atlas zeigt: der Client laedt jede Datei im Manifest. Der
+Build des Clients bringt selbst keine Einheitenbilder mit; alle kommen von
+hier.
 """
 
 from dataclasses import dataclass
@@ -23,7 +24,6 @@ import re
 
 from django.db.models import Prefetch, QuerySet
 
-from api.domain.sprites.builtin import built_sprite_keys
 from api.domain.sprites.document import sprite_document
 from api.domain.sprites.problems import sprite_problems
 from api.models import UnitSprite, UnitSpriteAtlas, UnitSpriteImage
@@ -64,7 +64,7 @@ def _published_sprites() -> QuerySet[UnitSprite]:
     """Alle Bilder samt Atlanten und deren PNGs -- ohne die Bytes."""
     return UnitSprite.objects.prefetch_related(
         Prefetch("atlases", queryset=UnitSpriteAtlas.objects.select_related("image").defer("image__data"))
-    ).exclude(key__in=built_sprite_keys())
+    )
 
 
 def sprite_manifest_entries(sprite: UnitSprite, atlases: list[UnitSpriteAtlas]) -> dict[str, str]:
@@ -111,12 +111,19 @@ def published_file(name: str) -> PublishedFile | None:
     return _published_png(sprite, atlases, match)
 
 
-def _published_json(sprite: UnitSprite, atlases: list[UnitSpriteAtlas], match: re.Match[str]) -> PublishedFile | None:
-    """Die sprite.json, wenn Name und Hash zum heutigen Stand passen."""
-    content: bytes = sprite_json_bytes(sprite, atlases)
-    if match["stem"] != "sprite" or _short_hash(content) != match["hash"]:
+def current_json(content: bytes, stem: str, match: re.Match[str]) -> PublishedFile | None:
+    """
+    Eine erzeugte JSON-Datei ("content", Name "stem"), wenn Name und Hash aus
+    "match" zu ihr passen -- sonst ist der Name veraltet oder falsch.
+    """
+    if match["stem"] != stem or _short_hash(content) != match["hash"]:
         return None
     return PublishedFile(content=content, content_type="application/json")
+
+
+def _published_json(sprite: UnitSprite, atlases: list[UnitSpriteAtlas], match: re.Match[str]) -> PublishedFile | None:
+    """Die sprite.json, wenn Name und Hash zum heutigen Stand passen."""
+    return current_json(sprite_json_bytes(sprite, atlases), "sprite", match)
 
 
 def _published_png(sprite: UnitSprite, atlases: list[UnitSpriteAtlas], match: re.Match[str]) -> PublishedFile | None:

@@ -6,7 +6,12 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, of, switchMap } from 'rxjs';
 
 import { apiErrorMessage } from '../../../../core/api-error';
-import { AdminSpecies, AdminUnitType, ApiService } from '../../../../core/api.service';
+import {
+  AdminSpecies,
+  AdminUnitType,
+  ApiService,
+  ProfileRestricted,
+} from '../../../../core/api.service';
 import {
   CATALOG_FIELD_LABELS,
   CatalogEntry,
@@ -16,6 +21,7 @@ import {
 } from './catalog-config';
 import { CatalogDraft, CatalogEntryFormComponent } from './catalog-entry-form.component';
 import { CATALOG_BASE, CatalogPageHeaderComponent } from './catalog-shell.component';
+import { CarrierRestrictionsComponent, RestrictedEntry } from './carrier-restrictions.component';
 import { ProfileOverviewComponent } from './profile-overview.component';
 import { SpriteImagesComponent } from './sprite-images.component';
 
@@ -34,6 +40,7 @@ import { SpriteImagesComponent } from './sprite-images.component';
     RouterLink,
     CatalogEntryFormComponent,
     CatalogPageHeaderComponent,
+    CarrierRestrictionsComponent,
     ProfileOverviewComponent,
     SpriteImagesComponent,
   ],
@@ -148,6 +155,17 @@ import { SpriteImagesComponent } from './sprite-images.component';
           </p>
         }
       </section>
+
+      @if (asRestricted(entry); as restricted) {
+        <section class="card">
+          <app-carrier-restrictions
+            [entry]="restricted"
+            [noun]="model.resource === 'weapons' ? 'die Waffe' : 'den Gegenstand'"
+            [busy]="saving()"
+            (save)="saveRestrictions(entry, $event)"
+          />
+        </section>
+      }
 
       @if (asUnitType(entry); as unitType) {
         <section class="card">
@@ -345,6 +363,12 @@ export class CatalogEditComponent implements OnInit {
     return this.model.resource === 'unit-types' ? (entry as unknown as AdminUnitType) : null;
   }
 
+  /** Der Eintrag als Waffe bzw. Ausruestung samt Einschraenkung, bei anderen Modellen null. */
+  asRestricted(entry: CatalogEntry): RestrictedEntry | null {
+    const restricted = this.model.resource === 'weapons' || this.model.resource === 'equipment';
+    return restricted ? (entry as unknown as RestrictedEntry) : null;
+  }
+
   save(entry: CatalogEntry, draft: CatalogDraft): void {
     // Die Zuordnung aendert sich nie (das Backend lehnt es ab) -- sie muss
     // beim PUT aber mitgeschickt werden.
@@ -388,21 +412,40 @@ export class CatalogEditComponent implements OnInit {
    * noch nicht gespeichert war, ist damit verworfen.
    */
   saveSprite(entry: CatalogEntry, sprite: string): void {
+    this.patch(entry, { sprite }, (name) => `Bild von „${name}“ gespeichert.`, 'Bild nicht gespeichert.');
+  }
+
+  /** Speichert nur, wer eine Waffe bzw. Ausruestung tragen darf (PATCH) -- wie saveSprite. */
+  saveRestrictions(entry: CatalogEntry, restrictions: ProfileRestricted): void {
+    this.patch(
+      entry,
+      restrictions,
+      (name) => `Wer „${name}“ tragen darf, ist gespeichert.`,
+      'Einschränkung nicht gespeichert.',
+    );
+  }
+
+  private patch(
+    entry: CatalogEntry,
+    fields: object,
+    success: (name: string) => string,
+    failure: string,
+  ): void {
     this.saving.set(true);
     this.errorMessage.set(null);
     this.message.set(null);
-    this.api.patchCatalogEntry<CatalogEntry>(this.model.resource, entry.id, { sprite }).subscribe({
+    this.api.patchCatalogEntry<CatalogEntry>(this.model.resource, entry.id, fields).subscribe({
       next: (saved) => {
         this.saving.set(false);
         this.selected.set(saved);
         this.results.update((list) =>
           list?.map((other) => (other.id === saved.id ? saved : other)) ?? null,
         );
-        this.message.set(`Bild von „${saved.name}“ gespeichert.`);
+        this.message.set(success(saved.name));
       },
       error: (err: HttpErrorResponse) => {
         this.saving.set(false);
-        this.errorMessage.set(apiErrorMessage(err, 'Bild nicht gespeichert.', CATALOG_FIELD_LABELS));
+        this.errorMessage.set(apiErrorMessage(err, failure, CATALOG_FIELD_LABELS));
       },
     });
   }

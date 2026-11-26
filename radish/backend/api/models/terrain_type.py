@@ -18,9 +18,16 @@ class TerrainType(models.Model):
     game_start_document).
 
     Genau eine Zeile je TerrainCode, angelegt aus dem Dump
-    api/fixtures/seed.json (siehe management/commands/seed.py). Der Admin
+    api/fixtures/seed.sql (siehe management/commands/seed.py). Der Admin
     aendert nur die Werte -- anlegen und loeschen gibt es nicht, weil das
     Spiel jeden Typ braucht.
+
+    Dazu, wie der Typ im Client aussieht: seine PNGs (TerrainImage), darunter
+    hoechstens ein Grundbild statt des Wuerfels (TerrainImage.is_base), und
+    seine Dekorationen (TerrainDecor). Daraus
+    wird assets/tiles/<code>/tile.json (api/domain/tiles/). Ohne Bild und
+    Dekoration zeichnet der Client den Wuerfel in der Farbe, die er selbst fuer
+    den Typ fuehrt.
     """
 
     code = models.CharField(max_length=20, choices=TerrainCode.choices, unique=True)

@@ -6,7 +6,7 @@
 #         -P publish_assets.cmake
 #
 # Jede Datei bekommt die ersten 12 Hexziffern ihres SHA-256 in den Namen
-# (units/heavy_tank/turn.png -> units/heavy_tank/turn.3f9a1c0b7e2d.png). Ein
+# (fonts/michroma/michroma_32.png -> fonts/michroma/michroma_32.3f9a1c0b7e2d.png). Ein
 # geaendertes Bild hat damit einen neuen Namen, und das Backend darf jede
 # Datei dauerhaft cachen lassen (radish/backend/web/views.py).
 #
@@ -23,20 +23,17 @@ endif()
 # Frisch statt ergaenzt: sonst blieben Dateien mit altem Hash liegen.
 file(REMOVE_RECURSE "${OUTPUT_DIR}")
 
-# worlds/ und die Lizenzdatei liest der Client nicht. Zu den Bildern der
-# Einheiten gehoert je Ordner ihre sprite.json (rendering/iso_unit_sprite.h):
-# ein neuer Ordner unter units/ ist damit ohne weiteres Zutun im Client.
-file(GLOB_RECURSE asset_files RELATIVE "${ASSETS_DIR}"
-    "${ASSETS_DIR}/tiles/*.png"
-    "${ASSETS_DIR}/units/*.png"
-    "${ASSETS_DIR}/units/*/sprite.json"
-    "${ASSETS_DIR}/effects/*.png"
-)
-# Dieselbe Schrift wie im Frontend (Michroma, SIL OFL, siehe
+# worlds/ und die Lizenzdatei liest der Client nicht. Einheiten-, Tile- und
+# Effekt-Bilder gibt es im Build nicht: sie liegen samt sprite.json, tile.json
+# bzw. effect.json in der Datenbank, und das Backend ergaenzt das Manifest um
+# sie (radish/backend/web/interfaces/sprite_views.py) -- der Client findet sie
+# unter /assets/units/<schluessel>/, /assets/tiles/<typ>/ und
+# /assets/effects/<schluessel>/ im Dateisystem. Aus dem Build kommt nur die
+# Schrift: dieselbe wie im Frontend (Michroma, SIL OFL, siehe
 # assets/fonts/michroma/OFL.txt) -- als Bitmap-Atlas im BMFont-Textformat,
 # erzeugt aus Michroma-Regular.ttf (rendering/bitmap_font.c). Die TTF selbst
 # liest der Client nicht mehr.
-list(APPEND asset_files
+set(asset_files
     "fonts/michroma/michroma_32.fnt"
     "fonts/michroma/michroma_32.png"
 )

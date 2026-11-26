@@ -7,13 +7,13 @@ import { apiErrorMessage } from '../../../../core/api-error';
 import { AdminSprite, ApiService } from '../../../../core/api.service';
 
 /**
- * Adminseite "Einheitenbilder": alle hochgeladenen Bilder mit ihrem Stand --
+ * Adminseite "Einheitenbilder": alle Bilder mit ihrem Stand --
  * vollstaendig (im Spiel) oder Entwurf -- und den Einheitentypen, die sie
  * nennen. Ein neues Bild bekommt hier seinen Schluessel; alles Weitere
  * (Werte, PNGs, Atlanten) auf seiner eigenen Seite (SpriteEditComponent).
  *
- * Die Bilder aus dem Build (radish/assets/units/) stehen nicht hier: sie
- * kommen mit dem Image und lassen sich nicht hochladen oder aendern.
+ * Der Client-Build bringt keine Einheitenbilder mit: alle stehen hier, auch
+ * die aus dem Dump (api/fixtures/seed.sql).
  */
 @Component({
   selector: 'app-sprite-list',

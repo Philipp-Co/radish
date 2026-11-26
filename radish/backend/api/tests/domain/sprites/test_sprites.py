@@ -4,7 +4,6 @@ import unittest
 from django.conf import settings
 from django.test import TestCase
 
-from api.domain.sprites.builtin import built_sprite_keys
 from api.domain.sprites.document import sprite_document
 from api.domain.sprites.png import InvalidPng, png_size
 from api.domain.sprites.problems import REQUIRED_ATLASES, sprite_problems
@@ -15,7 +14,6 @@ from api.tests.sprite_helpers import (
     add_image,
     create_complete_sprite,
     png_bytes,
-    use_built_manifest,
 )
 
 try:
@@ -96,12 +94,6 @@ class SpriteDocumentTests(TestCase):
 
 
 class PublishingTests(TestCase):
-    def setUp(self) -> None:
-        use_built_manifest(self)
-
-    def test_built_keys_come_from_the_manifest(self) -> None:
-        self.assertEqual(built_sprite_keys(), {"heavy_tank"})
-
     def test_complete_sprite_is_in_the_manifest_and_served(self) -> None:
         create_complete_sprite("infantry")
 
@@ -117,12 +109,10 @@ class PublishingTests(TestCase):
         assert sheet is not None
         self.assertEqual(png_size(sheet.content), (512, 512))
 
-    def test_incomplete_or_built_key_is_not_published(self) -> None:
+    def test_incomplete_sprite_is_not_published(self) -> None:
         draft: UnitSprite = create_complete_sprite("draft")
         names: dict[str, str] = uploaded_manifest()
         draft.atlases.filter(animation=SpriteAnimation.TURN).delete()
-        # Schon vergeben vom Build: auch vollstaendig nicht im Manifest.
-        create_complete_sprite("heavy_tank")
 
         self.assertEqual(uploaded_manifest(), {})
         self.assertIsNone(published_file(names["/assets/units/draft/sprite.json"]))

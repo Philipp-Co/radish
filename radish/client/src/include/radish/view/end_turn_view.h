@@ -2,7 +2,7 @@
 #define __RAD_VIEW_END_TURN_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <radish/rendering/font.h>
+#include <radish/view/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/io/net_session.h>

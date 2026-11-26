@@ -27,7 +27,10 @@ from api.interfaces.admin.serializers.admin_entity_profile_serializer import Adm
 from api.interfaces.admin.serializers.admin_equipment_serializer import AdminEquipmentSerializer
 from api.interfaces.admin.serializers.admin_game_server_serializer import AdminGameServerSerializer
 from api.interfaces.admin.serializers.admin_species_serializer import AdminSpeciesSerializer
-from api.interfaces.admin.serializers.admin_terrain_type_serializer import AdminTerrainTypeSerializer
+from api.interfaces.admin.serializers.admin_terrain_type_serializer import (
+    AdminTerrainTypeSerializer,
+    terrain_for_admin,
+)
 from api.interfaces.admin.serializers.admin_unit_type_serializer import AdminUnitTypeSerializer
 from api.interfaces.admin.serializers.admin_weapon_serializer import AdminWeaponSerializer
 from api.models import (
@@ -249,33 +252,43 @@ class AdminEntityProfileDetailView(_CatalogAdminMixin[EntityProfile], generics.R
     serializer_class = AdminEntityProfileSerializer
 
 
-class AdminWeaponListView(_CatalogAdminMixin[Weapon], generics.ListCreateAPIView):
+class _WeaponAdminMixin(_CatalogAdminMixin[Weapon]):
     model = Weapon
+    related = ("species",)
+    serializer_class = AdminWeaponSerializer
+
+    def get_queryset(self) -> QuerySet[Weapon]:
+        # Fuer unit_type_ids/profile_ids, ohne je Eintrag zwei Abfragen.
+        return super().get_queryset().prefetch_related("unit_types", "profiles")
+
+
+class AdminWeaponListView(_WeaponAdminMixin, generics.ListCreateAPIView):
     list_key = "weapons"
     filters = {"species": "species_id"}
     choice_filters = {"weapon_class": "weapon_class"}
-    related = ("species",)
-    serializer_class = AdminWeaponSerializer
 
 
-class AdminWeaponDetailView(_CatalogAdminMixin[Weapon], generics.RetrieveUpdateDestroyAPIView):
-    model = Weapon
-    related = ("species",)
-    serializer_class = AdminWeaponSerializer
+class AdminWeaponDetailView(_WeaponAdminMixin, generics.RetrieveUpdateDestroyAPIView):
+    pass
 
 
-class AdminEquipmentListView(_CatalogAdminMixin[Equipment], generics.ListCreateAPIView):
+class _EquipmentAdminMixin(_CatalogAdminMixin[Equipment]):
     model = Equipment
+    related = ("species",)
+    serializer_class = AdminEquipmentSerializer
+
+    def get_queryset(self) -> QuerySet[Equipment]:
+        # Fuer unit_type_ids/profile_ids, ohne je Eintrag zwei Abfragen.
+        return super().get_queryset().prefetch_related("unit_types", "profiles")
+
+
+class AdminEquipmentListView(_EquipmentAdminMixin, generics.ListCreateAPIView):
     list_key = "equipment"
     filters = {"species": "species_id"}
-    related = ("species",)
-    serializer_class = AdminEquipmentSerializer
 
 
-class AdminEquipmentDetailView(_CatalogAdminMixin[Equipment], generics.RetrieveUpdateDestroyAPIView):
-    model = Equipment
-    related = ("species",)
-    serializer_class = AdminEquipmentSerializer
+class AdminEquipmentDetailView(_EquipmentAdminMixin, generics.RetrieveUpdateDestroyAPIView):
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -287,13 +300,15 @@ class AdminTerrainTypeListView(generics.ListAPIView):
     """
     Alle Tile-Typen mit ihren Werten, in der Reihenfolge des Spiels, unter
     {"terrain": [...]}. Angelegt werden sie nur aus dem Dump
-    api/fixtures/seed.json (siehe management/commands/seed.py) -- es gibt
+    api/fixtures/seed.sql (siehe management/commands/seed.py) -- es gibt
     genau die, die das Spiel kennt, deshalb kein POST.
     """
 
     permission_classes = [IsAuthenticated, HasAdminRole]
-    queryset = TerrainType.objects.all()
     serializer_class = AdminTerrainTypeSerializer
+
+    def get_queryset(self) -> QuerySet[TerrainType]:
+        return terrain_for_admin()
 
     # Any: Signatur von ListModelMixin.list in den DRF-Stubs (URL-Parameter,
     # ungeprueft durchgereicht).
@@ -306,10 +321,13 @@ class AdminTerrainTypeDetailView(generics.RetrieveUpdateAPIView):
     """
     Ein Tile-Typ, angesprochen ueber seinen code (z.B. admin/terrain/forest/).
     Aendern ja, loeschen nein (siehe AdminTerrainTypeListView). Die Werte
-    gelten ab dem naechsten Spielstart; laufende Spiele behalten ihre.
+    gelten ab dem naechsten Spielstart; laufende Spiele behalten ihre. Wie
+    der Typ aussieht, aendern eigene Endpunkte (admin_terrain_views.py).
     """
 
     permission_classes = [IsAuthenticated, HasAdminRole]
-    queryset = TerrainType.objects.all()
     serializer_class = AdminTerrainTypeSerializer
     lookup_field = "code"
+
+    def get_queryset(self) -> QuerySet[TerrainType]:
+        return terrain_for_admin()

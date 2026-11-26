@@ -9,7 +9,7 @@
 
 ///
 /// io/net_event_handler/ -- die Abonnenten des Net-Event-Managers
-/// (events/event_manager.h), je Ereignis eine Datei. Der Manager hat je Gruppe
+/// (io/net_event_manager.h), je Ereignis eine Datei. Der Manager hat je Gruppe
 /// nur einen Abonnenten -- hier wird deshalb verteilt: ins Log und in den
 /// Weltzustand (world).
 ///

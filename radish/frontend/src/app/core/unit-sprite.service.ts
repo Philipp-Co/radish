@@ -5,7 +5,8 @@ import { environment } from '../../environments/environment';
 /**
  * Pfad einer Datei eines Einheitenbildes im Asset-Manifest des Clients: je Bild
  * ein Ordner unter assets/units/ mit seiner sprite.json und seinen PNG-Atlanten
- * (radish/client/publish_assets.cmake, radish/client/schema/sprite.schema.json).
+ * (radish/client/schema/sprite.schema.json). Die Eintraege stammen alle aus der
+ * Datenbank (radish/backend/web/interfaces/sprite_views.py).
  * Der Ordnername ist der Schluessel, den ein Einheitentyp im Katalog nennt
  * (UnitType.sprite) -- dasselbe Muster wie dort: [a-z0-9_], hoechstens 31
  * Zeichen.

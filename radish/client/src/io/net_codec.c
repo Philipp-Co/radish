@@ -6,7 +6,7 @@
 // Generierter Code aus protobuf/*.proto (protobuf/CMakeLists.txt, Ziel
 // radish_protobuf). Bleibt auf diese Datei beschraenkt -- net_codec.h zeigt
 // nach aussen nur die Typen aus io/net_types.h, die Verteilung aus
-// events/event_manager.h und die eigene RAD_NetCodecResult_t.
+// io/net_event_manager.h und die eigene RAD_NetCodecResult_t.
 #include "message.pb-c.h"
 
 
@@ -444,7 +444,7 @@ static RAD_NetCodecResult_t RAD_NetDispatchGameEvent(RAD_NetEventManager_t *even
             }
             // Der Zeiger gehoert der entpackten Nachricht und wird mit ihr
             // freigegeben -- deshalb gilt er nur waehrend des Callbacks
-            // (events/event_manager.h).
+            // (io/net_event_manager.h).
             RAD_NetEventManagerPublishPlayers(events, game_event->players->user_ids, game_event->players->n_user_ids);
             return RAD_NET_CODEC_OK;
 
@@ -848,7 +848,7 @@ static void RAD_NetFillTile(RAD_NetTile_t *out, const NetTile *tile)
 /// viele Felder in einer Nachricht stehen, legt der Server fest und nicht dieser
 /// Client -- heute eines, spaeter vielleicht eine ganze Welt. Freigegeben wird
 /// nach dem Callback, deshalb gilt der Zeiger nur waehrend er laeuft
-/// (events/event_manager.h).
+/// (io/net_event_manager.h).
 ///
 static RAD_NetCodecResult_t RAD_NetDispatchTiles(RAD_NetEventManager_t *events, const NetTilesEvent *tiles_event)
 {

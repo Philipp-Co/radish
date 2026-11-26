@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 from django.db.models import Field, ForeignObjectRel, Model
 from rest_framework import serializers
 
+from api.models import EntityProfile, Species, UnitType
+
 # Nur fuer die Annotation in _changed (Rueckgabetyp von Options.get_field);
 # zur Laufzeit wuerde der Import die contenttypes-Models laden, und
 # Annotationen lokaler Variablen werden ohnehin nie ausgewertet.
@@ -82,3 +84,47 @@ class _CatalogAdminSerializer(serializers.ModelSerializer):
                     {field: "Kann nach dem Anlegen nicht mehr geaendert werden."}
                 )
         return attrs
+
+
+class _RestrictedCatalogAdminSerializer(_CatalogAdminSerializer):
+    """
+    Fuer Katalogeintraege einer Spezies mit Einschraenkung, wer sie tragen
+    darf (models.ProfileRestricted: Waffen, Ausruestung). Einheitentypen und
+    Profile muessen zur Spezies des Eintrags gehoeren.
+    """
+
+    unit_type_ids = serializers.PrimaryKeyRelatedField(
+        queryset=UnitType.objects.all(), source="unit_types", many=True, required=False
+    )
+    profile_ids = serializers.PrimaryKeyRelatedField(
+        queryset=EntityProfile.objects.select_related("unit_type"),
+        source="profiles",
+        many=True,
+        required=False,
+    )
+
+    # Die Stubs typisieren attrs als Any; es sind die validierten Daten, ein
+    # dict von Feldname auf Wert.
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        attrs = super().validate(attrs)
+        # Fehlt die Spezies in attrs, ist es ein PATCH -- dann die gespeicherte
+        # (jedes ProfileRestricted-Modell hat ein Feld species).
+        species: Species = _value(attrs, "species", lambda: getattr(self.instance, "species"), Species)
+        unit_types: object = attrs.get("unit_types", [])
+        profiles: object = attrs.get("profiles", [])
+        # many=True liefert eine Liste der Modelle.
+        assert isinstance(unit_types, list) and isinstance(profiles, list)
+        foreign: list[str] = _foreign_names(species, unit_types, profiles)
+        if foreign:
+            raise serializers.ValidationError(
+                f"Gehoert nicht zur Spezies {species.name}: {', '.join(foreign)}."
+            )
+        return attrs
+
+
+def _foreign_names(species: Species, unit_types: list[UnitType], profiles: list[EntityProfile]) -> list[str]:
+    """Die Einheitentypen und Profile, die nicht zu species gehoeren."""
+    return [
+        *(unit_type.name for unit_type in unit_types if unit_type.species_id != species.id),
+        *(profile.name for profile in profiles if profile.unit_type.species_id != species.id),
+    ]

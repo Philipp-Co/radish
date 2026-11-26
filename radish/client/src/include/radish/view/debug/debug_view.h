@@ -2,7 +2,7 @@
 #define __RAD_VIEW_DEBUG_DEBUG_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <radish/rendering/font.h>
+#include <radish/view/rendering/font.h>
 #include <stdint.h>
 
 ///

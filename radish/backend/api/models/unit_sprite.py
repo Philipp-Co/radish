@@ -20,15 +20,15 @@ def _duration() -> models.FloatField:
 
 class UnitSprite(models.Model):
     """
-    Ein hochgeladenes Einheitenbild: was im Client in
+    Ein Einheitenbild: was im Client in
     assets/units/<key>/sprite.json steht (radish/client/schema/sprite.schema.json),
     hier als Felder statt als Datei, dazu seine PNGs (UnitSpriteImage) und je
     Animation und Blickrichtung ein Atlas (UnitSpriteAtlas). Die sprite.json
     erzeugt das Backend daraus (api/domain/sprites/document.py).
 
     Ein Einheitentyp nennt es ueber "key" (UnitType.sprite) -- ein String und
-    kein Fremdschluessel, weil derselbe Schluessel auch ein Bild aus dem Build
-    nennen kann (radish/assets/units/). Der Schluessel aendert sich deshalb nach
+    kein Fremdschluessel; derselbe Schluessel steht auch im Spiel und im Pfad
+    des Clients (assets/units/<key>/). Der Schluessel aendert sich deshalb nach
     dem Anlegen nicht mehr.
 
     Im Spiel erscheint es erst, wenn es vollstaendig ist -- alle Atlanten da und

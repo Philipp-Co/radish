@@ -1,0 +1,335 @@
+#include "SDL2/SDL_render.h"
+#include "radish/view/rendering/iso_definitions.h"
+#include <radish/view/rendering/iso_object.h>
+
+void RAD_ToIsoCoordinates(int32_t x, int32_t y, int32_t *screen_x, int32_t *screen_y)
+{
+    *screen_x = ((x * RAD_ISO_TILE_WIDTH / 2) + (y * RAD_ISO_TILE_WIDTH / 2));
+    *screen_y = ((y * RAD_ISO_TILE_HEIGHT / 2) - (x * RAD_ISO_TILE_HEIGHT / 2));
+}
+
+RAD_IsoObject_t RAD_CreateIsoObject(int32_t x, int32_t y)
+{
+    int32_t screen_x = 0;
+    int32_t screen_y = 0;
+    RAD_ToIsoCoordinates(x, y, &screen_x, &screen_y);
+    SDL_Color background_color = {
+        255, 255, 255, 255
+    };
+    RAD_IsoObject_t object = {
+        .x = x,
+        .y = y,
+        .screen_x = screen_x,//x + screen_x,
+        .screen_y = screen_y,//y + screen_y,
+        .background_color = background_color,
+        .focus = false,
+        .victory = false,
+        .light = 255,
+        .image = NULL
+    };
+    return object;
+}
+
+///
+/// "color" in der Helligkeit "light" (RAD_IsoObject_t.light): jeder Kanal
+/// malgenommen. Voll hell unveraendert.
+///
+static SDL_Color RAD_IsoShade(uint8_t light, SDL_Color color)
+{
+    if(light == 255)
+    {
+        return color;
+    }
+    color.r = (Uint8)((color.r * light) / 255);
+    color.g = (Uint8)((color.g * light) / 255);
+    color.b = (Uint8)((color.b * light) / 255);
+    return color;
+}
+
+void RAD_RenderIsoImage(SDL_Renderer *renderer, SDL_Texture *image, bool focus, bool victory,
+                        uint8_t light, int32_t screen_x, int32_t screen_y)
+{
+    const SDL_Rect target = {
+        .x = screen_x,
+        .y = screen_y,
+        .w = RAD_ISO_TILE_WIDTH,
+        .h = 2 * RAD_ISO_TILE_HEIGHT
+    };
+
+    SDL_Color tint = { 255, 255, 255, 255 };
+    if(focus)
+    {
+        tint = (SDL_Color){ 255, 80, 80, 255 };
+    }
+    else if(victory)
+    {
+        tint = RAD_ISO_OBJECT_VICTORY_COLOR;
+    }
+    tint = RAD_IsoShade(focus ? 255 : light, tint);
+    SDL_SetTextureColorMod(image, tint.r, tint.g, tint.b);
+
+    SDL_RenderCopy(renderer, image, NULL, &target);
+    SDL_SetTextureColorMod(image, 255, 255, 255);
+}
+
+///
+/// Zeichnet den Wuerfel in background_color und RAD_ISO_OBJECT_SIDE_COLOR, dessen Raute bei
+/// (screen_x, screen_y) beginnt: obere Flaeche, Seiten, Umriss.
+///
+static void RAD_RenderIsoObjectCube(SDL_Renderer *renderer, const RAD_IsoObject_t *object,
+                                    int32_t screen_x, int32_t screen_y)
+{
+    SDL_Color color = object->victory ? RAD_ISO_OBJECT_VICTORY_COLOR : object->background_color;
+    if(object->focus)
+    {
+        color.r = 255;
+        color.b = 0;
+        color.g = 0;
+        color.a = 255;
+    }
+    // Der Fokus geht vor und bleibt hell (RAD_IsoObject_t.light).
+    const uint8_t light = object->focus ? 255 : object->light;
+    color = RAD_IsoShade(light, color);
+    const SDL_Color front_color = RAD_IsoShade(light, RAD_ISO_OBJECT_SIDE_COLOR);
+
+    // Flaechen um einen halben Pixel versetzt: SDL_RenderGeometry fuellt ein Pixel,
+    // wenn seine Mitte im Dreieck liegt, SDL_RenderDrawLine faerbt die Pixel selbst
+    // und laeuft damit durch die Mitten. Ohne den Versatz liegt der Umriss einen
+    // halben Pixel rechts unterhalb der Flaeche, und an den unteren Kanten bleibt
+    // zwischen beiden ein Streifen der Seitenflaeche stehen.
+    const float fx = screen_x + 0.5f;
+    const float fy = screen_y + 0.5f;
+
+    SDL_SetRenderDrawColor(
+        renderer, 
+        color.r,
+        color.g,
+        color.b,
+        color.a
+    );
+    SDL_Vertex vertecies[6];
+    vertecies[0] = (SDL_Vertex){
+        .position={
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    vertecies[1] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    vertecies[2] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    vertecies[3] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    vertecies[4] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    vertecies[5] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    SDL_RenderGeometry(
+        renderer, NULL, vertecies, 3, NULL, 0 
+    );
+    SDL_RenderGeometry(
+        renderer, NULL, vertecies + 3, 3, NULL, 0 
+    );
+
+    SDL_Vertex front_left_0[3];
+    front_left_0[0] = (SDL_Vertex){
+        .position={
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_left_0[1] = (SDL_Vertex){
+        .position={
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_left_0[2] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    SDL_RenderGeometry(
+        renderer, NULL, front_left_0, 3, NULL, 0 
+    );
+    
+    SDL_Vertex front_left_1[3];
+    front_left_1[0] = (SDL_Vertex){
+        .position={
+            .x=fx,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_left_1[1] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_left_1[2] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    SDL_RenderGeometry(
+        renderer, NULL, front_left_1, 3, NULL, 0 
+    );
+    
+    SDL_Vertex front_right_0[3];
+    front_right_0[0] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_right_0[1] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_right_0[2] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    SDL_RenderGeometry(
+        renderer, NULL, front_right_0, 3, NULL, 0 
+    );
+    SDL_Vertex front_right_1[3];
+    front_right_1[0] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_right_1[1] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH,
+            .y=fy + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT / 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    front_right_1[2] = (SDL_Vertex){
+        .position={
+            .x=fx + RAD_ISO_TILE_WIDTH / 2,
+            .y=fy + RAD_ISO_TILE_HEIGHT * 2
+        },
+        .color=front_color,
+        .tex_coord={.x=0.0, .y=0.0}
+    };
+    SDL_RenderGeometry(
+        renderer, NULL, front_right_1, 3, NULL, 0 
+    );
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, color.a);
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y, 
+        screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
+        screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2 + RAD_ISO_TILE_HEIGHT
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
+        screen_x, screen_y + RAD_ISO_TILE_HEIGHT / 2 + RAD_ISO_TILE_HEIGHT
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT + RAD_ISO_TILE_HEIGHT
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT
+    );
+    SDL_RenderDrawLine(
+        renderer, 
+        screen_x + RAD_ISO_TILE_WIDTH, screen_y + RAD_ISO_TILE_HEIGHT / 2, 
+        screen_x + RAD_ISO_TILE_WIDTH / 2, screen_y + RAD_ISO_TILE_HEIGHT
+    );
+}
+
+void RAD_RenderIsoObject(SDL_Renderer *renderer, RAD_IsoObject_t *object, RAD_Camera_t *camera)
+{
+    int32_t screen_x = object->screen_x - camera->x;
+    int32_t screen_y = object->screen_y - camera->y;
+
+    // Die Figuren und die Dekoration zeichnet die Iso-Map als eigene Eintraege
+    // (RAD_RenderIsoMap).
+    if(NULL != object->image)
+    {
+        RAD_RenderIsoImage(renderer, object->image, object->focus, object->victory, object->light,
+                           screen_x, screen_y);
+    }
+    else
+    {
+        RAD_RenderIsoObjectCube(renderer, object, screen_x, screen_y);
+    }
+}

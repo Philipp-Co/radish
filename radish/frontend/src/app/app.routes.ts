@@ -108,7 +108,7 @@ export const routes: Routes = [
         // GamesShellComponent ebenfalls an diese Rolle geknuepft, aber wer
         // die URL direkt aufruft, soll trotzdem nicht durchkommen.
         // adminGuard sitzt am Rahmen und gilt damit fuer servers/, catalog/,
-        // terrain/ und sprites/.
+        // terrain/, sprites/ und effects/.
         path: 'admin',
         loadComponent: () =>
           import('./pages/games/admin/admin-shell.component').then((m) => m.AdminShellComponent),
@@ -122,12 +122,27 @@ export const routes: Routes = [
             title: 'radish -- Admin: Game-Server',
           },
           {
+            // Gelaende: die Tabelle aller Tile-Typen mit Suche und je Typ eine
+            // Seite fuer Werte und Aussehen.
             path: 'terrain',
-            loadComponent: () =>
-              import('./pages/games/admin/terrain/terrain-admin.component').then(
-                (m) => m.TerrainAdminComponent,
-              ),
-            title: 'radish -- Admin: Gelände',
+            children: [
+              {
+                path: '',
+                loadComponent: () =>
+                  import('./pages/games/admin/terrain/terrain-list.component').then(
+                    (m) => m.TerrainListComponent,
+                  ),
+                title: 'radish -- Admin: Gelände',
+              },
+              {
+                path: ':code',
+                loadComponent: () =>
+                  import('./pages/games/admin/terrain/terrain-detail.component').then(
+                    (m) => m.TerrainDetailComponent,
+                  ),
+                title: 'radish -- Admin: Geländetyp',
+              },
+            ],
           },
           {
             // Hochgeladene Einheitenbilder: die Liste samt "neues Bild" und je
@@ -149,6 +164,29 @@ export const routes: Routes = [
                     (m) => m.SpriteEditComponent,
                   ),
                 title: 'radish -- Admin: Einheitenbild',
+              },
+            ],
+          },
+          {
+            // Effekte wie Explosionen: die Liste samt "neuer Effekt" und je
+            // Effekt eine Seite fuer Werte, PNGs und Atlanten.
+            path: 'effects',
+            children: [
+              {
+                path: '',
+                loadComponent: () =>
+                  import('./pages/games/admin/effects/effect-list.component').then(
+                    (m) => m.EffectListComponent,
+                  ),
+                title: 'radish -- Admin: Effekte',
+              },
+              {
+                path: ':id',
+                loadComponent: () =>
+                  import('./pages/games/admin/effects/effect-edit.component').then(
+                    (m) => m.EffectEditComponent,
+                  ),
+                title: 'radish -- Admin: Effekt',
               },
             ],
           },

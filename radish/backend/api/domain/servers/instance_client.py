@@ -191,7 +191,7 @@ def _terrain_document() -> list[TerrainDocument]:
     """
     Jeder Tile-Typ mit seinen Werten, so wie der Admin sie gepflegt hat. Das
     Spiel verlangt jeden Typ genau einmal; fehlt einer in der Tabelle (der
-    Dump api/fixtures/seed.json bringt alle mit), ist das ein Fehler hier
+    Dump api/fixtures/seed.sql bringt alle mit), ist das ein Fehler hier
     und kein Spiel, das die Instanz still ablehnt.
     """
     terrain: list[TerrainType] = list(TerrainType.objects.all())

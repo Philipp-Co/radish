@@ -6,16 +6,16 @@
 #include <stdint.h>
 #include <radish/model/focus.h>
 #include <radish/model/world.h>
-#include <radish/rendering/iso_map.h>
+#include <radish/view/rendering/iso_map.h>
 #include <radish/io/net_session.h>
 
 ///
-/// Ein rechteckiger Bereich im Fenster mit der Iso-Map (rendering/iso_map.h):
+/// Ein rechteckiger Bereich im Fenster mit der Iso-Map (view/rendering/iso_map.h):
 /// ein schwarzer Hintergrund, darueber die Karte, wie RAD_RenderIsoMap sie
 /// zeichnet. Was ueber die Flaeche hinausgeht, wird abgeschnitten.
 ///
 /// **Die Iso-Map gehoert ihr nicht.** Sie bekommt sie bei RAD_CreateIsoMapView;
-/// bewegt wird deren Kamera von aussen (io/camera_control.h).
+/// bewegt wird deren Kamera von aussen (view/camera_control.h).
 ///
 /// **Gefuellt wird die Iso-Map aus dem Model.** Die IsoMapView beobachtet die
 /// Welt (model/world.h, model/events/observable.h) und traegt jedes neue und
@@ -24,10 +24,10 @@
 /// nur ins Log.
 ///
 /// **Einen bestaetigten Zug stellt sie selbst dar** ("unit_moved", danach
-/// "changed" der beiden Felder): sie loest die Entitaet vom Start-Iso-Objekt,
-/// haelt das Ziel frei und traegt sie als Figur ausserhalb eines Feldes in die
-/// Iso-Map ein (RAD_IsoMapAddEntity). Eine UnitAnimation
-/// (view/animations/unit_animation.h) laesst sie den Weg ablaufen und an jeder
+/// "changed" der beiden Felder): sie belegt die Figur der Einheit
+/// (RAD_IsoEntity_t.busy) und schreibt ihre Werte, bis er durch ist -- die Figur
+/// selbst gehoert weiter der Iso-Map. Eine UnitAnimation
+/// (view/rendering/animations/unit_animation.h) laesst sie den Weg ablaufen und an jeder
 /// Ecke auf der Stelle drehen; ist sie durch, kommt die Entitaet aufs Zielfeld.
 /// Die Zeit dafuer liest sie selbst (SDL_GetTicks64).
 ///
@@ -43,7 +43,7 @@
 /// **Mit dem Schuss explodiert das Zielfeld** (RAD_IsoMapViewFire), wenn der
 /// Angriff getroffen hat oder dem leeren Feld galt: sobald der
 /// Turm auf dem Ziel steht, laeuft dort einmal eine Explosion durch
-/// (rendering/iso_effect.h), zufaellig eine von mehreren
+/// (view/rendering/iso_effect.h), zufaellig eine von mehreren
 /// (RAD_IsoEffectRandomExplosion), im Bild fuer die Richtung, aus der der
 /// Schuss kommt. Sie steht so lange als Effekt in der Iso-Map (RAD_IsoMapAddEffect).
 ///
@@ -107,7 +107,7 @@ bool RAD_IsoMapViewIsBusy(const RAD_IsoMapView_t *iso_map_view);
 ///
 /// Wertet eine Mausbewegung aus (view/view.h). Das Iso-Objekt unter dem Zeiger
 /// wird zum Fokus der IsoMapView: sein "focus" wird gesetzt, es wird also
-/// hervorgehoben gezeichnet (rendering/iso_object.h), das des vorigen
+/// hervorgehoben gezeichnet (view/rendering/iso_object.h), das des vorigen
 /// zurueckgesetzt. Das Feld der Welt dazu kommt in "focus" (model/focus.h). Ein
 /// Wechsel geht zusaetzlich ins Log. Liegt der Zeiger ausserhalb ihrer Flaeche,
 /// des Rasters oder ueber einem Feld, das noch nicht gezeichnet wird, hat sie

@@ -15,6 +15,19 @@ void test_sprite_atlanten_je_animation_und_richtung(void);
 void test_sprite_schluessel_und_pfad(void);
 void test_sprite_bilder_einer_folge(void);
 
+void test_tile_liest_das_hohe_gras(void);
+void test_tile_nimmt_die_gueltigen_beispiele_an(void);
+void test_tile_weist_die_ungueltigen_beispiele_ab(void);
+void test_tile_grenzen_und_fehler_lassen_die_ausgabe_stehen(void);
+void test_tile_doppelte_dekoration_gilt_die_letzte(void);
+void test_tile_pfad(void);
+
+void test_effect_liest_explosion_2(void);
+void test_effect_nimmt_die_gueltigen_beispiele_an(void);
+void test_effect_weist_die_ungueltigen_beispiele_ab(void);
+void test_effect_grenzen_und_fehler_lassen_die_ausgabe_stehen(void);
+void test_effect_schluessel_und_pfad(void);
+
 void test_animation_faehrt_nur_waehrend_einer_fahrt(void);
 void test_animation_auf_der_stelle_faehrt_nicht(void);
 void test_animation_feuert_waehrend_des_haltens(void);
@@ -33,6 +46,19 @@ int main(void)
     RUN_TEST(test_sprite_atlanten_je_animation_und_richtung);
     RUN_TEST(test_sprite_schluessel_und_pfad);
     RUN_TEST(test_sprite_bilder_einer_folge);
+
+    RUN_TEST(test_tile_liest_das_hohe_gras);
+    RUN_TEST(test_tile_nimmt_die_gueltigen_beispiele_an);
+    RUN_TEST(test_tile_weist_die_ungueltigen_beispiele_ab);
+    RUN_TEST(test_tile_grenzen_und_fehler_lassen_die_ausgabe_stehen);
+    RUN_TEST(test_tile_doppelte_dekoration_gilt_die_letzte);
+    RUN_TEST(test_tile_pfad);
+
+    RUN_TEST(test_effect_liest_explosion_2);
+    RUN_TEST(test_effect_nimmt_die_gueltigen_beispiele_an);
+    RUN_TEST(test_effect_weist_die_ungueltigen_beispiele_ab);
+    RUN_TEST(test_effect_grenzen_und_fehler_lassen_die_ausgabe_stehen);
+    RUN_TEST(test_effect_schluessel_und_pfad);
 
     RUN_TEST(test_animation_faehrt_nur_waehrend_einer_fahrt);
     RUN_TEST(test_animation_auf_der_stelle_faehrt_nicht);

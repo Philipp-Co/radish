@@ -4,7 +4,7 @@
 #include <radish/view/context_menu/context_menu_view.h>
 #include <radish/view/debug/debug_view.h>
 #include <radish/view/end_turn_view.h>
-#include <radish/io/camera_control.h>
+#include <radish/view/camera_control.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -136,10 +136,10 @@ struct RAD_RootView
     bool unit_info_visible;
 
     ///
-    /// Haelt keine eigenen Ressourcen (io/camera_control.h) -- abzuraeumen ist
+    /// Haelt keine eigenen Ressourcen (view/camera_control.h) -- abzuraeumen ist
     /// sie mit der RootView selbst.
     ///
-    RAD_IoCameraControl_t camera_control;
+    RAD_CameraControl_t camera_control;
 
     ///
     /// Gehoeren dem Aufrufer (view/view.h, RAD_CreateView).
@@ -282,7 +282,7 @@ RAD_RootView_t* RAD_CreateView(
     int drawable_width = 0, drawable_height = 0;
     SDL_GetWindowSizeInPixels(view->window, &drawable_width, &drawable_height);
 
-    view->camera_control = RAD_CreateIoCameraControl(map, drawable_width, drawable_height);
+    view->camera_control = RAD_CreateCameraControl(map, drawable_width, drawable_height);
 
     view->iso_map_view = RAD_CreateIsoMapView(0, 0, drawable_width, drawable_height, map, world, focus, session);
     if(view->iso_map_view == NULL)
@@ -492,7 +492,7 @@ const RAD_Font_t* RAD_ViewFont(const RAD_RootView_t *view)
 static void RAD_ViewHandleEvent(RAD_RootView_t *view, const SDL_Event *event)
 {
     // Zuerst die Kamera: die rechte Maustaste gehoert ihr.
-    if(RAD_IoCameraControlHandleEvent(&view->camera_control, event))
+    if(RAD_CameraControlHandleEvent(&view->camera_control, event))
     {
         return;
     }

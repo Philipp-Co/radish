@@ -39,6 +39,11 @@ radish/game-server/.venv/
 **/__pycache__/
 **/*.pyc
 
+# Der Dump der Kataloge (scripts/db-dump-seed.sh): laden und schreiben nur von
+# Hand, ausserhalb der Images (README, Abschnitt "Startdaten") -- mit den PNGs
+# der Einheitenbilder rund 20 MB, die kein Image braucht.
+radish/backend/api/fixtures/
+
 # Die Tests von Backend und game-server laufen nur ausserhalb der Images.
 radish/backend/**/tests.py
 radish/backend/api/tests/

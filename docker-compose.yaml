@@ -30,13 +30,16 @@ services:
       # Docker-Netzwerk, von aussen (z.B. lokales manage.py) unter
       # localhost:5433 erreichbar. Als radish_app: darf Daten lesen und
       # schreiben, aber das Schema nicht aendern -- das tut nur
-      # "backend-migrate" (siehe docker/backend-db/init/01-roles.sh). Das
+      # "backend-migrate" (siehe docker/backend-db/init/01-roles.sql). Das
       # Passwort wie RADISH_DB_APP_PASSWORD bei "backend-db".
       DJANGO_DB_HOST: "backend-db"
       DJANGO_DB_PORT: "5432"
       DJANGO_DB_NAME: "radish"
       DJANGO_DB_USER: "radish_app"
       DJANGO_DB_PASSWORD: "radish-app-dev"
+      # Schema der Tabellen (search_path, siehe config/database.py) -- wie
+      # RADISH_DB_SCHEMA bei "backend-db", das es anlegt.
+      DJANGO_DB_SCHEMA: "radish"
       # Das Image laeuft im Produktionsmodus (DJANGO_DEBUG=0, siehe
       # docker/backend/Dockerfile) und verlangt einen eigenen Schluessel.
       # Wie KEYCLOAK_CLIENT_SECRET oben nur ein Wert fuer die lokale
@@ -54,7 +57,8 @@ services:
     restart: unless-stopped
 
   # Bringt das Schema der Backend-Datenbank auf den Stand der Migrationen
-  # (`migrate`), fuellt je nach RADISH_DB_SEED die Inhalte ein und endet --
+  # (`migrate`) und endet -- Inhalte laedt er nicht, die Startdaten laedt ein
+  # Admin von Hand (README, "Startdaten") --
   # bei jedem `docker compose up` vor "backend".
   # Eigenes, kleines Image mit nur dem, was migrate braucht (siehe
   # docker/backend-migrate/Dockerfile, radish/backend/config/
@@ -67,20 +71,15 @@ services:
     image: radish-backend-migrate:alpine
     environment:
       # Als radish_owner: der einzige Benutzer, der das Schema aendern darf
-      # (siehe docker/backend-db/init/01-roles.sh). Das Passwort wie
+      # (siehe docker/backend-db/init/01-roles.sql). Das Passwort wie
       # RADISH_DB_OWNER_PASSWORD bei "backend-db".
       DJANGO_DB_HOST: "backend-db"
       DJANGO_DB_PORT: "5432"
       DJANGO_DB_NAME: "radish"
       DJANGO_DB_USER: "radish_owner"
       DJANGO_DB_PASSWORD: "radish-owner-dev"
-      # Kataloge aus radish/backend/api/fixtures/seed.json (Spezies,
-      # Einheitentypen, Waffen, Ausruestung, Gelaende -- keine Benutzer,
-      # Spieler oder Armeen): "if-empty" laedt nur in eine
-      # neue Datenbank und laesst eine gepflegte in Ruhe, "always" setzt
-      # jedes Mal auf den Stand des Dumps zurueck, "never" laedt nie (siehe
-      # radish/backend/api/management/commands/seed.py).
-      RADISH_DB_SEED: "if-empty"
+      # Wie bei "backend": hierhin migriert der Migrator.
+      DJANGO_DB_SCHEMA: "radish"
     depends_on:
       backend-db:
         condition: service_healthy
@@ -96,7 +95,7 @@ services:
   # POSTGRES_USER ist Admin der Datenbank, fuer lokale Entwicklung und Tests
   # (lokales manage.py, siehe radish/backend/config/database.py). Die
   # Container melden sich mit eigenen Benutzern an, die
-  # docker/backend-db/init/01-roles.sh beim ersten Start anlegt -- nur auf
+  # docker/backend-db/init/01-roles.sql beim ersten Start anlegt -- nur auf
   # einem leeren Volume, nach Aenderungen daran also
   # `docker compose down -v`. Die Passwoerter sind wie POSTGRES_PASSWORD nur
   # Werte fuer die lokale Entwicklung -- produktiv durch geheime ersetzen,
@@ -109,6 +108,9 @@ services:
       POSTGRES_PASSWORD: radish
       RADISH_DB_OWNER_PASSWORD: "radish-owner-dev"
       RADISH_DB_APP_PASSWORD: "radish-app-dev"
+      # Schema, das 01-roles.sql fuer die Anwendung anlegt; die Anwendung
+      # waehlt es per DJANGO_DB_SCHEMA selbst aus.
+      RADISH_DB_SCHEMA: "radish"
     volumes:
       - backend-postgres-data:/var/lib/postgresql/data
       - ./docker/backend-db/init:/docker-entrypoint-initdb.d:ro

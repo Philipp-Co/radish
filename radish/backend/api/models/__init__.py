@@ -46,6 +46,9 @@ from api.models.limits import (
     MAX_UNIT_ENTITIES,
     MAX_WEAPONS_PER_ENTITY,
     SPRITE_KEY_PATTERN,
+    TERRAIN_DECOR_MAX,
+    TERRAIN_DECOR_OFFSET_MAX,
+    EFFECT_FIRST_FRAME_MAX,
     MaxUtf8BytesValidator,
 )
 from api.models.species import Species
@@ -56,6 +59,8 @@ from api.models.weapon import Weapon
 from api.models.equipment import Equipment
 from api.models.terrain_code import TerrainCode
 from api.models.terrain_type import TerrainType
+from api.models.terrain_image import TerrainImage
+from api.models.terrain_decor import TerrainDecor
 from api.models.army import Army
 from api.models.unit import Unit
 from api.models.unit_entity import UnitEntity
@@ -65,14 +70,27 @@ from api.models.unit_entity_equipment import UnitEntityEquipment
 # ---------------------------------------------------------------------------
 # Einheitenbilder
 #
-# Hochgeladene Bilder fuer die Einheiten im Spiel (UnitSprite mit seinen PNGs
-# und Atlanten); die aus dem Build (radish/assets/units/) stehen nicht hier.
+# Die Bilder fuer die Einheiten im Spiel (UnitSprite mit seinen PNGs und
+# Atlanten) -- alle hier; der Client-Build bringt keine mit.
 # Ein Einheitentyp nennt eines ueber seinen Schluessel (UnitType.sprite).
 # ---------------------------------------------------------------------------
 
 from api.models.unit_sprite import UnitSprite
 from api.models.unit_sprite_image import UnitSpriteImage
 from api.models.unit_sprite_atlas import ROTATIONS, SpriteAnimation, SpriteFacing, UnitSpriteAtlas
+
+# ---------------------------------------------------------------------------
+# Effekte
+#
+# Die Bilder der Effekte im Spiel, etwa der Explosionen (Effect mit seinen
+# PNGs und je Richtung einem Atlas) -- wie die Einheitenbilder alle hier; der
+# Client-Build bringt keine mit. Kein Katalogeintrag nennt sie, der Client
+# findet sie im Manifest.
+# ---------------------------------------------------------------------------
+
+from api.models.effect import Effect, EffectKind
+from api.models.effect_image import EffectImage
+from api.models.effect_atlas import EffectAtlas
 
 __all__ = [
     "GameServer",
@@ -93,6 +111,10 @@ __all__ = [
     "Equipment",
     "TerrainCode",
     "TerrainType",
+    "TerrainImage",
+    "TerrainDecor",
+    "TERRAIN_DECOR_MAX",
+    "TERRAIN_DECOR_OFFSET_MAX",
     "Army",
     "Unit",
     "UnitEntity",
@@ -111,4 +133,9 @@ __all__ = [
     "SPRITE_DURATION_MS_MAX",
     "SPRITE_FILE_NAME_PATTERN",
     "SPRITE_IMAGE_BYTES_MAX",
+    "Effect",
+    "EffectKind",
+    "EffectImage",
+    "EffectAtlas",
+    "EFFECT_FIRST_FRAME_MAX",
 ]

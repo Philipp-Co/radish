@@ -7,7 +7,7 @@ class TerrainCode(models.TextChoices):
     game/model/model.h), unter dem Namen, unter dem sie im Spielstart stehen
     (radish/game/schema/spielstart.schema.json, "gelaende"). Ein neuer Typ
     kommt im Spiel, im Schema und hier dazu -- und mit seiner Zeile in den
-    Dump api/fixtures/seed.json (die Migrationen enthalten nur das Schema).
+    Dump api/fixtures/seed.sql (die Migrationen enthalten nur das Schema).
 
     Die Bezeichnungen sind fuer den Adminbereich; der Spiel-Client fuehrt
     seine eigenen Anzeigenamen.

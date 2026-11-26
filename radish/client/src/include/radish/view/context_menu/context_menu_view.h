@@ -2,13 +2,13 @@
 #define __RAD_VIEW_CONTEXT_MENU_CONTEXT_MENU_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <radish/rendering/font.h>
+#include <radish/view/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/io/net_session.h>
 #include <radish/model/reserve.h>
 #include <radish/model/world.h>
-#include <radish/rendering/iso_map.h>
+#include <radish/view/rendering/iso_map.h>
 #include <radish/view/context_menu/context_menu_item.h>
 #include <radish/view/context_menu/context_menu_state_machine.h>
 #include <radish/view/unit_deployment_view.h>

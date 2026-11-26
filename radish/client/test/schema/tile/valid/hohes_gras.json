@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "image": "grass_tile.png",
+  "decor": [
+    { "image": "high_grass_back.png", "offset_x": 6, "offset_y": -66, "in_front": false },
+    { "image": "high_grass_front.png", "offset_x": 6, "offset_y": -66, "in_front": true }
+  ]
+}

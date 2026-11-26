@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <radish/rendering/iso_unit_sprite.h>
+#include <radish/view/rendering/iso_unit_sprite.h>
 
 ///
 /// Der Leser der sprite.json (rendering/iso_unit_sprite.h). Gelesen wird aus
@@ -40,7 +40,7 @@ static RAD_IsoUnitSpriteResult_t lade(const char *json, RAD_IsoUnitSpriteInfo_t 
 void test_sprite_liest_den_panzer(void)
 {
     RAD_IsoUnitSpriteInfo_t info;
-    TEST_ASSERT_EQUAL_INT(RAD_ISO_UNIT_SPRITE_OK, lade_datei(RAD_ASSETS_DIR "/units/heavy_tank/sprite.json", &info));
+    TEST_ASSERT_EQUAL_INT(RAD_ISO_UNIT_SPRITE_OK, lade_datei(RAD_SPRITE_EXAMPLES_DIR "/valid/schwerer_panzer.json", &info));
 
     const RAD_IsoUnitAtlasInfo_t *turn = &info.atlases[RAD_ISO_UNIT_ATLAS_TURN];
     TEST_ASSERT_EQUAL_STRING("turn.png", turn->file);
@@ -127,7 +127,7 @@ void test_sprite_weist_die_ungueltigen_beispiele_ab(void)
 ///
 void test_sprite_prueft_die_schluesselbilder(void)
 {
-    const size_t length = lies(RAD_ASSETS_DIR "/units/heavy_tank/sprite.json");
+    const size_t length = lies(RAD_SPRITE_EXAMPLES_DIR "/valid/schwerer_panzer.json");
     datei[length] = '\0';
     char *keys = strstr(datei, "\"key_frames\": [\n        0,\n        100,");
     TEST_ASSERT_NOT_NULL_MESSAGE(keys, "Aufbau der sprite.json des Panzers hat sich geaendert");

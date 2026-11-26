@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <radish/io/net_types.h>
-#include <radish/events/event_manager.h>
+#include <radish/io/net_event_manager.h>
 #include <radish/io/net_inbox.h>
 
 ///
@@ -12,7 +12,7 @@
 /// Implementierung (protobuf/*.proto, uebersetzt nach
 /// build/protobuf/generated/*.pb-c.* -- siehe protobuf/CMakeLists.txt). Aufrufer
 /// in main.c sehen nur die Typen aus io/net_types.h und die Verteilung aus
-/// events/event_manager.h, keinen der generierten NetXxx-Typen und kein
+/// io/net_event_manager.h, keinen der generierten NetXxx-Typen und kein
 /// protobuf-c-Symbol. Die *.pb-c.h landen ausschliesslich in
 /// net_codec.c.
 ///
@@ -31,7 +31,7 @@
 /// **Spiel- und Tile-Ereignisse sind dagegen vollstaendig abgebildet.**
 /// protobuf/event.proto/game.proto/tile.proto kennen keine nicht modellierten
 /// Varianten wie command.proto -- jede Variante von NetGameEvent/NetTileEvent
-/// hat ein Gegenstueck in events/event_manager.h und wird dorthin
+/// hat ein Gegenstueck in io/net_event_manager.h und wird dorthin
 /// veroeffentlicht.
 ///
 typedef enum
@@ -190,7 +190,7 @@ RAD_NetCodecResult_t RAD_NetEnqueueServerMessage(RAD_IoNetInbox_t *inbox,
 ///
 /// Nimmt die aelteste Nachricht aus "inbox", liest sie als NetServerMessage
 /// (protobuf/message.proto) und veroeffentlicht sie ueber "events"
-/// (events/event_manager.h). Das ist der einzige Weg, eine eingehende Nachricht
+/// (io/net_event_manager.h). Das ist der einzige Weg, eine eingehende Nachricht
 /// vom Server zu lesen; main.c ruft ihn je Frame, solange die Darstellung
 /// bereit ist (RAD_ViewIsBusy).
 ///

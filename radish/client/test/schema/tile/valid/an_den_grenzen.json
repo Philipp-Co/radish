@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "image": "abcdefghijklmnopqrstuvwxyz0.png",
+  "decor": [
+    { "image": "a.png", "offset_x": -128, "offset_y": -128 },
+    { "image": "b.png", "offset_x": 128, "offset_y": 128, "in_front": true }
+  ]
+}

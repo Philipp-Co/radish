@@ -1,5 +1,8 @@
 import {
   EntityProfile,
+  Equipment,
+  EquipmentModifiers,
+  ProfileRestricted,
   SpeciesCatalog,
   UnitType,
   Weapon,
@@ -245,17 +248,51 @@ export function unitProblems(species: SpeciesCatalog, type: UnitType, unit: Draf
         const found = weapon(id);
         if (found && found.weapon_class !== weaponClass.weaponClass) {
           problems.push(`${label}: ${found.name} ist keine ${weaponClass.label} mehr`);
+        } else if (found && !mayCarry(found, type, profile)) {
+          problems.push(`${label}: ${profile.name} darf ${found.name} nicht führen`);
         }
       }
     }
-    const equipment = filled(entity.equipmentIds);
-    if (equipment.length > profile.equipment_slots) {
-      problems.push(
-        `${label}: ${equipment.length} Ausrüstung, nur ${profile.equipment_slots} Slots`,
-      );
-    }
+    problems.push(...equipmentProblems(species, type, profile, filled(entity.equipmentIds), label));
   });
   return problems;
+}
+
+/** Slots, jeder Gegenstand nur einmal, und ob das Profil ihn tragen darf. */
+function equipmentProblems(
+  species: SpeciesCatalog,
+  type: UnitType,
+  profile: EntityProfile,
+  ids: number[],
+  label: string,
+): string[] {
+  const problems: string[] = [];
+  if (ids.length > profile.equipment_slots) {
+    problems.push(`${label}: ${ids.length} Ausrüstung, nur ${profile.equipment_slots} Slots`);
+  }
+  const seen = new Set<number>();
+  for (const id of ids) {
+    const item = species.equipment.find((entry) => entry.id === id);
+    if (seen.has(id)) {
+      problems.push(`${label}: ${item?.name ?? 'Ausrüstung'} doppelt`);
+    } else if (item && !mayCarry(item, type, profile)) {
+      problems.push(`${label}: ${profile.name} darf ${item.name} nicht tragen`);
+    }
+    seen.add(id);
+  }
+  return problems;
+}
+
+/**
+ * Ob eine Entitaet mit diesem Profil (vom Einheitentyp type) die Waffe bzw.
+ * den Gegenstand tragen darf -- dieselbe Regel wie im Backend
+ * (models.ProfileRestricted.allows).
+ */
+export function mayCarry(entry: ProfileRestricted, type: UnitType, profile: EntityProfile): boolean {
+  if (entry.unit_type_ids.length === 0 && entry.profile_ids.length === 0) {
+    return true;
+  }
+  return entry.unit_type_ids.includes(type.id) || entry.profile_ids.includes(profile.id);
 }
 
 export function weaponStats(weapon: Weapon): string {
@@ -268,4 +305,98 @@ export function weaponStats(weapon: Weapon): string {
 /** Reichweite als Spanne, z.B. "6–72"; ohne Mindestreichweite nur "24". */
 export function rangeLabel(weapon: Weapon): string {
   return weapon.min_range > 0 ? `${weapon.min_range}–${weapon.max_range}` : `${weapon.max_range}`;
+}
+
+/** Die Gegenstaende einer Entitaet, ohne leere Slots und unbekannte ids. */
+export function equipmentOf(species: SpeciesCatalog, entity: DraftEntity): Equipment[] {
+  return entity.equipmentIds
+    .map((id) => species.equipment.find((item) => item.id === id))
+    .filter((item): item is Equipment => item !== undefined);
+}
+
+function modifierSum(items: Equipment[], modifier: keyof EquipmentModifiers): number {
+  return items.reduce((sum, item) => sum + item[modifier], 0);
+}
+
+/** Ein Wert fuer die Anzeige: Kuerzel, Endwert und die Aenderung durch Ausruestung. */
+export interface StatCell {
+  short: string;
+  label: string;
+  value: string;
+  delta: number;
+}
+
+type ProfileStat = 'health' | 'armor' | 'toughness' | 'strength' | 'accuracy';
+
+const PROFILE_STATS: { key: ProfileStat; short: string; label: string; modifier: keyof EquipmentModifiers }[] = [
+  { key: 'health', short: 'LP', label: 'Lebenspunkte', modifier: 'health_modifier' },
+  { key: 'armor', short: 'RP', label: 'Rüstungspunkte', modifier: 'armor_modifier' },
+  { key: 'toughness', short: 'WI', label: 'Widerstand', modifier: 'toughness_modifier' },
+  { key: 'strength', short: 'ST', label: 'Stärke', modifier: 'strength_modifier' },
+  { key: 'accuracy', short: 'TS', label: 'Treffsicherheit', modifier: 'accuracy_modifier' },
+];
+
+/**
+ * Die Werte des Profils mit allen Modifikatoren der Ausruestung; kein Wert
+ * faellt unter 0.
+ */
+export function profileStatCells(profile: EntityProfile, items: Equipment[]): StatCell[] {
+  return PROFILE_STATS.map(({ key, short, label, modifier }) => {
+    const value = Math.max(0, profile[key] + modifierSum(items, modifier));
+    return { short, label, value: `${value}`, delta: value - profile[key] };
+  });
+}
+
+/**
+ * Eine Waffe mit den weapon_*-Modifikatoren der Ausruestung ihres Traegers.
+ * Kein Wert faellt unter 0, die Maximalreichweite nicht unter die
+ * Mindestreichweite.
+ */
+export function modifiedWeapon(weapon: Weapon, items: Equipment[]): Weapon {
+  return {
+    ...weapon,
+    shots: Math.max(0, weapon.shots + modifierSum(items, 'weapon_shots_modifier')),
+    strength: Math.max(0, weapon.strength + modifierSum(items, 'weapon_strength_modifier')),
+    max_range: Math.max(weapon.min_range, weapon.max_range + modifierSum(items, 'weapon_range_modifier')),
+    armor_penetration: Math.max(
+      0,
+      weapon.armor_penetration + modifierSum(items, 'weapon_armor_penetration_modifier'),
+    ),
+  };
+}
+
+/** Die Werte einer Waffe mit der Ausruestung ihres Traegers, wie weaponStats. */
+export function weaponStatCells(weapon: Weapon, items: Equipment[]): StatCell[] {
+  const modified = modifiedWeapon(weapon, items);
+  return [
+    { short: 'S', label: 'Schüsse', value: `${modified.shots}`, delta: modified.shots - weapon.shots },
+    { short: 'ST', label: 'Stärke', value: `${modified.strength}`, delta: modified.strength - weapon.strength },
+    {
+      short: 'RW',
+      label: 'Reichweite',
+      value: rangeLabel(modified),
+      delta: modified.max_range - weapon.max_range,
+    },
+    {
+      short: 'DK',
+      label: 'Durchschlagskraft',
+      value: `${modified.armor_penetration}`,
+      delta: modified.armor_penetration - weapon.armor_penetration,
+    },
+  ];
+}
+
+/** Die Modifikatoren eines Gegenstands in Kurzform, z.B. "RP +1 · S −1"; "" ohne. */
+export function modifierSummary(item: Equipment): string {
+  const parts: [string, number][] = [
+    ...PROFILE_STATS.map(({ short, modifier }): [string, number] => [short, item[modifier]]),
+    ['Waffen S', item.weapon_shots_modifier],
+    ['Waffen ST', item.weapon_strength_modifier],
+    ['Waffen RW', item.weapon_range_modifier],
+    ['Waffen DK', item.weapon_armor_penetration_modifier],
+  ];
+  return parts
+    .filter(([, value]) => value !== 0)
+    .map(([short, value]) => `${short} ${value > 0 ? '+' : '−'}${Math.abs(value)}`)
+    .join(' · ');
 }

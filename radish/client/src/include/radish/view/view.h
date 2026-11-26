@@ -2,12 +2,12 @@
 #define __RAD_VIEW_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <radish/rendering/font.h>
+#include <radish/view/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <radish/model/focus.h>
 #include <radish/model/world.h>
-#include <radish/rendering/iso_map.h>
+#include <radish/view/rendering/iso_map.h>
 #include <radish/io/net_session.h>
 
 ///
@@ -82,7 +82,7 @@
 /// RootView beobachtet sie (model/unit.h) und fuellt die UnitInfoView neu, wenn
 /// sie sich aendert.
 ///
-/// **Sie haelt die Kamera-Steuerung** (io/camera_control.h) fuer die Iso-Map
+/// **Sie haelt die Kamera-Steuerung** (view/camera_control.h) fuer die Iso-Map
 /// und gibt ihr in RAD_UpdateView jedes SDL-Ereignis zuerst: die rechte
 /// Maustaste verschiebt die Kamera. Die Tastatur wertet sie nicht aus; SDL
 /// meldet dafuer im Browser gar nicht erst Listener an. **Danach gehen Maustasten an die
@@ -114,7 +114,7 @@ typedef struct RAD_RootView RAD_RootView_t;
 
 ///
 /// Initialisiert SDL, oeffnet ein Fenster "title" mit width x height Pixeln
-/// samt Renderer, laedt die Schrift "font_path" (rendering/font.h) in
+/// samt Renderer, laedt die Schrift "font_path" (view/rendering/font.h) in
 /// "font_size" Pixeln und legt ihre Views an, alle sichtbar. Die
 /// IsoMapView zeichnet "map", die Kamera-Steuerung verschiebt deren Kamera; die
 /// Map gehoert dem Aufrufer und muss die RootView ueberleben. Ebenso

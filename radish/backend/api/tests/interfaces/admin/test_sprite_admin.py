@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from api.domain.sprites.problems import REQUIRED_ATLASES
 from api.models import ROTATIONS, Species, UnitSprite, UnitSpriteImage, UnitType
 from api.tests.helpers import ADMIN_TOKEN, PLAYER_TOKEN, TestResponse, User, authenticate
-from api.tests.sprite_helpers import create_complete_sprite, png_bytes, use_built_manifest
+from api.tests.sprite_helpers import create_complete_sprite, png_bytes
 
 URL = "/api/admin/sprites/"
 
@@ -36,7 +36,6 @@ class SpriteAdminTests(APITestCase):
 
     def setUp(self) -> None:
         authenticate(self.client, User.objects.create(username="sprite-admin"), ADMIN_TOKEN)
-        use_built_manifest(self)
 
     def create(self, key: str = "infantry") -> int:
         response: TestResponse = self.client.post(URL, {"key": key}, format="json")
@@ -56,12 +55,6 @@ class SpriteAdminTests(APITestCase):
         self.assertFalse(response.data["complete"])
         self.assertEqual(len(response.data["problems"]), 17)
         self.assertEqual(response.data["draw_width"], 128)
-
-    def test_key_of_a_built_sprite_is_rejected(self) -> None:
-        response: TestResponse = self.client.post(URL, {"key": "heavy_tank"}, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("key", response.data)
 
     def test_key_cannot_change(self) -> None:
         sprite_id: int = self.create()

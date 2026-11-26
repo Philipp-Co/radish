@@ -3,7 +3,7 @@
 # Migriert wird vorher vom Service "backend-migrate" (siehe
 # docker-compose.yaml, docker/backend-migrate/), das Backend darf das Schema
 # gar nicht aendern (Benutzer radish_app, siehe
-# docker/backend-db/init/01-roles.sh). Hier nur die Pruefung: fehlt eine
+# docker/backend-db/init/01-roles.sql). Hier nur die Pruefung: fehlt eine
 # Migration (oder ist die Datenbank nicht erreichbar), bricht der Container
 # ab, statt daphne auf einem veralteten Schema zu starten.
 set -e

@@ -4,13 +4,8 @@ Groesse und ein vollstaendiges Bild mit allen 17 Atlanten.
 """
 
 import hashlib
-import json
-from pathlib import Path
 import struct
-import tempfile
 import zlib
-
-from django.test import SimpleTestCase, override_settings
 
 from api.domain.sprites.problems import REQUIRED_ATLASES
 from api.models import ROTATIONS, UnitSprite, UnitSpriteAtlas, UnitSpriteImage
@@ -67,18 +62,3 @@ def create_complete_sprite(key: str = "infantry") -> UnitSprite:
             fps=None if rotation else 10.0,
         )
     return sprite
-
-
-def use_built_manifest(test_case: SimpleTestCase) -> None:
-    """
-    Ein Build mit dem Bild "heavy_tank" fuer die Dauer des Tests -- wie
-    radish/web/assets/manifest.json (settings.RADISH_WASM_DIR).
-    """
-    # pylint kennt enterContext nicht: der Kontext wird dort geschlossen.
-    # pylint: disable-next=consider-using-with
-    wasm_dir: Path = Path(test_case.enterContext(tempfile.TemporaryDirectory()))
-    (wasm_dir / "assets").mkdir()
-    (wasm_dir / "assets" / "manifest.json").write_text(
-        json.dumps({"/assets/units/heavy_tank/sprite.json": "units/heavy_tank/sprite.0123456789ab.json"})
-    )
-    test_case.enterContext(override_settings(RADISH_WASM_DIR=wasm_dir))

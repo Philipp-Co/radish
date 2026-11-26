@@ -7,27 +7,31 @@
 #include <string.h>
 #include <time.h>
 
-#include <radish/rendering/iso_map.h>
-#include <radish/rendering/iso_object.h>
-#include <radish/rendering/iso_tile_images.h>
-#include <radish/rendering/iso_effect_images.h>
-#include <radish/rendering/iso_unit_images.h>
+#include <radish/view/rendering/iso_map.h>
+#include <radish/view/rendering/iso_object.h>
+#include <radish/view/rendering/iso_tile_images.h>
+#include <radish/view/rendering/iso_effect_images.h>
+#include <radish/view/rendering/iso_unit_images.h>
 #include <radish/io/net_codec.h>
 #include <radish/io/net_event_handler.h>
 #include <radish/io/net_inbox.h>
 #include <radish/io/net_request.h>
 #include <radish/io/net_session.h>
-#include <radish/events/event_manager.h>
+#include <radish/io/net_event_manager.h>
 #include <radish/model/focus.h>
 #include <radish/model/world.h>
 #include <radish/view/view.h>
 
-#define WINDOW_WIDTH (SCREEN_WIDTH)
-#define WINDOW_HEIGHT (SCREEN_HEIGHT)
+///
+/// Die Groesse des Fensters, in Pixeln. Nur hier: niemand sonst im Client
+/// rechnet damit.
+///
+#define WINDOW_WIDTH (1280)
+#define WINDOW_HEIGHT (960)
 #define MAX_INPUT_LENGTH 64
 ///
 /// Dieselbe Schrift wie im Frontend: Michroma (assets/fonts/michroma/), nur der
-/// Schnitt 400 -- wie dort. Als Bitmap-Atlas in 32 Pixeln (rendering/font.h);
+/// Schnitt 400 -- wie dort. Als Bitmap-Atlas in 32 Pixeln (view/rendering/font.h);
 /// FONT_SIZE verkleinert ihn.
 ///
 #define FONT_PATH "/assets/fonts/michroma/michroma_32.fnt"
@@ -71,7 +75,7 @@ static RAD_ClientFocus_t focus = { .tile = NULL };
 
 ///
 /// Verteilt, was der Server ueber die Verbindung schickt
-/// (events/event_manager.h). Nur ein Zeiger: RAD_CreateNetEventManager legt ihn
+/// (io/net_event_manager.h). Nur ein Zeiger: RAD_CreateNetEventManager legt ihn
 /// selbst an.
 ///
 static RAD_NetEventManager_t *net_event_manager;

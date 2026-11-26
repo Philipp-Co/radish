@@ -7,21 +7,22 @@ Einheitentypen es nennen.
 
 import hashlib
 import re
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework import serializers
 
-from api.domain.sprites.builtin import built_sprite_keys
 from api.domain.sprites.png import InvalidPng, png_size
 from api.domain.sprites.problems import FACINGS, sprite_problems
 from api.models import (
+    EffectImage,
     SPRITE_FILE_NAME_PATTERN,
     SPRITE_FRAME_SIZE_MAX,
     SPRITE_FRAMES_MAX,
     SPRITE_IMAGE_BYTES_MAX,
     SpriteAnimation,
     SpriteFacing,
+    TerrainImage,
     UnitSprite,
     UnitSpriteAtlas,
     UnitSpriteImage,
@@ -87,7 +88,7 @@ class AdminSpriteAtlasSerializer(serializers.ModelSerializer):
 class AdminSpriteSerializer(serializers.ModelSerializer):
     """
     Ein Bild mit allem, was der Adminbereich zeigt. Der Schluessel steht nach
-    dem Anlegen fest (UnitSprite) und darf keiner aus dem Build sein.
+    dem Anlegen fest (UnitSprite).
     """
 
     images = AdminSpriteImageSerializer(many=True, read_only=True)
@@ -131,10 +132,6 @@ class AdminSpriteSerializer(serializers.ModelSerializer):
     def validate_key(self, value: str) -> str:
         if self.instance is not None and value != self.instance.key:
             raise serializers.ValidationError("Der Schluessel aendert sich nach dem Anlegen nicht mehr.")
-        if self.instance is None and value in built_sprite_keys():
-            raise serializers.ValidationError(
-                f"„{value}“ ist schon ein Bild aus dem Build (radish/assets/units/) -- bitte einen anderen Schluessel."
-            )
         return value
 
 
@@ -178,6 +175,25 @@ class SpriteImageUploadSerializer(serializers.Serializer):
         }
         # Die Stubs erwarten dict[str, object]; ein TypedDict ist eines.
         return dict(uploaded)
+
+
+# Die Felder einer PNG, die replace_png neu setzt -- fuer save(update_fields=...).
+REPLACED_PNG_FIELDS: list[str] = ["data", "sha256", "width", "height"]
+
+
+def replace_png(image: UnitSpriteImage | TerrainImage | EffectImage, file: object) -> None:
+    """
+    Setzt Inhalt, Hash und Groesse von "image" aus der hochgeladenen Datei
+    "file" -- der Name bleibt. Gespeichert wird nicht. ValidationError wie beim
+    Hochladen (SpriteImageUploadSerializer).
+    """
+    upload: SpriteImageUploadSerializer = SpriteImageUploadSerializer(data={"file": file, "name": image.name})
+    upload.is_valid(raise_exception=True)
+    data: UploadedPng = cast(UploadedPng, upload.validated_data)
+    image.data = data["data"]
+    image.sha256 = data["sha256"]
+    image.width = data["width"]
+    image.height = data["height"]
 
 
 def _checked_data(upload: UploadedFile) -> bytes:

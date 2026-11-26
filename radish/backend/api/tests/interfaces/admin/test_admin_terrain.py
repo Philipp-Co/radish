@@ -36,13 +36,13 @@ class AdminTerrainTests(APITestCase):
         self.assertEqual(
             forest,
             {"code": "forest", "label": "Wald", "movement_modifier": -1, "cover": 2, "impassable": False,
-             "blocks_sight": True},
+             "blocks_sight": True, "image_id": None, "images": [], "decor": []},
         )
         self.assertTrue(find_by(terrain, code="water_deep")["impassable"])
         self.assertEqual(
             find_by(terrain, code="dragons_teeth"),
             {"code": "dragons_teeth", "label": "Drachenzaehne", "movement_modifier": 0, "cover": 0,
-             "impassable": True, "blocks_sight": False},
+             "impassable": True, "blocks_sight": False, "image_id": None, "images": [], "decor": []},
         )
         self.assertEqual(
             [e["code"] for e in terrain if e["blocks_sight"]], ["forest", "city", "fortification", "high_grass"]

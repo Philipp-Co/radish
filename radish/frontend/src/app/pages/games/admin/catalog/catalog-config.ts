@@ -62,7 +62,7 @@ export const CATALOG_MODELS: CatalogModel[] = [
         label: 'Bild',
         type: 'select',
         optionsFrom: 'unit-sprites',
-        hint: 'Bild im Spiel: ein Ordner unter assets/units/ mit sprite.json. Ohne Bild zeichnet das Spiel ein Rechteck.',
+        hint: 'Bild im Spiel: ein vollständiges Einheitenbild (Adminbereich „Einheitenbilder“). Ohne Bild zeichnet das Spiel ein Rechteck.',
       },
       { key: 'min_entities', label: 'Min. Entitäten', type: 'number' },
       { key: 'max_entities', label: 'Max. Entitäten', type: 'number' },
@@ -175,11 +175,79 @@ export const CATALOG_MODELS: CatalogModel[] = [
     title: 'Ausrüstung',
     singular: 'Ausrüstung',
     parent: 'species',
+    // Wer den Gegenstand tragen darf, waehlt auf der Seite "Ändern" ein
+    // eigener Abschnitt (CarrierRestrictionsComponent); neu angelegt darf
+    // ihn jede Entitaet der Spezies tragen -- ebenso bei Waffen.
     fields: [
       { key: 'name', label: 'Name', type: 'text' },
       { key: 'cost', label: 'Kosten', type: 'number' },
+      {
+        section: 'Ändert die Werte des Trägers (±)',
+        key: 'health_modifier',
+        label: 'Lebenspunkte',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Lebenspunkte des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'armor_modifier',
+        label: 'Rüstung',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Rüstung des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'toughness_modifier',
+        label: 'Widerstand',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert den Widerstand des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'strength_modifier',
+        label: 'Stärke',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Stärke des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'accuracy_modifier',
+        label: 'Treffsicherheit',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Treffsicherheit des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        section: 'Ändert jede Waffe des Trägers (±)',
+        key: 'weapon_shots_modifier',
+        label: 'Schüsse',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Schüsse jeder Waffe des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'weapon_strength_modifier',
+        label: 'Stärke',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Stärke jeder Waffe des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'weapon_range_modifier',
+        label: 'Reichweite',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Maximalreichweite jeder Waffe des Trägers (nie unter die Mindestreichweite) um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
+      {
+        key: 'weapon_armor_penetration_modifier',
+        label: 'Durchschlag',
+        type: 'number',
+        signed: true,
+        hint: 'Ändert die Durchschlagskraft jeder Waffe des Trägers um diesen Betrag, auch negativ; 0 = keine Änderung.',
+      },
     ],
-    blank: () => ({ name: '', cost: null }),
+    blank: () => ({ name: '', cost: null, health_modifier: 0, armor_modifier: 0, toughness_modifier: 0, strength_modifier: 0, accuracy_modifier: 0, weapon_shots_modifier: 0, weapon_strength_modifier: 0, weapon_range_modifier: 0, weapon_armor_penetration_modifier: 0 }),
   },
 ];
 
@@ -198,6 +266,13 @@ export const CATALOG_FIELD_LABELS: Record<string, string> = {
   ),
   species_id: 'Spezies',
   unit_type_id: 'Einheitentyp',
+  // Im Formular stehen sie unter "jede Waffe" -- in einer Meldung fehlt der Abschnitt.
+  weapon_shots_modifier: 'Waffen: Schüsse',
+  weapon_strength_modifier: 'Waffen: Stärke',
+  weapon_range_modifier: 'Waffen: Reichweite',
+  weapon_armor_penetration_modifier: 'Waffen: Durchschlag',
+  unit_type_ids: 'Einheitentypen',
+  profile_ids: 'Profile',
 };
 
 /** Kontext in der Trefferliste, z.B. "Trupp · Menschen" bei einem Profil. */

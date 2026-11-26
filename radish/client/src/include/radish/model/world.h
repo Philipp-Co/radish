@@ -9,7 +9,7 @@
 #include <radish/model/tile.h>
 #include <radish/model/unit.h>
 #include <radish/model/unit_repository.h>
-#include <radish/rendering/iso_definitions.h>
+#include <radish/model/definitions.h>
 
 ///
 /// Was der Client von der Welt weiss -- und nur das.
@@ -24,8 +24,9 @@
 /// eigene Typen. Was der Server schickt, uebersetzen die Event-Handler
 /// (io/net_event_handler/), bevor es hier ankommt.
 ///
-/// Das Raster ist so gross wie das der Darstellung (RAD_ISO_MAP_SIZE). Ein Feld
-/// ausserhalb davon wird verworfen, genau wie in der Iso-Map.
+/// Das Raster ist RAD_ISO_MAP_SIZE Felder gross (model/definitions.h); die
+/// Iso-Map legt ihres danach an. Ein Feld ausserhalb davon wird verworfen,
+/// dort genau wie hier.
 ///
 /// **Alle Einheiten stehen im Unit-Repository der Welt** ("units",
 /// model/unit_repository.h) -- die in einer Reserve wie die auf dem Feld. Eine

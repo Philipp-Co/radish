@@ -1,6 +1,7 @@
 # Migrator fuer die Datenbank des Django-Backends (radish/backend/): fuehrt
-# einmal `migrate` aus, fuellt je nach RADISH_DB_SEED die Inhalte aus
-# api/fixtures/seed.json ein (siehe entrypoint.sh) und endet. Laeuft beim
+# einmal `migrate` aus und endet (siehe entrypoint.sh). Inhalte laedt er
+# nicht -- den Dump der Kataloge (api/fixtures/seed.sql) laedt ein Admin von
+# Hand, er ist deshalb auch nicht im Image. Laeuft beim
 # Deployment vor dem Backend
 # (Service "backend-migrate" in docker-compose.yaml); das Backend selbst
 # aendert das Schema nicht mehr, sondern prueft beim Start nur, dass nichts
@@ -37,9 +38,6 @@ COPY radish/backend/api/__init__.py radish/backend/api/apps.py /app/api/
 # importiert -- fehlte eine, braeche der Migrator schon beim Start ab.
 COPY radish/backend/api/models/ /app/api/models/
 COPY radish/backend/api/migrations/ /app/api/migrations/
-COPY radish/backend/api/management/__init__.py /app/api/management/
-COPY radish/backend/api/management/commands/__init__.py radish/backend/api/management/commands/seed.py /app/api/management/commands/
-COPY radish/backend/api/fixtures/seed.json /app/api/fixtures/
 COPY docker/backend-migrate/entrypoint.sh /entrypoint.sh
 # Nicht als root; der Migrator schreibt nichts ins Dateisystem. COPY
 # uebernimmt die Rechte aus dem Arbeitsverzeichnis, dort sind manche Dateien

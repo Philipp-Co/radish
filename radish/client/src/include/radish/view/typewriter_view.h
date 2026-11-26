@@ -2,7 +2,7 @@
 #define __RAD_VIEW_TYPEWRITER_VIEW_H__
 
 #include <SDL2/SDL.h>
-#include <radish/rendering/font.h>
+#include <radish/view/rendering/font.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -19,7 +19,7 @@
 ///
 /// **Den Renderer haelt sie nicht selbst**, sie bekommt ihn bei jedem Update
 /// (view/view.h) und zeichnet Text und Cursor dort mit ihrer Schrift
-/// (rendering/font.h).
+/// (view/rendering/font.h).
 ///
 
 ///

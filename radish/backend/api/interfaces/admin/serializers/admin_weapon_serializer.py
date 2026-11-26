@@ -4,11 +4,15 @@
 
 from rest_framework import serializers
 
-from api.interfaces.admin.serializers.catalog_admin_serializer import _CatalogAdminSerializer, _current_or_new, _value
+from api.interfaces.admin.serializers.catalog_admin_serializer import (
+    _current_or_new,
+    _RestrictedCatalogAdminSerializer,
+    _value,
+)
 from api.models import Species, Weapon
 
 
-class AdminWeaponSerializer(_CatalogAdminSerializer):
+class AdminWeaponSerializer(_RestrictedCatalogAdminSerializer):
     species_id = serializers.PrimaryKeyRelatedField(
         queryset=Species.objects.all(), source="species"
     )
@@ -30,6 +34,8 @@ class AdminWeaponSerializer(_CatalogAdminSerializer):
             "max_range",
             "armor_penetration",
             "cost",
+            "unit_type_ids",
+            "profile_ids",
             "in_use",
         ]
 

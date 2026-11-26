@@ -73,7 +73,7 @@ SERVER_TOKEN: TestToken = {"realm_access": {"roles": ["Technischer-User-Server"]
 
 # Fester Katalog fuer die Tests: die Spezies "Menschen" und je TerrainCode
 # eine Zeile. Die Migrationen enthalten nur das Schema, und der Dump
-# api/fixtures/seed.json aendert sich mit jeder Pflege der Daten -- die Tests
+# api/fixtures/seed.sql aendert sich mit jeder Pflege der Daten -- die Tests
 # sollen davon nicht abhaengen. Die Werte sind die, mit denen das Gelaende
 # frueher angelegt wurde.
 TEST_TERRAIN: list[tuple[str, int, int, bool, bool]] = [
@@ -169,6 +169,22 @@ class WeaponPayload(TypedDict, total=False):
     max_range: int
     armor_penetration: int
     cost: int
+    unit_type_ids: list[int]
+    profile_ids: list[int]
+
+
+class EquipmentPayload(TypedDict, total=False):
+    """Admin-Katalog: Ausruestung. total=False wie bei WeaponPayload."""
+
+    species_id: int
+    name: str
+    cost: int
+    health_modifier: int
+    armor_modifier: int
+    weapon_shots_modifier: int
+    weapon_range_modifier: int
+    unit_type_ids: list[int]
+    profile_ids: list[int]
 
 
 class ProfilePayload(TypedDict, total=False):
@@ -261,6 +277,8 @@ class WeaponData(TypedDict):
     max_range: int
     armor_penetration: int
     cost: int
+    unit_type_ids: list[int]
+    profile_ids: list[int]
 
 
 class EquipmentData(TypedDict):
@@ -269,6 +287,17 @@ class EquipmentData(TypedDict):
     id: int
     name: str
     cost: int
+    health_modifier: int
+    armor_modifier: int
+    toughness_modifier: int
+    strength_modifier: int
+    accuracy_modifier: int
+    weapon_shots_modifier: int
+    weapon_strength_modifier: int
+    weapon_range_modifier: int
+    weapon_armor_penetration_modifier: int
+    unit_type_ids: list[int]
+    profile_ids: list[int]
 
 
 class SpeciesCatalogData(TypedDict):
@@ -320,3 +349,6 @@ class TerrainTypeData(TypedDict):
     cover: int
     impassable: bool
     blocks_sight: bool
+    image_id: int | None
+    images: list[dict[str, object]]
+    decor: list[dict[str, object]]

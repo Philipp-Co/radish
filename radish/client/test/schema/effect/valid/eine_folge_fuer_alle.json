@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "kind": "explosion",
+  "draw_width": 256,
+  "duration_ms": 2500,
+  "facings": {
+    "sw": {
+      "file": "explosion_0.png",
+      "frame_width": 128,
+      "frame_height": 128,
+      "first_frame": 0,
+      "frame_count": 146,
+      "anchor": {
+        "x": 0.586,
+        "y": 0.711
+      }
+    },
+    "se": {
+      "file": "explosion_0.png",
+      "frame_width": 128,
+      "frame_height": 128,
+      "first_frame": 0,
+      "frame_count": 146,
+      "anchor": {
+        "x": 0.586,
+        "y": 0.711
+      }
+    },
+    "ne": {
+      "file": "explosion_0.png",
+      "frame_width": 128,
+      "frame_height": 128,
+      "first_frame": 0,
+      "frame_count": 146,
+      "anchor": {
+        "x": 0.586,
+        "y": 0.711
+      }
+    },
+    "nw": {
+      "file": "explosion_0.png",
+      "frame_width": 128,
+      "frame_height": 128,
+      "first_frame": 0,
+      "frame_count": 146,
+      "anchor": {
+        "x": 0.586,
+        "y": 0.711
+      }
+    }
+  }
+}

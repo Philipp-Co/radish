@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radish.local/schema/tile.schema.json",
+  "title": "radish Tile-Bild",
+  "description": "Wie ein Tile-Typ aussieht: das Bild statt des Wuerfels und was darauf steht. Liegt als assets/tiles/<typ>/tile.json neben seinen PNGs; <typ> ist der Name des Tile-Typs wie im Spielstart (TerrainCode, z.B. forest). Fehlt die Datei, zeichnet der Client den Wuerfel in der Farbe des Typs. Erzeugt vom Backend aus der Datenbank (api/domain/tiles/document.py). Gelesen wird in feste Puffer (client/src/include/radish/view/rendering/iso_tile_sprite.h); was die Grenzen hier ueberschreitet, weist der Client ab.",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "image": {
+      "description": "Das Bild des Feldes statt des Wuerfels, gestreckt auf eine Kachel (RAD_ISO_TILE_WIDTH x 2 * RAD_ISO_TILE_HEIGHT). Fehlt es, bleibt der Wuerfel.",
+      "$ref": "#/$defs/file"
+    },
+    "decor": {
+      "description": "Was auf dem Feld steht, ohne darauf zu laufen (RAD_IsoDecor_t), in der Reihenfolge, in der es gezeichnet wird.",
+      "type": "array",
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/decor" }
+    }
+  },
+  "$defs": {
+    "file": {
+      "description": "Eine PNG im Ordner des Typs.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,27}\\.png$"
+    },
+    "offset": {
+      "description": "Versatz in Pixeln auf dem Bildschirm, hoechstens eine Feldhoehe (RAD_ISO_TILE_DECOR_OFFSET_MAX = RAD_ISO_TILE_HEIGHT) in jede Richtung.",
+      "type": "integer",
+      "minimum": -128,
+      "maximum": 128
+    },
+    "decor": {
+      "type": "object",
+      "required": ["image"],
+      "additionalProperties": false,
+      "properties": {
+        "image": { "description": "Das Bild, im selben Rahmen wie das Feld.", "$ref": "#/$defs/file" },
+        "offset_x": { "description": "Nach rechts, negativ nach links.", "$ref": "#/$defs/offset", "default": 0 },
+        "offset_y": { "description": "Nach unten, negativ nach oben.", "$ref": "#/$defs/offset", "default": 0 },
+        "in_front": { "description": "Ob sie nach den Figuren gezeichnet wird -- eine Einheit steht dann dahinter.", "type": "boolean", "default": false }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "image": "grass_tile.png",
+      "decor": [
+        { "image": "high_grass_back.png", "offset_x": 6, "offset_y": -66, "in_front": false },
+        { "image": "high_grass_front.png", "offset_x": 6, "offset_y": -66, "in_front": true }
+      ]
+    }
+  ]
+}

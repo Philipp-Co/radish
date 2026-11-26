@@ -2,7 +2,7 @@
 /// Einzige Uebersetzungseinheit des Clients, die die jsmn-Implementierung erzeugt
 /// -- wie game/src/serialization/jsmn_impl.c im Spiel, das der Client nicht
 /// einbindet. Ueberall sonst wird jsmn.h mit gesetztem JSMN_HEADER eingebunden
-/// (siehe rendering/iso_unit_sprite.c) und liefert nur die Deklarationen --
+/// (siehe view/rendering/iso_unit_sprite.c) und liefert nur die Deklarationen --
 /// sonst gaebe es die Symbole mehrfach.
 ///
 /// JSMN_STRICT lehnt alles ab, was nicht sauberes JSON ist: unquotierte Werte

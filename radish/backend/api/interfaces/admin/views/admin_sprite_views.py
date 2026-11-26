@@ -9,7 +9,7 @@ Clients (api/domain/sprites/publishing.py, web/interfaces/sprite_views.py) --
 damit in der Bild-Auswahl der Einheitentypen und im Spiel.
 """
 
-from typing import Any, cast
+from typing import Any
 
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, ProtectedError, QuerySet
@@ -26,12 +26,13 @@ from rest_framework.views import APIView
 from api.interfaces.admin.roles.has_admin_role import HasAdminRole
 from api.interfaces.admin.serializers.admin_sprite_serializer import (
     AdminSpriteAtlasSerializer,
+    REPLACED_PNG_FIELDS,
     AdminSpriteSerializer,
     SpriteImageUploadSerializer,
-    UploadedPng,
+    replace_png,
 )
 from api.interfaces.admin.views.admin_views import ConflictError
-from api.models import UnitSprite, UnitSpriteAtlas, UnitSpriteImage, UnitType
+from api.models import EffectImage, UnitSprite, UnitSpriteAtlas, UnitSpriteImage, UnitType
 
 
 def _sprites() -> QuerySet[UnitSprite]:
@@ -45,6 +46,17 @@ def _sprites() -> QuerySet[UnitSprite]:
 def _sprite_response(sprite_id: int, status_code: int = status.HTTP_200_OK) -> Response:
     """Das Bild frisch geladen -- mit dem Stand nach einer Aenderung."""
     return Response(AdminSpriteSerializer(_sprites().get(pk=sprite_id)).data, status=status_code)
+
+
+def delete_png(image: UnitSpriteImage | EffectImage) -> Response:
+    """Loescht eine PNG, solange kein Atlas sie zeigt (PROTECT) -- sonst 409."""
+    try:
+        image.delete()
+    except ProtectedError as exc:
+        raise ConflictError(
+            f"{image.name} wird noch von einem Atlas gezeigt und kann nicht geloescht werden."
+        ) from exc
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminSpriteListView(generics.ListCreateAPIView):
@@ -133,29 +145,14 @@ class AdminSpriteImageDetailView(APIView):
 
     def put(self, request: Request, sprite_id: int, image_id: int) -> Response:
         image: UnitSpriteImage = get_object_or_404(UnitSpriteImage, pk=image_id, sprite_id=sprite_id)
-        upload: SpriteImageUploadSerializer = SpriteImageUploadSerializer(
-            data={"file": request.data.get("file"), "name": image.name}
-        )
-        upload.is_valid(raise_exception=True)
-        data: UploadedPng = cast(UploadedPng, upload.validated_data)
-        image.data = data["data"]
-        image.sha256 = data["sha256"]
-        image.width = data["width"]
-        image.height = data["height"]
+        replace_png(image, request.data.get("file"))
         with transaction.atomic():
-            image.save(update_fields=["data", "sha256", "width", "height"])
+            image.save(update_fields=REPLACED_PNG_FIELDS)
             image.sprite.save(update_fields=["updated_at"])
         return _sprite_response(sprite_id)
 
     def delete(self, request: Request, sprite_id: int, image_id: int) -> Response:
-        image: UnitSpriteImage = get_object_or_404(UnitSpriteImage, pk=image_id, sprite_id=sprite_id)
-        try:
-            image.delete()
-        except ProtectedError as exc:
-            raise ConflictError(
-                f"{image.name} wird noch von einem Atlas gezeigt und kann nicht geloescht werden."
-            ) from exc
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return delete_png(get_object_or_404(UnitSpriteImage, pk=image_id, sprite_id=sprite_id))
 
 
 class AdminSpriteImageFileView(APIView):

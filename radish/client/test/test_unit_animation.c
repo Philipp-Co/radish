@@ -1,7 +1,7 @@
 #include <unity.h>
 #include <math.h>
 
-#include <radish/view/animations/unit_animation.h>
+#include <radish/view/rendering/animations/unit_animation.h>
 
 ///
 /// Was eine Animation ueber das sagt, was die Figur gerade tut

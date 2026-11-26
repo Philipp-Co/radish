@@ -205,6 +205,7 @@ def _validate_entity_weapons(
             )
         for weapon in weapons:
             _validate_weapon(species, weapon, weapon_class, class_label, label)
+            _validate_carrier(profile, weapon, label)
 
 
 def _validate_entity_weapon_total(entity: ValidatedEntity, label: str) -> None:
@@ -241,19 +242,45 @@ def _validate_weapon(
 def _validate_entity_equipment(
     species: Species, profile: EntityProfile, entity: ValidatedEntity, label: str
 ) -> None:
-    """Ausruestungsslots des Profils und Spezies jedes Gegenstands."""
+    """Ausruestungsslots des Profils, jeder Gegenstand nur einmal, dann jeder einzeln."""
     equipment: list[Equipment] = entity["equipment"]
     if len(equipment) > profile.equipment_slots:
         raise serializers.ValidationError(
             f"{label}: {profile.name} hat nur "
             f"{profile.equipment_slots} Ausruestungsslots."
         )
+    _validate_equipment_once(equipment, label)
     item: Equipment
     for item in equipment:
-        if item.species_id != species.id:
-            raise serializers.ValidationError(
-                f"{label}: {item.name} gehoert nicht zur Spezies {species.name}."
-            )
+        _validate_equipment_item(species, profile, item, label)
+
+
+def _validate_equipment_once(equipment: list[Equipment], label: str) -> None:
+    """Jeder Gegenstand hoechstens einmal je Entitaet (siehe UnitEntityEquipment)."""
+    twice: list[str] = sorted(
+        {item.name for item, count in Counter(equipment).items() if count > 1}
+    )
+    if twice:
+        raise serializers.ValidationError(
+            f"{label}: jeder Gegenstand nur einmal je Entitaet, doppelt: {', '.join(twice)}."
+        )
+
+
+def _validate_equipment_item(species: Species, profile: EntityProfile, item: Equipment, label: str) -> None:
+    """Erst die Spezies, dann ob das Profil den Gegenstand tragen darf."""
+    if item.species_id != species.id:
+        raise serializers.ValidationError(
+            f"{label}: {item.name} gehoert nicht zur Spezies {species.name}."
+        )
+    _validate_carrier(profile, item, label)
+
+
+def _validate_carrier(profile: EntityProfile, entry: Weapon | Equipment, label: str) -> None:
+    """Ob das Profil die Waffe bzw. den Gegenstand tragen darf (ProfileRestricted.allows)."""
+    if not entry.allows(profile):
+        raise serializers.ValidationError(
+            f"{label}: {profile.name} darf {entry.name} nicht tragen."
+        )
 
 
 def _validate_unit_weapon_limits(unit_type: UnitType, entities: list[ValidatedEntity], label: str) -> None:
