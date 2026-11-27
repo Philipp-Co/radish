@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from api.domain.servers import instance_client
-from api.models import Game, TerrainCode, TerrainType
+from api.models import Equipment, Game, TerrainCode, TerrainType
 from api.tests.game_test_case import GameTestCase
 from api.tests.helpers import SPIELSTART_SCHEMA, find_by
 
@@ -66,6 +66,28 @@ class InstanceClientTests(GameTestCase):
              leader["genauigkeit"]),
             (2, 3, 3, 4, 3),
         )
+
+    def test_document_carries_values_with_equipment(self) -> None:
+        # Der Anfuehrer traegt das Medipack und ein Gewehr (squad_payload).
+        Equipment.objects.filter(pk=self.medkit.pk).update(
+            armor_modifier=1, accuracy_modifier=-4, weapon_range_modifier=6, weapon_shots_modifier=1
+        )
+
+        guest: instance_client.PlayerDocument = instance_client.game_start_document(self.game)["spieldaten"][1]
+
+        entities: list[instance_client.EntityDocument] = guest["armee"]["einheiten"][0]["entitaeten"]
+        leader: instance_client.EntityDocument = find_by(entities, profil="Anfuehrer")
+        # Ruestung 3 + 1, Genauigkeit 3 - 4 nicht unter 0.
+        self.assertEqual((leader["ruestung"], leader["genauigkeit"]), (4, 0))
+        self.assertEqual(leader["ausruestung"], [{"name": "Medipack"}])
+        rifle: instance_client.WeaponDocument = leader["waffen"][0]
+        self.assertEqual(
+            (rifle["schuesse"], rifle["staerke"], rifle["max_reichweite"]), (2, 3, 30)
+        )
+        # Der Soldat ohne Ausruestung behaelt die Werte aus dem Katalog.
+        soldier: instance_client.EntityDocument = find_by(entities, profil="Soldat")
+        self.assertEqual((soldier["ruestung"], soldier["genauigkeit"]), (3, 4))
+        self.assertEqual(soldier["waffen"][0]["max_reichweite"], 24)
 
     def test_document_carries_sprite_of_unit_type(self) -> None:
         self.squad.sprite = "heavy_tank"

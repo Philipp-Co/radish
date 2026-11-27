@@ -18,7 +18,18 @@ from typing import TypedDict
 import requests
 
 from api.domain.army_queries import armies_with_costs
-from api.models import Army, Game, GameServer, Player, TerrainCode, TerrainType
+from api.domain.equipment_modifiers import ProfileValues, WeaponValues, modified_profile, modified_weapon
+from api.models import (
+    Army,
+    Equipment,
+    Game,
+    GameServer,
+    Player,
+    TerrainCode,
+    TerrainType,
+    UnitEntity,
+    Weapon,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +54,7 @@ class WeaponDocument(TypedDict):
 
 
 class EquipmentDocument(TypedDict):
-    """$defs/ausruestung"""
+    """$defs/ausruestung -- nur der Name, die Modifikatoren stecken schon in den Werten."""
 
     name: str
 
@@ -144,35 +155,44 @@ def _army_document(army: Army) -> ArmyDocument:
                 "sichtweite": unit.unit_type.sight_range,
                 "transportkapazitaet": unit.unit_type.transport_capacity,
                 "kann_ziele_einnehmen": unit.unit_type.can_capture_objectives,
-                "entitaeten": [
-                    {
-                        "profil": entity.profile.name,
-                        "leben": entity.profile.health,
-                        "ruestung": entity.profile.armor,
-                        "widerstand": entity.profile.toughness,
-                        "staerke": entity.profile.strength,
-                        "genauigkeit": entity.profile.accuracy,
-                        "waffen": [
-                            {
-                                "name": slot.weapon.name,
-                                "klasse": slot.weapon.weapon_class,
-                                "schuesse": slot.weapon.shots,
-                                "staerke": slot.weapon.strength,
-                                "min_reichweite": slot.weapon.min_range,
-                                "max_reichweite": slot.weapon.max_range,
-                                "durchschlag": slot.weapon.armor_penetration,
-                            }
-                            for slot in entity.weapons.all()
-                        ],
-                        "ausruestung": [
-                            {"name": slot.equipment.name} for slot in entity.equipment.all()
-                        ],
-                    }
-                    for entity in unit.entities.all()
-                ],
+                "entitaeten": [_entity_document(entity) for entity in unit.entities.all()],
             }
             for unit in army.units.all()
         ],
+    }
+
+
+def _entity_document(entity: UnitEntity) -> EntityDocument:
+    """
+    Eine Entitaet mit den Werten ihres Profils und ihrer Waffen, die
+    Modifikatoren ihrer Ausruestung schon eingerechnet (equipment_modifiers)
+    -- das Spiel wendet keine an.
+    """
+    items: list[Equipment] = [slot.equipment for slot in entity.equipment.all()]
+    profile: ProfileValues = modified_profile(entity.profile, items)
+    return {
+        "profil": entity.profile.name,
+        "leben": profile.health,
+        "ruestung": profile.armor,
+        "widerstand": profile.toughness,
+        "staerke": profile.strength,
+        "genauigkeit": profile.accuracy,
+        "waffen": [_weapon_document(slot.weapon, items) for slot in entity.weapons.all()],
+        "ausruestung": [{"name": item.name} for item in items],
+    }
+
+
+def _weapon_document(weapon: Weapon, items: list[Equipment]) -> WeaponDocument:
+    """Eine Waffe mit den weapon_*_modifier der Ausruestung ihres Traegers."""
+    values: WeaponValues = modified_weapon(weapon, items)
+    return {
+        "name": weapon.name,
+        "klasse": weapon.weapon_class,
+        "schuesse": values.shots,
+        "staerke": values.strength,
+        "min_reichweite": weapon.min_range,
+        "max_reichweite": values.max_range,
+        "durchschlag": values.armor_penetration,
     }
 
 
