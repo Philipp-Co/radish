@@ -595,6 +595,12 @@ export class EffectEditComponent implements OnInit, OnDestroy {
   /** Object-URLs der Vorschauen, je PNG und Fassung (previewKey). */
   readonly previews = signal<Record<string, string>>({});
   readonly opened = signal<{ src: string; name: string } | null>(null);
+  /**
+   * Vorschauen, die gerade laden -- nicht ein zweites Mal anfragen. Sonst
+   * fordert jeder fertige Upload (mehrere PNGs nacheinander) die noch
+   * laufenden erneut an, und die erste Object-URL wird nie freigegeben.
+   */
+  private readonly pending = new Set<string>();
 
   readonly stageSize = STAGE_SIZE;
   /** Abgespielte Zeit der Vorschau in Millisekunden; steht beim Anhalten. */
@@ -913,9 +919,12 @@ export class EffectEditComponent implements OnInit, OnDestroy {
     this.previews.set(current);
     for (const image of effect.images) {
       const key = this.previewKey(image);
-      if (!(key in current)) {
+      if (!(key in current) && !this.pending.has(key)) {
+        this.pending.add(key);
         this.api.effectImageBlob(effect.id, image.id).subscribe({
           next: (blob) => this.previews.update((all) => ({ ...all, [key]: URL.createObjectURL(blob) })),
+          complete: () => this.pending.delete(key),
+          error: () => this.pending.delete(key),
         });
       }
     }
