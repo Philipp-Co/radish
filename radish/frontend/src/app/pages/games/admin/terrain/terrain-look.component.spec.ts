@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 
@@ -219,5 +220,45 @@ describe('TerrainLookComponent', () => {
       ['forest', files[1]],
     ]);
     expect(el.querySelector('.notice')?.textContent).toBe('2 von 2 PNGs hochgeladen.');
+  });
+
+  describe('in der Detailseite eingebunden', () => {
+    /**
+     * Reicht den Typ wie TerrainDetailComponent ueber ein Signal und die
+     * Template-Bindung zurueck -- also erst beim naechsten Neuzeichnen, nicht
+     * sofort wie setInput() in den Tests oben.
+     */
+    @Component({
+      imports: [TerrainLookComponent],
+      template: `<app-terrain-look [terrain]="terrain()" (updated)="terrain.set($event)" />`,
+    })
+    class HostPage {
+      readonly terrain = signal(terrainType({ images: [tile, bush] }));
+      readonly look = viewChild.required(TerrainLookComponent);
+    }
+
+    it('zeigt nach dem Speichern die gespeicherten Werte, nicht die alten', async () => {
+      const before = terrainType({
+        images: [tile, bush],
+        decor: [{ image_id: 2, offset_x: 6, offset_y: -86, in_front: false }],
+      });
+      const saved = terrainType({
+        images: [tile, bush],
+        decor: [{ image_id: 2, offset_x: 10, offset_y: -80, in_front: true }],
+      });
+      api.setTerrainLook.mockReturnValue(of(saved));
+      TestBed.configureTestingModule({ imports: [HostPage], providers: [{ provide: ApiService, useValue: api }] });
+      const host = TestBed.createComponent(HostPage);
+      host.componentInstance.terrain.set(before);
+      await host.whenStable();
+      const look = host.componentInstance.look();
+
+      look.decor[0] = { image_id: 2, offset_x: 10, offset_y: -80, in_front: true };
+      look.saveLook();
+      await host.whenStable();
+
+      expect(look.decor).toEqual([{ image_id: 2, offset_x: 10, offset_y: -80, in_front: true }]);
+      expect(look.changed()).toBe(false);
+    });
   });
 });
