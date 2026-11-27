@@ -56,13 +56,16 @@ export interface CatalogField {
           [class.select]="field.type === 'select'"
           [title]="field.hint ?? ''"
         >
+          <!-- Je Feld genau zwei Kinder: Beschriftung und Eingabe -- sie
+               liegen in den zwei Zeilen des Subgrids, damit die Eingaben einer
+               Reihe buendig stehen, auch wenn Beschriftungen umbrechen. -->
           @switch (field.type) {
             @case ('text') {
-              {{ field.label }}
+              <span class="caption">{{ field.label }}</span>
               <input type="text" [(ngModel)]="draft[field.key]" />
             }
             @case ('number') {
-              {{ field.label }}
+              <span class="caption">{{ field.label }}</span>
               <input
                 type="number"
                 [attr.min]="field.signed ? null : 0"
@@ -70,19 +73,24 @@ export interface CatalogField {
               />
             }
             @case ('select') {
-              {{ field.label }}
-              <select [(ngModel)]="draft[field.key]">
-                @for (option of optionsOf(field); track option.value) {
-                  <option [ngValue]="option.value">{{ option.label }}</option>
+              <span class="caption">{{ field.label }}</span>
+              <span class="control">
+                <select [(ngModel)]="draft[field.key]">
+                  @for (option of optionsOf(field); track option.value) {
+                    <option [ngValue]="option.value">{{ option.label }}</option>
+                  }
+                </select>
+                @if (field.optionsFrom && optionsError()) {
+                  <span class="error">{{ optionsError() }}</span>
                 }
-              </select>
-              @if (field.optionsFrom && optionsError()) {
-                <span class="error">{{ optionsError() }}</span>
-              }
+              </span>
             }
             @case ('checkbox') {
-              <input type="checkbox" [(ngModel)]="draft[field.key]" />
-              {{ field.label }}
+              <span class="caption"></span>
+              <span class="control">
+                <input type="checkbox" [(ngModel)]="draft[field.key]" />
+                {{ field.label }}
+              </span>
             }
           }
         </label>
@@ -112,14 +120,34 @@ export interface CatalogField {
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
-        gap: 0.5rem;
+        column-gap: 0.5rem;
+        row-gap: 0.2rem;
       }
       label {
+        display: grid;
+        grid-row: span 2;
+        grid-template-rows: subgrid;
+        /* Lange Woerter ("Transportkapazität") duerfen die Spalte nicht aufdruecken. */
+        grid-template-columns: minmax(0, 1fr);
+        font-size: 0.8rem;
+        color: var(--text-dim, #8a8a92);
+      }
+      /* Mehrzeilige Beschriftungen sitzen unten, direkt ueber ihrer Eingabe. */
+      label .caption {
+        align-self: end;
+        hyphens: auto;
+        overflow-wrap: anywhere;
+      }
+      /* Abstand zwischen zwei Feldreihen. */
+      label .control,
+      label > input,
+      label > select {
+        margin-bottom: 0.3rem;
+      }
+      label .control {
         display: flex;
         flex-direction: column;
         gap: 0.2rem;
-        font-size: 0.8rem;
-        color: var(--text-dim, #8a8a92);
       }
       label.wide {
         grid-column: 1 / -1;
@@ -134,9 +162,15 @@ export interface CatalogField {
         grid-column: span 2;
       }
       label.checkbox {
+        grid-column: span 2;
+      }
+      label.checkbox .control {
         flex-direction: row;
         align-items: center;
-        grid-column: span 2;
+        gap: 0.4rem;
+      }
+      .section {
+        margin-bottom: 0.1rem;
       }
       input[type='number'],
       input[type='text'] {
