@@ -48,12 +48,8 @@ import { SpriteImagesComponent } from './sprite-images.component';
     <section class="card">
       <app-catalog-page-header [model]="model" />
 
-      <div
-        class="search"
-        [class.with-filter]="model.parent !== null && !model.extraFilter"
-        [class.with-two-filters]="model.parent !== null && !!model.extraFilter"
-      >
-        <label>
+      <div class="search">
+        <label class="term">
           Suche
           <input
             type="text"
@@ -189,16 +185,28 @@ import { SpriteImagesComponent } from './sprite-images.component';
         flex-direction: column;
         gap: 1rem;
       }
+      /*
+       * Suche und Filter teilen sich die Breite der Karte und brechen um, wenn
+       * es eng wird. min-width: 0 und width: 100% halten ein Select mit langen
+       * Optionen in seiner Spalte, statt es ueber den Kartenrand zu schieben.
+       */
       .search {
-        display: grid;
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-wrap: wrap;
         gap: 0.75rem;
       }
-      .search.with-filter {
-        grid-template-columns: 2fr 1fr;
+      .search label {
+        flex: 1 1 9rem;
+        min-width: 0;
       }
-      .search.with-two-filters {
-        grid-template-columns: 2fr 1fr 1fr;
+      .search label.term {
+        flex: 2 1 14rem;
+      }
+      .search input,
+      .search select {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
       }
       label {
         display: flex;
