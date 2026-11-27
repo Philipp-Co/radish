@@ -31,8 +31,9 @@
 /// **Die Armee wird vollstaendig gelesen.** Jede Einheit landet als RAD_Unit_t
 /// mit ihren Werten und Mitgliedern (radish/game/model/unit/unit.h); beim
 /// Einrichten wird sie in den Pool uebernommen, ohne Umrechnung. Die Ausruestung
-/// wird geprueft und nicht uebernommen: sie traegt bisher nur einen Namen und
-/// wirkt im Spiel nicht.
+/// wird geprueft und nicht uebernommen: sie traegt nur einen Namen, ihre
+/// Modifikatoren hat das Backend schon in die Werte der Entitaet und ihrer
+/// Waffen eingerechnet.
 ///
 /// **Was das Schema verlangt, verlangt auch der Leser.** Ein fehlender
 /// Pflichtschluessel, ein leerer Name, ein Wert ausserhalb 0..32767 (die

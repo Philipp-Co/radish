@@ -338,7 +338,9 @@ const PROFILE_STATS: { key: ProfileStat; short: string; label: string; modifier:
 
 /**
  * Die Werte des Profils mit allen Modifikatoren der Ausruestung; kein Wert
- * faellt unter 0.
+ * faellt unter 0. Dieselben Regeln wie beim Spielstart im Backend
+ * (radish/backend/api/domain/equipment_modifiers.py) -- gespielt wird mit
+ * dessen Werten.
  */
 export function profileStatCells(profile: EntityProfile, items: Equipment[]): StatCell[] {
   return PROFILE_STATS.map(({ key, short, label, modifier }) => {
