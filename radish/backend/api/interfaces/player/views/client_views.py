@@ -2,10 +2,8 @@
 Endpunkte fuer den Spielclient unter api/client/.
 
 Ein Client kann hierueber ein Spiel erstellen, einem Spiel beitreten, es
-als Host starten, es wieder verlassen, die offenen Spiele auflisten, sein
-eigenes Spiel abfragen und seinen eigenen Zustand abfragen. Alles ausser
-Zustand ist echt umgesetzt; Zustand ist noch Platzhalter (siehe dessen
-Docstring).
+als Host starten, es wieder verlassen, die offenen Spiele auflisten und sein
+eigenes Spiel abfragen.
 
 Ein Spiel beginnt in der Lobby (siehe models.GameStatus): erst wenn der
 Host startet (GameStartView) und die Instanz das Spiel im selben Aufruf
@@ -541,23 +539,3 @@ class LeaveGameView(APIView):
             _leave_game(game, player)
 
         return Response({"status": "left"})
-
-
-class PlayerStateView(APIView):
-    """
-    Platzhalter-Endpunkt, der den aktuellen Zustand des anfragenden
-    Spielers liefert.
-
-    Welcher Spieler das ist (Session? Token? Uuid im Kommando-Header,
-    wie im C-Server unter radish/game-server-core/?) und was sein Zustand
-    umfasst, ist noch offen -- dieser View existiert erstmal nur, damit
-    der Endpunkt aufrufbar ist.
-    """
-    #
-    # TODO: Sobald OIDC umgesetzt ist muss dieser Endpunkt vernuenftig umgesetzt werden.
-    #
-
-    permission_classes = [IsAuthenticated, HasPlayerRole]
-
-    def get(self, request: Request) -> Response:
-        return Response({"status": "ok"})

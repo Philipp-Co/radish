@@ -1,0 +1,278 @@
+# Pruefungen fuer jeden Push und jeden Pull Request: die C-Testsuite, der
+# Wasm-Client, Backend und game-server (Tests, mypy, pylint, lizard) und das
+# Frontend (Lint, Tests, Build). Diese Jobs laufen parallel.
+#
+# Sind alle gruen, baut "images" die drei Docker-Images aus docker-compose.yaml
+# und schiebt sie bei einem Push auf main nach ghcr.io. Auf anderen Branches und
+# in Pull Requests werden sie nur gebaut.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Ein neuer Push auf denselben Branch bricht den alten Lauf ab.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Host-Build von radish (radish/CMakeLists.txt ohne Emscripten) mit der
+  # Unity-Suite und den Schema-Tests, ausgefuehrt von ctest.
+  game:
+    name: C-Tests (ctest)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Die Bibliotheken liegen nicht im Repository, sondern als Klone neben
+      # radish/ (siehe radish/cmake/*.cmake). Welche Staende, steht im Skript.
+      - name: Abhaengigkeiten klonen
+        run: scripts/fetch-deps.sh jsmn zucchini protobuf-c Unity
+
+      # protoc und protoc-gen-c als Host-Werkzeuge (radish/cmake/protobuf-c.cmake).
+      - name: Werkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler protobuf-c-compiler
+
+      # Ohne check-jsonschema fallen die Schema-Tests (schema_world*) still weg.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install check-jsonschema
+
+      - name: Konfigurieren
+        run: cmake -S radish -B build-host -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Bauen
+        run: cmake --build build-host --parallel
+
+      - name: Testen
+        run: ctest --test-dir build-host --output-on-failure
+
+  # Der Client fuer den Browser (radish/client/), mit Emscripten in derselben
+  # Version wie das Backend-Image (docker/backend/Dockerfile, Stage
+  # wasm-builder). Das Ergebnis haengt als Artefakt am Lauf.
+  wasm:
+    name: WASM-Client
+    runs-on: ubuntu-24.04
+    container: emscripten/emsdk:6.0.5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abhaengigkeiten klonen
+        run: scripts/fetch-deps.sh jsmn protobuf-c SDL SDL_image
+
+      # protoc und protoc-gen-c als Host-Werkzeuge (radish/cmake/protobuf-c.cmake).
+      - name: Werkzeuge installieren
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends protobuf-compiler protobuf-c-compiler
+
+      # Nur das Ziel "client": es schreibt client.js/client.wasm nach
+      # radish/web/ und die Assets nach radish/web/assets/.
+      - name: Bauen
+        run: |
+          emcmake cmake -S radish -B build-wasm -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm --target client --parallel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-client
+          path: |
+            radish/web/client.js
+            radish/web/client.wasm
+            radish/web/assets/
+          if-no-files-found: error
+
+  # Django-Backend (radish/backend/): die Werkzeuge aus seiner README, Abschnitt
+  # "Code-Qualitaet", gegen eine Postgres wie in docker-compose.yaml.
+  backend:
+    name: Backend
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: radish/backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: radish
+          POSTGRES_USER: radish
+          POSTGRES_PASSWORD: radish
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U radish -d radish"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      # Die Defaults aus config/database.py: Admin-Benutzer radish auf localhost:5433.
+      PGPASSWORD: radish
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: radish/backend/requirements*.txt
+
+      - name: Abhaengigkeiten installieren
+        id: install
+        run: pip install -r requirements-dev.txt
+
+      # Django legt die Testdatenbank als Kopie von template1 an. Die Tabellen
+      # gehoeren ins Schema "radish" (search_path, config/database.py) -- das
+      # muss es also schon in template1 geben.
+      - name: Schema in template1 anlegen
+        run: psql -h localhost -p 5433 -U radish -d template1 -c 'CREATE SCHEMA radish'
+
+      - name: Tests
+        run: python manage.py test api web
+
+      - name: mypy
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: mypy api config web
+
+      - name: pylint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pylint api config web
+
+      - name: lizard
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: scripts/lizard.sh
+
+  # game-server (radish/game-server/): dieselben Werkzeuge wie im Backend. Ohne
+  # eigene Datenbank (DATABASES ist leer, config/settings.py).
+  game-server:
+    name: game-server
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: radish/game-server
+    steps:
+      - uses: actions/checkout@v4
+
+      # Python wie im Image (docker/game-server/Dockerfile).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: radish/game-server/requirements*.txt
+
+      - name: Abhaengigkeiten installieren
+        id: install
+        run: pip install -r requirements-dev.txt
+
+      - name: Tests
+        run: python manage.py test instances
+
+      - name: mypy
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: mypy config instances
+
+      - name: pylint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pylint config instances
+
+      - name: lizard
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: scripts/lizard.sh
+
+  # Angular-Frontend (radish/frontend/): Lint, Vitest-Tests und Produktivbuild.
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: radish/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node wie im Image (docker/backend/Dockerfile, Stage frontend-builder).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: radish/frontend/package-lock.json
+
+      - name: Abhaengigkeiten installieren
+        id: install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx ng test --watch=false
+
+      - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build -- --configuration production
+
+  # Die Images aus docker-compose.yaml. Erst wenn alle Pruefungen oben gruen
+  # sind: ein Image von main soll nie aus rotem Code entstehen.
+  images:
+    name: Image ${{ matrix.image }}
+    needs: [game, wasm, backend, game-server, frontend]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            deps: jsmn protobuf-c SDL SDL_image
+          - image: backend-migrate
+            deps: ""
+          - image: game-server
+            deps: jsmn zucchini protobuf-c
+    env:
+      # Kleinbuchstaben: Docker verlangt sie, der Besitzer heisst Philipp-Co.
+      IMAGE: ghcr.io/philipp-co/radish-${{ matrix.image }}
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Der Build-Kontext ist die Wurzel des Repositorys; die Dockerfiles
+      # kopieren die Klone von dort.
+      - name: Abhaengigkeiten klonen
+        if: ${{ matrix.deps != '' }}
+        run: scripts/fetch-deps.sh ${{ matrix.deps }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Das eingebaute GITHUB_TOKEN reicht (packages: write oben).
+      - name: Bei ghcr.io anmelden
+        if: ${{ env.PUSH == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Jedes Image bekommt den Commit als Tag, auf main zusaetzlich "latest".
+      # Der Cache liegt im Actions-Cache, je Image getrennt.
+      - name: Bauen${{ github.ref == 'refs/heads/main' && ' und pushen' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.image }}/Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
