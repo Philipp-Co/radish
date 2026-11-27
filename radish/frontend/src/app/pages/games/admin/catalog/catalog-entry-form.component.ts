@@ -121,6 +121,14 @@ export interface CatalogField {
         font-size: 0.8rem;
         color: var(--text-dim, #8a8a92);
       }
+      /*
+       * Alle Labels einer Zeile sind gleich hoch (Grid streckt sie); das Feld
+       * sitzt unten, damit eine zweizeilige Beschriftung ("Min. Reichweite")
+       * es nicht gegen die Nachbarn verschiebt.
+       */
+      label:not(.checkbox) {
+        justify-content: flex-end;
+      }
       label.wide {
         grid-column: 1 / -1;
       }
@@ -139,8 +147,11 @@ export interface CatalogField {
         grid-column: span 2;
       }
       input[type='number'],
-      input[type='text'] {
+      input[type='text'],
+      select {
         width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
       }
       .actions {
         display: flex;
