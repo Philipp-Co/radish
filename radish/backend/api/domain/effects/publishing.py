@@ -82,15 +82,26 @@ def published_effect_file(name: str) -> PublishedFile | None:
     match: re.Match[str] | None = _PUBLISHED.match(name)
     if match is None:
         return None
-    effect: Effect | None = _published_effects().filter(key=match["key"]).first()
+    complete: tuple[Effect, list[EffectAtlas]] | None = _complete_effect(match["key"])
+    if complete is None:
+        return None
+    effect: Effect
+    atlases: list[EffectAtlas]
+    effect, atlases = complete
+    if match["ext"] == "json":
+        return current_json(effect_json_bytes(effect, atlases), "effect", match)
+    return _published_png(effect, {atlas.image.name for atlas in atlases}, match)
+
+
+def _complete_effect(key: str) -> tuple[Effect, list[EffectAtlas]] | None:
+    """Der Effekt mit diesem Schluessel samt Atlanten; None, wenn es ihn nicht gibt oder er unvollstaendig ist."""
+    effect: Effect | None = _published_effects().filter(key=key).first()
     if effect is None:
         return None
     atlases: list[EffectAtlas] = list(effect.atlases.all())
     if effect_problems(effect, atlases):
         return None
-    if match["ext"] == "json":
-        return current_json(effect_json_bytes(effect, atlases), "effect", match)
-    return _published_png(effect, {atlas.image.name for atlas in atlases}, match)
+    return effect, atlases
 
 
 def _published_png(effect: Effect, shown: set[str], match: re.Match[str]) -> PublishedFile | None:
