@@ -420,15 +420,20 @@ export class TerrainLookComponent implements OnChanges, OnDestroy {
     );
   }
 
-  reset(): void {
-    const saved = savedLook(this.terrain);
+  /** Formular auf den gespeicherten Stand von "terrain" (Vorgabe: der aktuelle Typ). */
+  reset(terrain: AdminTerrainType = this.terrain): void {
+    const saved = savedLook(terrain);
     this.image_id = saved.image_id;
     this.decor = saved.decor.map((entry) => ({ ...entry }));
   }
 
   saveLook(): void {
-    this.run(this.api.setTerrainLook(this.terrain.code, this.look()), 'Aussehen gespeichert.', 'Aussehen nicht gespeichert.', () =>
-      this.reset(),
+    // Aus der Antwort fuellen, nicht aus this.terrain: die Detailseite reicht
+    // den neuen Typ per Template-Bindung zurueck, er kommt hier also erst beim
+    // naechsten Neuzeichnen an -- bis dahin ist this.terrain noch der alte
+    // Stand, und das Formular spraenge auf die Werte vor dem Speichern zurueck.
+    this.run(this.api.setTerrainLook(this.terrain.code, this.look()), 'Aussehen gespeichert.', 'Aussehen nicht gespeichert.', (saved) =>
+      this.reset(saved),
     );
   }
 
@@ -488,13 +493,13 @@ export class TerrainLookComponent implements OnChanges, OnDestroy {
     request: Observable<AdminTerrainType>,
     success: string,
     failure: string,
-    after?: () => void,
+    after?: (terrain: AdminTerrainType) => void,
   ): void {
     this.start();
     request.subscribe({
       next: (terrain) => {
         this.done(terrain, success);
-        after?.();
+        after?.(terrain);
       },
       error: (err: HttpErrorResponse) => this.fail(err, failure),
     });

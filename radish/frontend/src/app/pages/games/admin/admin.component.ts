@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { Subscription, interval, startWith, switchMap } from 'rxjs';
+import { EMPTY, Subject, Subscription, catchError, interval, merge, startWith, switchMap } from 'rxjs';
 
 import { ApiService, GameServerEntry } from '../../../core/api.service';
 
@@ -88,23 +88,30 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
 
+  /** "Aktualisieren" -- laedt sofort statt erst beim naechsten Poll. */
+  private readonly refreshes = new Subject<void>();
   private pollSubscription: Subscription | null = null;
 
   ngOnInit(): void {
-    this.pollSubscription = interval(5000)
+    // Wie in GamesListComponent: Fehler je Abfrage abfangen -- im aeusseren
+    // Stream wuerde einer das Polling fuer den Rest der Seite beenden.
+    // switchMap verwirft dabei eine noch laufende, aeltere Abfrage.
+    this.pollSubscription = merge(interval(5000).pipe(startWith(0)), this.refreshes)
       .pipe(
-        startWith(0),
-        switchMap(() => this.api.listServers()),
+        switchMap(() =>
+          this.api.listServers().pipe(
+            catchError(() => {
+              this.errorMessage.set('Serverliste konnte nicht geladen werden.');
+              this.loading.set(false);
+              return EMPTY;
+            }),
+          ),
+        ),
       )
-      .subscribe({
-        next: (response) => {
-          this.servers.set(response.servers);
-          this.loading.set(false);
-        },
-        error: () => {
-          this.errorMessage.set('Serverliste konnte nicht geladen werden.');
-          this.loading.set(false);
-        },
+      .subscribe((response) => {
+        this.servers.set(response.servers);
+        this.errorMessage.set(null);
+        this.loading.set(false);
       });
   }
 
@@ -114,15 +121,6 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   refresh(): void {
     this.loading.set(true);
-    this.api.listServers().subscribe({
-      next: (response) => {
-        this.servers.set(response.servers);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.errorMessage.set('Serverliste konnte nicht geladen werden.');
-        this.loading.set(false);
-      },
-    });
+    this.refreshes.next();
   }
 }

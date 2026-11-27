@@ -488,6 +488,12 @@ export class SpriteEditComponent implements OnInit, OnDestroy {
   /** Object-URLs der Vorschauen, je PNG und Fassung (previewKey). */
   readonly previews = signal<Record<string, string>>({});
   readonly opened = signal<{ src: string; name: string } | null>(null);
+  /**
+   * Vorschauen, die gerade laden -- nicht ein zweites Mal anfragen. Sonst
+   * fordert jeder fertige Upload (mehrere PNGs nacheinander) die noch
+   * laufenden erneut an, und die erste Object-URL wird nie freigegeben.
+   */
+  private readonly pending = new Set<string>();
 
   values: ValuesDraft = {
     anchor_x: 0.5,
@@ -720,9 +726,12 @@ export class SpriteEditComponent implements OnInit, OnDestroy {
     this.previews.set(current);
     for (const image of sprite.images) {
       const key = this.previewKey(image);
-      if (!(key in current)) {
+      if (!(key in current) && !this.pending.has(key)) {
+        this.pending.add(key);
         this.api.spriteImageBlob(sprite.id, image.id).subscribe({
           next: (blob) => this.previews.update((all) => ({ ...all, [key]: URL.createObjectURL(blob) })),
+          complete: () => this.pending.delete(key),
+          error: () => this.pending.delete(key),
         });
       }
     }
