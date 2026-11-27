@@ -1,8 +1,10 @@
-# Pruefungen fuer jeden Push und jeden Pull Request: die C-Testsuite, Backend
-# und game-server (Tests, mypy, pylint, lizard) und das Frontend (Lint, Tests,
-# Build). Die vier Jobs laufen parallel und haengen nicht voneinander ab.
+# Pruefungen fuer jeden Push und jeden Pull Request: die C-Testsuite, der
+# Wasm-Client, Backend und game-server (Tests, mypy, pylint, lizard) und das
+# Frontend (Lint, Tests, Build). Diese Jobs laufen parallel.
 #
-# Der Wasm-Client und die Docker-Images sind (noch) nicht dabei.
+# Sind alle gruen, baut "images" die drei Docker-Images aus docker-compose.yaml
+# und schiebt sie bei einem Push auf main nach ghcr.io. Auf anderen Branches und
+# in Pull Requests werden sie nur gebaut.
 
 name: CI
 
@@ -23,25 +25,15 @@ jobs:
   # Host-Build von radish (radish/CMakeLists.txt ohne Emscripten) mit der
   # Unity-Suite und den Schema-Tests, ausgefuehrt von ctest.
   game:
-    name: WASM-Client
+    name: C-Tests (ctest)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       # Die Bibliotheken liegen nicht im Repository, sondern als Klone neben
-      # radish/ (siehe radish/cmake/*.cmake). Hier auf denselben Staenden wie
-      # im Haupt-Checkout; beim Anheben eines Klons auch hier nachziehen.
+      # radish/ (siehe radish/cmake/*.cmake). Welche Staende, steht im Skript.
       - name: Abhaengigkeiten klonen
-        run: |
-          clone() {  # <url> <verzeichnis> <commit>
-            git init -q "$2"
-            git -C "$2" fetch -q --depth 1 "$1" "$3"
-            git -C "$2" checkout -q FETCH_HEAD
-          }
-          clone https://github.com/zserge/jsmn.git              jsmn       25647e692c7906b96ffd2b05ca54c097948e879c
-          clone https://github.com/Philipp-Co/zucchini.git      zucchini   304cdcac6f8ca88c592219ad5665c0f4b30d592d
-          clone https://github.com/protobuf-c/protobuf-c.git    protobuf-c 4719fdd7760624388c2c5b9d6759eb6a47490626
-          clone https://github.com/ThrowTheSwitch/Unity.git     Unity      3a6eb6dfd7706b703adf60f5ce3bcad57f94de4f
+        run: scripts/fetch-deps.sh jsmn zucchini protobuf-c Unity
 
       # protoc und protoc-gen-c als Host-Werkzeuge (radish/cmake/protobuf-c.cmake).
       - name: Werkzeuge installieren
@@ -63,6 +55,41 @@ jobs:
 
       - name: Testen
         run: ctest --test-dir build-host --output-on-failure
+
+  # Der Client fuer den Browser (radish/client/), mit Emscripten in derselben
+  # Version wie das Backend-Image (docker/backend/Dockerfile, Stage
+  # wasm-builder). Das Ergebnis haengt als Artefakt am Lauf.
+  wasm:
+    name: WASM-Client
+    runs-on: ubuntu-24.04
+    container: emscripten/emsdk:6.0.5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abhaengigkeiten klonen
+        run: scripts/fetch-deps.sh jsmn protobuf-c SDL SDL_image
+
+      # protoc und protoc-gen-c als Host-Werkzeuge (radish/cmake/protobuf-c.cmake).
+      - name: Werkzeuge installieren
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends protobuf-compiler protobuf-c-compiler
+
+      # Nur das Ziel "client": es schreibt client.js/client.wasm nach
+      # radish/web/ und die Assets nach radish/web/assets/.
+      - name: Bauen
+        run: |
+          emcmake cmake -S radish -B build-wasm -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm --target client --parallel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-client
+          path: |
+            radish/web/client.js
+            radish/web/client.wasm
+            radish/web/assets/
+          if-no-files-found: error
 
   # Django-Backend (radish/backend/): die Werkzeuge aus seiner README, Abschnitt
   # "Code-Qualitaet", gegen eine Postgres wie in docker-compose.yaml.
@@ -191,3 +218,61 @@ jobs:
       - name: Build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build -- --configuration production
+
+  # Die Images aus docker-compose.yaml. Erst wenn alle Pruefungen oben gruen
+  # sind: ein Image von main soll nie aus rotem Code entstehen.
+  images:
+    name: Image ${{ matrix.image }}
+    needs: [game, wasm, backend, game-server, frontend]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            deps: jsmn protobuf-c SDL SDL_image
+          - image: backend-migrate
+            deps: ""
+          - image: game-server
+            deps: jsmn zucchini protobuf-c
+    env:
+      # Kleinbuchstaben: Docker verlangt sie, der Besitzer heisst Philipp-Co.
+      IMAGE: ghcr.io/philipp-co/radish-${{ matrix.image }}
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Der Build-Kontext ist die Wurzel des Repositorys; die Dockerfiles
+      # kopieren die Klone von dort.
+      - name: Abhaengigkeiten klonen
+        if: ${{ matrix.deps != '' }}
+        run: scripts/fetch-deps.sh ${{ matrix.deps }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Das eingebaute GITHUB_TOKEN reicht (packages: write oben).
+      - name: Bei ghcr.io anmelden
+        if: ${{ env.PUSH == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Jedes Image bekommt den Commit als Tag, auf main zusaetzlich "latest".
+      # Der Cache liegt im Actions-Cache, je Image getrennt.
+      - name: Bauen${{ github.ref == 'refs/heads/main' && ' und pushen' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.image }}/Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
