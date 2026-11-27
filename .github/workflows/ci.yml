@@ -23,7 +23,7 @@ jobs:
   # Host-Build von radish (radish/CMakeLists.txt ohne Emscripten) mit der
   # Unity-Suite und den Schema-Tests, ausgefuehrt von ctest.
   game:
-    name: C-Tests (ctest)
+    name: WASM-Client
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

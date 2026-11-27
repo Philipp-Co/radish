@@ -25,7 +25,6 @@ urlpatterns = [
     path("client/game/current/", client_views.CurrentGameView.as_view(), name="client-game-current"),
     path("client/game/leave/", client_views.LeaveGameView.as_view(), name="client-game-leave"),
     path("client/games/", client_views.GameListView.as_view(), name="client-game-list"),
-    path("client/state/", client_views.PlayerStateView.as_view(), name="client-player-state"),
     path("client/catalog/", army_views.CatalogView.as_view(), name="client-catalog"),
     path("client/armies/", army_views.ArmyListView.as_view(), name="client-army-list"),
     path(
