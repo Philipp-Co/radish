@@ -156,7 +156,9 @@ describe('TerrainLookComponent', () => {
     });
     expect(updated).toEqual([saved]);
     expect(el.querySelector('.notice')?.textContent).toBe('Aussehen gespeichert.');
-    expect(component.changed()).toBe(false);
+    // Ob das Formular danach den gespeicherten Stand zeigt, prueft "in der
+    // Detailseite eingebunden" -- hier reicht setInput() den Typ sofort zurueck
+    // und wuerde ein Zurueckspringen auf den alten Stand verdecken.
   });
 
   it('zeigt Fehler beim Speichern und behaelt die Eingaben', async () => {

@@ -81,11 +81,10 @@ describe('TerrainListComponent', () => {
     expect(el.querySelector('.error')?.textContent).toBe('Gelände konnte nicht geladen werden.');
   });
 
+  // Die uebrigen Faelle zeigt schon die Tabelle in "zeigt Werte, Eigenschaften und Aussehen je Typ".
   it.each([
-    [null, 0, 'Würfel in Typfarbe'],
     [null, 1, '1 Dekoration'],
     [1, 0, 'Grundbild'],
-    [1, 2, 'Grundbild, 2 Dekorationen'],
   ])('terrainLookSummary: Bild %s, %i Dekorationen -> %s', (imageId, decorCount, expected) => {
     const entry = terrainType({ image_id: imageId, decor: Array.from({ length: decorCount }, () => decor) });
     expect(terrainLookSummary(entry)).toBe(expected);
