@@ -26,10 +26,7 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
   imports: [GameCanvasComponent],
   template: `
     <section class="card">
-      <div class="list-header">
-        <h2>Aktuelles Spiel</h2>
-        <button class="secondary" (click)="refresh()">Aktualisieren</button>
-      </div>
+      <h2>Aktuelles Spiel</h2>
 
       @if (errorMessage(); as message) {
         <p class="error">{{ message }}</p>
@@ -39,15 +36,6 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
         <!-- "as" ist nur am ersten @if einer Kette erlaubt (NG5002), deshalb
              hier ein eigener, verschachtelter @if/@else statt @else if. -->
         @if (game(); as current) {
-          <p>
-            Du spielst gerade <strong>{{ current.name }}</strong> --
-            <span class="muted">{{ current.second_player_identifier ? '2' : '1' }}/2 Spieler</span>
-          </p>
-          <p class="muted armies">
-            {{ current.points_limit }} Punkte ·
-            {{ current.host_army_name ?? '–' }} gegen
-            {{ current.second_player_army_name ?? 'noch offen' }}
-          </p>
           <app-game-canvas [gameName]="current.name" />
           <div class="actions">
             <button type="button" class="secondary" [disabled]="leaving()" (click)="leaveGame()">
@@ -64,12 +52,6 @@ import { GameCanvasComponent } from '../../../shared/game-canvas/game-canvas.com
   `,
   styles: [
     `
-      .list-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 0.75rem;
-      }
       .actions {
         display: flex;
         gap: 0.75rem;
@@ -102,8 +84,7 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Eine Abfrage beim Oeffnen der Ansicht (bzw. per "Aktualisieren"-Button,
-   * siehe refresh()). Liefert getCurrentGame() ein laufendes Spiel, wird
+   * Eine Abfrage beim Oeffnen der Ansicht. Liefert getCurrentGame() ein laufendes Spiel, wird
    * zusaetzlich die WebSocket-Verbindung geoeffnet (siehe GameSocketService)
    * und per Polling beobachtet, ob der Gegner das Spiel beendet (siehe
    * startEndPolling()).
@@ -127,11 +108,6 @@ export class CurrentGameComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       },
     });
-  }
-
-  refresh(): void {
-    this.loading.set(true);
-    this.loadCurrentGame();
   }
 
   leaveGame(): void {
